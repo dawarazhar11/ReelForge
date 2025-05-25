@@ -27,24 +27,29 @@ def get_workflow_steps():
             "path": "pages/4_BRoll_Prompts.py"
         },
         {
-            "name": "Content Production",
-            "icon": "⚡",
-            "path": "pages/5_Content_Production.py"
+            "name": "A-Roll Video Production",
+            "icon": "🎥",
+            "path": "pages/5A_ARoll_Video_Production.py"
+        },
+        {
+            "name": "B-Roll Video Production",
+            "icon": "🎬",
+            "path": "pages/5B_BRoll_Video_Production.py"
         },
         {
             "name": "Video Assembly",
-            "icon": "🎬",
+            "icon": "🎞️",
             "path": "pages/6_Video_Assembly.py"
         },
         {
-            "name": "Captioning",
+            "name": "Caption The Dreams",
             "icon": "💬",
-            "path": "pages/7_Autocaptions.py"
+            "path": "pages/7_Caption_The_Dreams.py"
         },
         {
-            "name": "Publishing",
+            "name": "Social Media Upload",
             "icon": "🚀",
-            "path": "pages/8_Publishing.py"
+            "path": "pages/8_Social_Media_Upload.py"
         }
     ]
 

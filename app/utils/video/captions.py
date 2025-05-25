@@ -679,9 +679,8 @@ def add_animated_caption_to_frame(frame_img, text, words_with_times, current_tim
     # Load font
     try:
         font = ImageFont.truetype(font_path, font_size)
-    except:
-        # Fallback to default
-        print(f"Font {font_path} not found, using default")
+    except Exception as e:
+        print(f"Warning: Error loading font: {e}")
         font = ImageFont.load_default()
     
     # If no words with timing info, just show the text centered
@@ -833,7 +832,8 @@ def add_animated_caption_to_frame(frame_img, text, words_with_times, current_tim
                 scaled_font_size = int(font_size * scale)
                 try:
                     scaled_font = ImageFont.truetype(font_path, scaled_font_size)
-                except:
+                except Exception as e:
+                    print(f"Warning: Error loading font: {e}")
                     scaled_font = font
                 
                 # Get new dimensions

@@ -651,5 +651,5 @@ st.markdown("---")
 render_step_navigation(
     current_step=4,
     prev_step_path="pages/3_Script_Segmentation.py",
-    next_step_path="pages/5_Content_Production.py"
+    next_step_path="pages/5A_ARoll_Video_Production.py"
 ) 

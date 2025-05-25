@@ -155,7 +155,8 @@ if "broll_prompts" not in st.session_state:
     st.session_state.broll_prompts = {}
 if "content_status" not in st.session_state:
     st.session_state.content_status = {
-        "broll": {}
+        "broll": {},
+        "aroll": {}
     }
 if "parallel_tasks" not in st.session_state:
     st.session_state.parallel_tasks = {
@@ -2057,18 +2058,29 @@ def load_workflow(workflow_type="video"):
         
         if workflow_type == "video":
             workflow_file = "wan.json"
+            fallback_file = "video_workflow.json"
         else:
             workflow_file = "image_homepc.json"
+            fallback_file = "image_workflow.json"
         
         # Check multiple locations for the workflow file
         possible_paths = [
             Path(workflow_file),                   # Current directory
             app_dir / workflow_file,               # Application directory
+            app_dir / "app" / workflow_file,       # App subdirectory
+            app_dir / "workflows" / workflow_file, # Workflows subdirectory
             Path(__file__).parent / workflow_file,  # Parent directory (pages directory)
+            Path(__file__).parent / "workflows" / workflow_file,  # Workflows in pages directory
             Path(os.getcwd()) / workflow_file,     # Current working directory
+            Path(os.getcwd()) / "workflows" / workflow_file,  # Workflows in current working directory
             Path("/Users/dawarazhar/Desktop/AI-Money-Printer-Shorts/app") / workflow_file,  # Absolute app path
             Path("/Users/dawarazhar/Desktop/AI-Money-Printer-Shorts") / workflow_file,      # Project root
+            Path("/Users/dawarazhar/Desktop/AI-Money-Printer-Shorts/app/workflows") / workflow_file,  # App workflows folder
         ]
+        
+        # Also check fallback file
+        fallback_paths = [path.parent / fallback_file for path in possible_paths]
+        possible_paths.extend(fallback_paths)
         
         # Try each possible path
         for path in possible_paths:
@@ -2078,11 +2090,33 @@ def load_workflow(workflow_type="video"):
                     print(f"✅ Loaded {workflow_type} workflow from {path} with {len(workflow)} nodes")
                     return workflow
         
-        # If we get here, file wasn't found
-        raise FileNotFoundError(f"Workflow file {workflow_file} not found in any of the expected locations")
+        # If we get here, file wasn't found - create a basic workflow template
+        if workflow_type == "image":
+            # Create a basic image workflow as fallback
+            basic_workflow = {
+                "1": {"class_type": "CLIPTextEncode", "inputs": {"text": ""}},
+                "2": {"class_type": "CLIPTextEncode", "inputs": {"text": ""}},
+                "3": {"class_type": "EmptyLatentImage", "inputs": {"width": 1080, "height": 1920}},
+                "4": {"class_type": "KSampler", "inputs": {"seed": 12345}}
+            }
+            print(f"⚠️ Created basic {workflow_type} workflow template as fallback")
+            return basic_workflow
+        else:
+            raise FileNotFoundError(f"Workflow file {workflow_file} not found in any of the expected locations")
             
     except Exception as e:
         st.error(f"Failed to load workflow file: {str(e)}")
+        
+        # Create a basic fallback workflow
+        if workflow_type == "image":
+            basic_workflow = {
+                "1": {"class_type": "CLIPTextEncode", "inputs": {"text": ""}},
+                "2": {"class_type": "CLIPTextEncode", "inputs": {"text": ""}},
+                "3": {"class_type": "EmptyLatentImage", "inputs": {"width": 1080, "height": 1920}},
+                "4": {"class_type": "KSampler", "inputs": {"seed": 12345}}
+            }
+            print(f"⚠️ Created basic {workflow_type} workflow template as fallback after error")
+            return basic_workflow
         return None
 
 # Function to modify workflow with custom parameters

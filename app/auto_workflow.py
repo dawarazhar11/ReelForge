@@ -543,6 +543,14 @@ def execute_step(step_id):
 
 # Run the entire workflow
 def run_workflow():
+    # Make sure session state variables are initialized
+    if "workflow_status" not in st.session_state:
+        st.session_state.workflow_status = {step["id"]: "waiting" for step in WORKFLOW_STEPS}
+    if "current_step" not in st.session_state:
+        st.session_state.current_step = None
+    if "completed_steps" not in st.session_state:
+        st.session_state.completed_steps = []
+        
     st.session_state.workflow_running = True
     
     # Execute each step in order

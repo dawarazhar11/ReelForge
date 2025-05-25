@@ -1900,6 +1900,8 @@ if "aroll" in st.session_state.content_status and "broll" in st.session_state.co
 
 # If all content is generated, show continue button
 if (not st.session_state.parallel_tasks["running"] and 
+    "aroll" in st.session_state.content_status and 
+    "broll" in st.session_state.content_status and
     st.session_state.content_status["aroll"] and 
     st.session_state.content_status["broll"]):
     

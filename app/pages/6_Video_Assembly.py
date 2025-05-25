@@ -1914,5 +1914,5 @@ st.markdown("---")
 render_step_navigation(
     current_step=7,
     prev_step_path="pages/5B_BRoll_Video_Production.py",
-    next_step_path="pages/7_Autocaptions.py"
+    next_step_path="pages/7_Caption_The_Dreams.py"
 )

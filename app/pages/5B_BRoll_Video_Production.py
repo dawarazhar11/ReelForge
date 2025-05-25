@@ -1031,11 +1031,7 @@ def generate_content_parallel(segments, broll_prompts, manual_upload, broll_fetc
     return result
 
 # Page header
-render_step_header(
-    title="5B B-Roll Video Production",
-    description="Generate B-Roll videos using ComfyUI",
-    icon="🎬"
-)
+render_step_header("5B B-Roll Video Production", "Generate B-Roll videos using ComfyUI")
 
 # Add a strong visual alert about cache issues
 st.error("""

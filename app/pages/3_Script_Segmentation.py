@@ -77,10 +77,26 @@ def generate_script_with_ollama(model, theme, video_duration):
         target_word_count = int(video_duration * words_per_second)
         
         prompt = f"""Create a short-form video script about '{theme}' for a {video_duration} second video. 
-        The script should be approximately {target_word_count} words, which fits into a {video_duration}-second video.
-        The script should include an engaging introduction, a few key points, and a strong conclusion.
-        Make the script conversational, engaging, and suitable for a talking head video with B-roll footage.
-        DO NOT include any instructions, notes or headers - ONLY output the actual script.
+        
+        The script should:
+        1. Be written in first-person perspective
+        2. Use a conversational, casual tone as if the person is speaking directly to the viewer
+        3. Be approximately {target_word_count} words total
+        4. Consist of 3-4 simple paragraphs (not numbered or with headers)
+        5. Each paragraph should be 3-5 sentences, focusing on one aspect of the topic
+        6. Use everyday language, humor, and relatability
+        7. Include some rhetorical questions and personal observations
+        
+        Here are examples of the tone and style I want:
+        
+        Example 1:
+        "You just sat down to work. You've got deadlines, spreadsheets, and emails. Important stuff, right? Not to me. The moment that laptop opens, it's like a bat signal for my paws. I will step on every key. I will open strange programs, type gibberish into your Slack messages, and send a blank email to your boss. Why? Because the keyboard is warm. Because you're giving attention to a glowing box instead of me. And most importantly, because it makes you go, 'Ughhh not again!' while still petting me. So next time I walk across your laptop, just remember… your productivity is a myth, and I'm the CEO now."
+        
+        Example 2:
+        "Let me explain something about the laser pointer. When that red dot shows up, something primal activates in my brain. I'm talking ancient hunter mode. That dot is my destiny. It's the essence of prey. It's everything I've trained for in my nine lives. I will run into walls. I will leap over furniture. I will claw through dimensions to catch that thing. And the worst part? I never actually catch it. You just… stop. You laugh. You put the laser down like it's over. But it's not over. You awakened the beast and gave it nothing. That's psychological warfare, human. And I won't forget it."
+        
+        DO NOT include any instructions, notes or headers - ONLY output the actual script paragraphs.
+        DO NOT use numbering, bullet points, or section headers.
         """
         
         response = requests.post(

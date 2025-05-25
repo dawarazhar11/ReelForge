@@ -333,6 +333,13 @@ st.markdown("</div>", unsafe_allow_html=True)
 # Render navigation sidebar
 render_custom_sidebar()
 
+# Page header
+st.title("6. Video Assembly")
+st.markdown("Combine A-Roll and B-Roll videos into a complete short-form video.")
+
+# Notification about image support
+st.info("🖼️ **NEW FEATURE**: You can now use images (PNG, JPG) as B-roll content! They will automatically be converted into video clips matching the A-roll audio duration.")
+
 # Load settings and project path
 settings = get_settings()
 project_path = get_project_path()
@@ -600,20 +607,32 @@ def get_broll_filepath(segment_id, segment_data):
     segment_num = segment_id.split('_')[-1]
     prompt_id = segment_data.get('prompt_id', '')
     
+    # Check for both video and image file extensions
+    video_extensions = [".mp4", ".mov", ".avi", ".webm"]
+    image_extensions = [".png", ".jpg", ".jpeg"]
+    all_extensions = video_extensions + image_extensions
+    
     # Different file naming patterns to try
-    patterns = [
+    base_patterns = [
         # Common formats
-        f"media/b-roll/broll_segment_{segment_num}.mp4",
-        f"{app_root}/media/b-roll/broll_segment_{segment_num}.mp4",
-        f"media/b-roll/fetched_broll_segment_{segment_num}.mp4",
-        f"{app_root}/media/b-roll/fetched_broll_segment_{segment_num}.mp4"
+        f"media/b-roll/broll_segment_{segment_num}",
+        f"{app_root}/media/b-roll/broll_segment_{segment_num}",
+        f"media/b-roll/fetched_broll_segment_{segment_num}",
+        f"{app_root}/media/b-roll/fetched_broll_segment_{segment_num}",
+        # Additional patterns for images
+        f"media/b-roll/image_{segment_num}",
+        f"{app_root}/media/b-roll/image_{segment_num}",
+        f"media/images/broll_{segment_num}",
+        f"{app_root}/media/images/broll_{segment_num}"
     ]
     
-    # Try each pattern
-    for pattern in patterns:
-        if os.path.exists(pattern):
-            print(f"Found B-Roll file: {pattern}")
-            return pattern
+    # Try each pattern with each extension
+    for pattern in base_patterns:
+        for ext in all_extensions:
+            path_to_try = pattern + ext
+            if os.path.exists(path_to_try):
+                print(f"Found B-Roll {'image' if ext in image_extensions else 'video'} file: {path_to_try}")
+                return path_to_try
             
     print(f"B-Roll file not found for {segment_id}")
     return None

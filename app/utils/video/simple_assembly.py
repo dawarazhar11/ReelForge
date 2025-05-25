@@ -56,6 +56,47 @@ def create_concat_file(video_files, concat_file_path):
             escaped_path = video.replace("\\", "\\\\").replace("'", "\\'")
             f.write(f"file '{escaped_path}'\n")
 
+def is_image_file(file_path):
+    """Check if a file is an image (PNG, JPG, JPEG)"""
+    if not file_path or not os.path.exists(file_path):
+        return False
+        
+    # Check file extension
+    _, ext = os.path.splitext(file_path.lower())
+    return ext in ['.png', '.jpg', '.jpeg']
+
+def image_to_video(image_path, output_path, duration=5.0, target_resolution=(1080, 1920)):
+    """
+    Convert an image to a video using ffmpeg
+    
+    Args:
+        image_path: Path to the image
+        output_path: Path to save the output video
+        duration: Duration of the video in seconds
+        target_resolution: Target resolution (width, height)
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        # Create a video from the image with the specified duration
+        cmd = [
+            "ffmpeg", "-y",
+            "-loop", "1",
+            "-i", image_path,
+            "-t", str(duration),
+            "-vf", f"scale={target_resolution[0]}:{target_resolution[1]}:force_original_aspect_ratio=decrease,pad={target_resolution[0]}:{target_resolution[1]}:(ow-iw)/2:(oh-ih)/2",
+            "-c:v", "libx264", "-tune", "stillimage", "-pix_fmt", "yuv420p",
+            "-shortest",
+            output_path
+        ]
+        
+        subprocess.run(cmd, check=True, capture_output=True)
+        return True
+    except Exception as e:
+        print(f"Error converting image to video: {str(e)}")
+        return False
+
 def simple_assemble_video(sequence, output_path=None, target_resolution=(1080, 1920), progress_callback=None):
     """
     Assemble videos using ffmpeg concat protocol
@@ -148,19 +189,42 @@ def simple_assemble_video(sequence, output_path=None, target_resolution=(1080, 1
                 audio_duration_result = subprocess.run(audio_duration_cmd, capture_output=True, text=True, check=True)
                 audio_duration = float(audio_duration_result.stdout.strip())
                 
-                # Scale B-Roll and add A-Roll audio with precise timing
-                cmd = [
-                    "ffmpeg", "-y", "-i", broll_path, "-i", temp_audio,
-                    "-vf", f"scale={target_resolution[0]}:{target_resolution[1]}:force_original_aspect_ratio=decrease,pad={target_resolution[0]}:{target_resolution[1]}:(ow-iw)/2:(oh-ih)/2",
-                    "-c:v", "libx264", "-preset", "medium", "-crf", "23",
-                    "-c:a", "aac", "-b:a", "128k",
-                    "-shortest",  # End when shortest input stream ends
-                    "-af", "afade=t=in:st=0:d=0.1,afade=t=out:st=" + str(audio_duration-0.1) + ":d=0.1",  # Add gentle fades to prevent clicks
-                    temp_output
-                ]
-                
-                subprocess.run(cmd, check=True, capture_output=True)
-                temp_videos.append(temp_output)
+                # Check if B-Roll is an image file
+                if is_image_file(broll_path):
+                    print(f"B-Roll is an image file: {broll_path}")
+                    # Convert image to video with A-Roll audio duration
+                    temp_video = os.path.join(temp_dir, f"image_video_{i}.mp4")
+                    if image_to_video(broll_path, temp_video, duration=audio_duration, target_resolution=target_resolution):
+                        # Now add the A-Roll audio to the video
+                        cmd = [
+                            "ffmpeg", "-y", 
+                            "-i", temp_video,  # Use the generated video
+                            "-i", temp_audio,  # Add A-Roll audio
+                            "-c:v", "copy",    # Copy video stream
+                            "-c:a", "aac", "-b:a", "128k",
+                            "-shortest",       # End when shortest input stream ends
+                            "-af", "afade=t=in:st=0:d=0.1,afade=t=out:st=" + str(audio_duration-0.1) + ":d=0.1",  # Add gentle fades
+                            temp_output
+                        ]
+                        subprocess.run(cmd, check=True, capture_output=True)
+                        temp_videos.append(temp_output)
+                    else:
+                        print(f"Failed to convert image to video: {broll_path}")
+                        continue
+                else:
+                    # Scale B-Roll and add A-Roll audio with precise timing
+                    cmd = [
+                        "ffmpeg", "-y", "-i", broll_path, "-i", temp_audio,
+                        "-vf", f"scale={target_resolution[0]}:{target_resolution[1]}:force_original_aspect_ratio=decrease,pad={target_resolution[0]}:{target_resolution[1]}:(ow-iw)/2:(oh-ih)/2",
+                        "-c:v", "libx264", "-preset", "medium", "-crf", "23",
+                        "-c:a", "aac", "-b:a", "128k",
+                        "-shortest",  # End when shortest input stream ends
+                        "-af", "afade=t=in:st=0:d=0.1,afade=t=out:st=" + str(audio_duration-0.1) + ":d=0.1",  # Add gentle fades
+                        temp_output
+                    ]
+                    
+                    subprocess.run(cmd, check=True, capture_output=True)
+                    temp_videos.append(temp_output)
         
         # Create concat file
         create_concat_file(temp_videos, concat_file)

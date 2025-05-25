@@ -302,6 +302,60 @@ def extract_audio_track(video_path, output_dir=None):
         print(f"Exception extracting audio: {str(e)}")
         return None
 
+# Add this function to detect if a file is an image
+def is_image_file(file_path):
+    """
+    Check if a file is an image (PNG, JPG, JPEG)
+    
+    Args:
+        file_path: Path to the file
+        
+    Returns:
+        bool: True if the file is an image, False otherwise
+    """
+    if not file_path or not os.path.exists(file_path):
+        return False
+        
+    # Check file extension
+    _, ext = os.path.splitext(file_path.lower())
+    return ext in ['.png', '.jpg', '.jpeg']
+
+# Add this function to convert an image to a video clip
+@error_handler
+def image_to_video(image_path, duration=5.0, target_resolution=(1080, 1920)):
+    """
+    Convert an image to a video clip
+    
+    Args:
+        image_path: Path to the image file
+        duration: Duration of the video clip in seconds
+        target_resolution: Target resolution (width, height)
+        
+    Returns:
+        MoviePy clip or None if conversion fails
+    """
+    if not MOVIEPY_AVAILABLE:
+        print("❌ MoviePy is not available, cannot convert image to video")
+        return None
+        
+    if not is_image_file(image_path):
+        print(f"❌ File is not a recognized image format: {image_path}")
+        return None
+        
+    try:
+        # Load image as clip
+        print(f"Converting image to video: {image_path} (duration: {duration}s)")
+        image_clip = mp.ImageClip(image_path, duration=duration)
+        
+        # Resize to target resolution
+        image_clip = resize_video(image_clip, target_resolution)
+        
+        return image_clip
+    except Exception as e:
+        print(f"❌ Error converting image to video: {str(e)}")
+        print(traceback.format_exc())
+        return None
+
 @error_handler
 def assemble_video(sequence, target_resolution=(1080, 1920), output_dir=None, progress_callback=None):
     """
@@ -478,7 +532,23 @@ def assemble_video(sequence, target_resolution=(1080, 1920), output_dir=None, pr
                 try:
                     # Load B-Roll video
                     print(f"Loading B-Roll video: {broll_path}")
-                    broll_clip = mp.VideoFileClip(broll_path)
+                    
+                    # Check if B-Roll is an image file
+                    if is_image_file(broll_path):
+                        # Get A-Roll audio duration to use for the image
+                        aroll_audio_duration = audio_durations.get(segment_id, 5.0)
+                        
+                        # Convert image to video with matching duration
+                        broll_clip = image_to_video(broll_path, duration=aroll_audio_duration, target_resolution=target_resolution)
+                        
+                        if broll_clip is None:
+                            print(f"❌ Failed to convert image to video: {broll_path}")
+                            continue
+                            
+                        print(f"✅ Successfully converted image to video with duration: {broll_clip.duration}s")
+                    else:
+                        # Regular video file
+                        broll_clip = mp.VideoFileClip(broll_path)
                     
                     # Load A-Roll audio if available in extracted paths
                     if segment_id in extracted_audio_paths:

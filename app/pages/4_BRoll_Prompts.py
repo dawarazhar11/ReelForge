@@ -155,6 +155,8 @@ def load_broll_prompts():
                 st.session_state.exclude_negative_prompts = st.session_state.broll_prompts["exclude_negative_prompts"]
             if "image_template" in st.session_state.broll_prompts:
                 st.session_state.image_template = st.session_state.broll_prompts["image_template"]
+            if "map_broll_to_aroll" in st.session_state.broll_prompts:
+                st.session_state.map_broll_to_aroll = st.session_state.broll_prompts["map_broll_to_aroll"]
             return True
     return False
 
@@ -165,7 +167,8 @@ def save_broll_prompts(prompts, broll_type):
         "prompts": prompts,
         "broll_type": broll_type,
         "exclude_negative_prompts": st.session_state.get("exclude_negative_prompts", False),
-        "image_template": st.session_state.get("image_template", "image_homepc")
+        "image_template": st.session_state.get("image_template", "image_homepc"),
+        "map_broll_to_aroll": st.session_state.get("map_broll_to_aroll", False)
     }
     with open(prompts_file, "w") as f:
         json.dump(data, f, indent=4)
@@ -395,6 +398,17 @@ exclude_negative = st.checkbox(
 )
 st.session_state.exclude_negative_prompts = exclude_negative
 
+# Add option to map B-roll to corresponding A-roll content
+if "map_broll_to_aroll" not in st.session_state:
+    st.session_state.map_broll_to_aroll = False
+
+map_to_aroll = st.checkbox(
+    "Map B-roll visuals to corresponding A-roll audio",
+    value=st.session_state.map_broll_to_aroll,
+    help="If checked, B-roll prompts will be generated based on the A-roll segment that follows each B-roll in the sequence. For example, B-roll 2 will use content from A-roll 3, B-roll 4 will use content from A-roll 5, etc."
+)
+st.session_state.map_broll_to_aroll = map_to_aroll
+
 # Show default B-roll IDs
 with st.expander("Default B-Roll IDs (Use these for quick assembly)", expanded=False):
     st.info("These IDs will be used automatically in the Video Assembly if no other B-roll content is selected.")
@@ -449,6 +463,9 @@ if st.session_state.ollama_models:
                 # Get current model from session state
                 current_model = st.session_state.selected_ollama_model
                 
+                # Get all segments to find A-Roll pairings if needed
+                all_segments = st.session_state.segments
+                
                 for i, segment in enumerate(broll_segments):
                     segment_id = f"segment_{i}"
                     status_text.text(f"Generating prompt for segment {i+1} of {len(broll_segments)}...")
@@ -461,13 +478,36 @@ if st.session_state.ollama_models:
                         # Alternate between video and image for mixed type
                         is_video = (i % 2 == 0)
                     
+                    # Determine which content to use for prompt generation
+                    content_for_prompt = segment["content"]
+                    
+                    # Find corresponding A-Roll segment for prompt generation if requested
+                    if st.session_state.map_broll_to_aroll:
+                        # Get all segments
+                        all_segments = st.session_state.segments
+                        
+                        # Find the B-roll segment index in all segments
+                        segment_index = -1
+                        for idx, seg in enumerate(all_segments):
+                            if seg["type"] == "B-Roll" and seg["content"] == segment["content"]:
+                                segment_index = idx
+                                break
+                        
+                        # The A-Roll that plays during this B-Roll is typically the NEXT segment (N+1)
+                        # This matches the pattern in the example where A-Roll 3 plays with B-Roll 2, A-Roll 5 with B-Roll 4, etc.
+                        if segment_index >= 0 and segment_index < len(all_segments) - 1 and all_segments[segment_index+1]["type"] == "A-Roll":
+                            aroll_segment = all_segments[segment_index+1]
+                            # Use the A-Roll content + B-Roll visuals
+                            content_for_prompt = f"{aroll_segment['content']} (showing visuals related to: {segment['content']})"
+                            status_text.text(f"Generating prompt for B-Roll {i+1} based on A-Roll content '{aroll_segment['content'][:30]}...'")
+                    
                     # Print debug information about the content type
                     print(f"Generating {i+1}/{len(broll_segments)} as {'video' if is_video else 'image'} (broll_type: {st.session_state.broll_type})")
                     
                     # Generate the prompt using the current model from session state
                     prompt = generate_prompt_with_ollama(
                         current_model, 
-                        segment["content"], 
+                        content_for_prompt, 
                         st.session_state.script_theme,
                         is_video
                     )
@@ -555,9 +595,32 @@ if "prompts" in st.session_state.broll_prompts and st.session_state.broll_prompt
                         # Show which model is being used
                         st.info(f"Using model: **{current_model}**", icon="ℹ️")
                         
+                        # Determine which content to use for prompt generation
+                        content_for_prompt = segment["content"]
+                        
+                        # Find corresponding A-Roll segment for prompt generation if requested
+                        if st.session_state.map_broll_to_aroll:
+                            # Get all segments
+                            all_segments = st.session_state.segments
+                            
+                            # Find the B-roll segment index in all segments
+                            segment_index = -1
+                            for idx, seg in enumerate(all_segments):
+                                if seg["type"] == "B-Roll" and seg["content"] == segment["content"]:
+                                    segment_index = idx
+                                    break
+                            
+                            # The A-Roll that plays during this B-Roll is typically the NEXT segment (N+1)
+                            # This matches the pattern in the example where A-Roll 3 plays with B-Roll 2, A-Roll 5 with B-Roll 4, etc.
+                            if segment_index >= 0 and segment_index < len(all_segments) - 1 and all_segments[segment_index+1]["type"] == "A-Roll":
+                                aroll_segment = all_segments[segment_index+1]
+                                # Use the A-Roll content + B-Roll visuals
+                                content_for_prompt = f"{aroll_segment['content']} (showing visuals related to: {segment['content']})"
+                                st.info(f"Generating prompt based on A-Roll content: '{aroll_segment['content'][:50]}...'")
+                        
                         new_prompt = generate_prompt_with_ollama(
                             current_model, 
-                            segment["content"], 
+                            content_for_prompt, 
                             st.session_state.script_theme,
                             is_video
                         )

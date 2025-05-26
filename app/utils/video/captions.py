@@ -1036,6 +1036,7 @@ def render_animated_caption(frame_img, text, words_with_times, current_time, sty
             # Default to word-by-word animation (highlight current word)
             current_word_index = -1
             active_words = []
+            current_word = None  # Initialize current_word to avoid reference errors
             
             # Find the active word(s) at the current time
             for i, word_info in enumerate(words_with_times):

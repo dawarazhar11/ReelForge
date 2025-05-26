@@ -9,6 +9,8 @@ import json
 import traceback
 from pathlib import Path
 import streamlit as st
+import numpy as np
+from PIL import Image
 
 # Add the parent directory to sys.path
 app_dir = Path(__file__).parent.parent.absolute()
@@ -73,6 +75,10 @@ DREAM_ANIMATION_STYLES = {
     "color_highlight": {
         "name": "Color Highlight",
         "description": "Current words are highlighted with a different color"
+    },
+    "single_word_focus": {
+        "name": "Single Word Focus",
+        "description": "Only shows the current word being spoken with emphasis"
     }
 }
 
@@ -200,6 +206,80 @@ def main():
             
             # Display description
             st.info(available_animation_styles[selected_animation]["description"])
+            
+            # Add Caption Customization Options in an expander
+            with st.expander("Caption Customization", expanded=True):
+                # Font size customization
+                font_size = st.slider(
+                    "Font Size:", 
+                    min_value=20, 
+                    max_value=80, 
+                    value=st.session_state.caption_dreams.get("font_size", 40),
+                    step=2,
+                    help="Adjust the size of the caption text"
+                )
+                st.session_state.caption_dreams["font_size"] = font_size
+                
+                # Position type selection
+                position_type = st.radio(
+                    "Caption Position:",
+                    ["Bottom", "Custom Position"],
+                    index=0 if st.session_state.caption_dreams.get("position_type", "bottom") == "bottom" else 1,
+                    help="Choose where to place captions"
+                )
+                st.session_state.caption_dreams["position_type"] = position_type.lower().replace(" ", "_")
+                
+                # Show custom position controls if custom position is selected
+                if position_type == "Custom Position":
+                    # Vertical position (top to bottom)
+                    vertical_pos = st.slider(
+                        "Vertical Position:", 
+                        min_value=0, 
+                        max_value=100, 
+                        value=st.session_state.caption_dreams.get("vertical_pos", 80),
+                        help="Position from top (0) to bottom (100)"
+                    )
+                    st.session_state.caption_dreams["vertical_pos"] = vertical_pos
+                    
+                    # Horizontal position (left to right)
+                    horizontal_pos = st.slider(
+                        "Horizontal Position:", 
+                        min_value=0, 
+                        max_value=100, 
+                        value=st.session_state.caption_dreams.get("horizontal_pos", 50),
+                        help="Position from left (0) to right (100)"
+                    )
+                    st.session_state.caption_dreams["horizontal_pos"] = horizontal_pos
+                
+                # Text alignment options
+                text_align = st.radio(
+                    "Text Alignment:",
+                    ["Left", "Center", "Right"],
+                    index=["left", "center", "right"].index(
+                        st.session_state.caption_dreams.get("text_align", "center")
+                    ),
+                    help="Set how the text is aligned"
+                )
+                st.session_state.caption_dreams["text_align"] = text_align.lower()
+                
+                # Option to show textbox background
+                show_textbox = st.checkbox(
+                    "Show Text Box Background", 
+                    value=st.session_state.caption_dreams.get("show_textbox", False),
+                    help="Add a background box behind the text for better visibility"
+                )
+                st.session_state.caption_dreams["show_textbox"] = show_textbox
+                
+                # Textbox background opacity if showing textbox
+                if show_textbox:
+                    bg_opacity = st.slider(
+                        "Background Opacity:", 
+                        min_value=0, 
+                        max_value=100, 
+                        value=st.session_state.caption_dreams.get("bg_opacity", 70),
+                        help="Control the opacity of the background box"
+                    )
+                    st.session_state.caption_dreams["bg_opacity"] = bg_opacity
         
         with col2:
             # Transcription engine selection
@@ -254,94 +334,252 @@ def main():
         # Display the caption generation section
         st.markdown("## Step 3: Generate Animated Captions")
         
-        # Output file path
-        output_filename = f"captioned_{os.path.basename(st.session_state.caption_dreams['source_video'])}"
-        output_path = os.path.join("output", output_filename)
-        st.session_state.caption_dreams["output_path"] = output_path
+        # Add Live Preview section
+        st.markdown("### 🔍 Live Caption Preview")
+        st.info("See how your captions will look before generating the final video. This preview shows captions in a 9:16 ratio format.")
         
-        # Create a column layout for buttons
-        col1, col2 = st.columns([1, 2])
+        # Create tabs for preview and generation
+        preview_tab, generate_tab = st.tabs(["Preview Captions", "Generate Final Video"])
         
-        with col1:
-            # Generate captions button
-            if st.button("✨ Generate Animated Captions", key="generate_btn", use_container_width=True):
+        with preview_tab:
+            # Create a preview frame (black background with 9:16 ratio)
+            if "preview_frame" not in st.session_state:
+                # Create a blank 9:16 frame
+                preview_width, preview_height = 540, 960  # 9:16 ratio, half resolution for performance
+                preview_frame = np.zeros((preview_height, preview_width, 3), dtype=np.uint8)
+                
+                # Try to extract an actual frame from the video if possible
                 try:
-                    # Start the caption generation process
-                    st.session_state.caption_dreams["status"] = "processing"
-                    
-                    # Create a progress bar
-                    progress = st.progress(0)
-                    status_text = st.empty()
-                    
-                    # Define a callback for progress updates
-                    def update_progress(progress_value, message):
-                        progress.progress(progress_value)
-                        status_text.text(message)
-                    
-                    # Update initial status
-                    update_progress(0.1, "Preparing to process video...")
-                    
-                    # Call the captioning function
-                    result = add_captions_to_video(
-                        st.session_state.caption_dreams["source_video"],
-                        output_path=output_path,
-                        style_name=selected_style,
-                        model_size=st.session_state.caption_dreams.get("model_size", "base"),
-                        engine="whisper",  # Always use whisper explicitly
-                        animation_style=st.session_state.caption_dreams.get("animation_style", "word_by_word"),
-                        progress_callback=update_progress
-                    )
-                    
-                    # Check result
-                    if result.get("status") == "success":
-                        st.session_state.caption_dreams["status"] = "completed"
-                        mark_step_complete("caption_dreams")
+                    import moviepy.editor as mp
+                    video = mp.VideoFileClip(st.session_state.caption_dreams["source_video"])
+                    if video.duration > 1.0:
+                        # Get a frame from 1 second in
+                        frame = video.get_frame(1.0)
+                        # Resize to 9:16 with pillow for better quality
+                        pil_frame = Image.fromarray(frame)
+                        # Resize while maintaining aspect ratio and adding black bars if needed
+                        target_ratio = preview_width / preview_height
+                        img_ratio = pil_frame.width / pil_frame.height
                         
-                        # Clear progress indicators
-                        progress.empty()
-                        status_text.empty()
-                        
-                        st.success("✅ Captions generated successfully!")
-                    else:
-                        st.session_state.caption_dreams["status"] = "error"
-                        st.session_state.caption_dreams["error"] = result.get("message", "Unknown error")
-                        
-                        # Clear progress indicators
-                        progress.empty()
-                        status_text.empty()
-                        
-                        st.error(f"❌ Error generating captions: {result.get('message', 'Unknown error')}")
-                        
-                        # If there's a detailed traceback, show it in an expander
-                        if "traceback" in result:
-                            with st.expander("View Error Details"):
-                                st.code(result["traceback"], language="python")
+                        if img_ratio > target_ratio:
+                            # Image is wider than target, resize based on height
+                            new_height = preview_height
+                            new_width = int(new_height * img_ratio)
+                            resized = pil_frame.resize((new_width, new_height), Image.LANCZOS)
+                            # Crop to target width
+                            crop_x = (new_width - preview_width) // 2
+                            preview_frame = np.array(resized.crop((crop_x, 0, crop_x + preview_width, preview_height)))
+                        else:
+                            # Image is taller than target, resize based on width
+                            new_width = preview_width
+                            new_height = int(new_width / img_ratio)
+                            resized = pil_frame.resize((new_width, new_height), Image.LANCZOS)
+                            # Crop to target height
+                            crop_y = (new_height - preview_height) // 2
+                            preview_frame = np.array(resized.crop((0, crop_y, preview_width, crop_y + preview_height)))
+                    
+                    video.close()
                 except Exception as e:
-                    st.session_state.caption_dreams["status"] = "error"
-                    st.session_state.caption_dreams["error"] = str(e)
-                    st.error(f"❌ Error: {str(e)}")
-                    
-                    # If there's a traceback, show it in an expander
-                    with st.expander("View Error Details"):
-                        st.code(traceback.format_exc(), language="python")
-        
-        # Display the output video if available
-        if st.session_state.caption_dreams["status"] == "completed" and os.path.exists(output_path):
-            st.markdown("## Output Video with Animated Captions")
-            st.video(output_path)
+                    st.warning(f"Could not extract preview frame: {str(e)}")
+                    preview_frame = np.zeros((preview_height, preview_width, 3), dtype=np.uint8)
+                
+                st.session_state.preview_frame = preview_frame
             
-            # Provide download link
-            with open(output_path, "rb") as file:
-                st.download_button(
-                    label="Download Captioned Video",
-                    data=file,
-                    file_name=output_filename,
-                    mime="video/mp4",
-                    key="download_btn"
+            # Sample text for preview
+            preview_text = st.text_input(
+                "Preview Text",
+                value="This is a sample caption text to preview your style settings.",
+                help="Enter text to preview with your caption settings"
+            )
+            
+            # Generate sample word timings
+            words = preview_text.split()
+            preview_words = []
+            for i, word in enumerate(words):
+                # Create evenly spaced words
+                start_time = i * 0.5
+                end_time = start_time + 0.4
+                preview_words.append({
+                    "word": word,
+                    "start": start_time,
+                    "end": end_time
+                })
+            
+            # Add a slider to control which word is "currently spoken"
+            max_time = len(words) * 0.5 if words else 0.5
+            preview_time = st.slider(
+                "Time Position",
+                min_value=0.0,
+                max_value=max_time,
+                value=min(1.0, max_time / 2),
+                step=0.1,
+                help="Move the slider to see different words highlighted based on time"
+            )
+            
+            # Generate the preview with current settings
+            try:
+                # Create a custom style dictionary with current settings
+                custom_style = {
+                    "font_size": st.session_state.caption_dreams.get("font_size", 40),
+                    "position": "custom" if st.session_state.caption_dreams.get("position_type") == "custom_position" else "bottom",
+                    "vertical_pos": st.session_state.caption_dreams.get("vertical_pos", 80) / 100.0,
+                    "horizontal_pos": st.session_state.caption_dreams.get("horizontal_pos", 50) / 100.0,
+                    "align": st.session_state.caption_dreams.get("text_align", "center"),
+                    "show_textbox": st.session_state.caption_dreams.get("show_textbox", False),
+                    "textbox_opacity": st.session_state.caption_dreams.get("bg_opacity", 70) / 100.0,
+                    "font_color": (255, 255, 255),  # White text
+                    "stroke_width": 2,
+                    "stroke_color": (0, 0, 0),  # Black outline
+                    "bottom_margin": 50
+                }
+                
+                # Import the function to add captions to a frame
+                from utils.video.captions import make_frame_with_text, get_caption_style
+                
+                # Merge the selected style with custom settings
+                style = get_caption_style(st.session_state.caption_dreams.get("selected_style", "tiktok"))
+                if style:
+                    # Update style with custom settings
+                    for key, value in custom_style.items():
+                        style[key] = value
+                else:
+                    style = custom_style
+                
+                # Add captions to the preview frame
+                # The add_animated_caption_to_frame function expects a style_name (string) as 5th parameter
+                # and can take a custom_style as an extra parameter
+                from utils.video.captions import add_animated_caption_to_frame
+                
+                # Get the selected base style name
+                style_name = st.session_state.caption_dreams.get("selected_style", "tiktok")
+                
+                # Add captions with the selected animation style
+                preview_frame = add_animated_caption_to_frame(
+                    st.session_state.preview_frame.copy(),
+                    preview_text,
+                    preview_words,
+                    preview_time,
+                    style_name,  # Pass the style name (string), not the style dictionary
+                    st.session_state.caption_dreams.get("animation_style", "word_by_word"),
+                    effect_params=custom_style  # Pass custom style as effect_params
                 )
+                
+                # Display the preview
+                st.image(
+                    preview_frame,
+                    caption="Caption Preview (9:16 Ratio)",
+                    use_column_width=True
+                )
+                
+                # Add a note about the preview
+                st.info("This is a simulation of how your captions will appear in the final video. The actual results may vary slightly based on your video content and resolution.")
+                
+            except Exception as e:
+                st.error(f"Error generating preview: {str(e)}")
+                st.code(traceback.format_exc())
+        
+        with generate_tab:
+            # Output file path
+            output_filename = f"captioned_{os.path.basename(st.session_state.caption_dreams['source_video'])}"
+            output_path = os.path.join("output", output_filename)
+            st.session_state.caption_dreams["output_path"] = output_path
             
-            # Mark this step as complete in the workflow
-            mark_step_complete("caption_dreams")
+            # Create a column layout for buttons
+            col1, col2 = st.columns([1, 2])
+            
+            with col1:
+                # Generate captions button
+                if st.button("✨ Generate Animated Captions", key="generate_btn", use_container_width=True):
+                    try:
+                        # Start the caption generation process
+                        st.session_state.caption_dreams["status"] = "processing"
+                        
+                        # Create a progress bar
+                        progress = st.progress(0)
+                        status_text = st.empty()
+                        
+                        # Define a callback for progress updates
+                        def update_progress(progress_value, message):
+                            progress.progress(progress_value)
+                            status_text.text(message)
+                        
+                        # Update initial status
+                        update_progress(0.1, "Preparing to process video...")
+                        
+                        # Create custom style with the user's customization options
+                        custom_style = {
+                            "font_size": st.session_state.caption_dreams.get("font_size", 40),
+                            "position": "custom" if st.session_state.caption_dreams.get("position_type") == "custom_position" else "bottom",
+                            "vertical_pos": st.session_state.caption_dreams.get("vertical_pos", 80) / 100.0,  # Convert to fraction
+                            "horizontal_pos": st.session_state.caption_dreams.get("horizontal_pos", 50) / 100.0,  # Convert to fraction
+                            "align": st.session_state.caption_dreams.get("text_align", "center"),
+                            "show_textbox": st.session_state.caption_dreams.get("show_textbox", False),
+                            "textbox_opacity": st.session_state.caption_dreams.get("bg_opacity", 70) / 100.0  # Convert to fraction
+                        }
+                        
+                        # Call the captioning function with customization options
+                        result = add_captions_to_video(
+                            st.session_state.caption_dreams["source_video"],
+                            output_path=output_path,
+                            style_name=st.session_state.caption_dreams.get("selected_style", "tiktok"),
+                            model_size=st.session_state.caption_dreams.get("model_size", "base"),
+                            engine=st.session_state.caption_dreams.get("transcription_engine", "auto"),
+                            animation_style=st.session_state.caption_dreams.get("animation_style", "word_by_word"),
+                            custom_style=custom_style,
+                            progress_callback=update_progress
+                        )
+                        
+                        # Check result
+                        if result.get("status") == "success":
+                            st.session_state.caption_dreams["status"] = "completed"
+                            mark_step_complete("caption_dreams")
+                            
+                            # Clear progress indicators
+                            progress.empty()
+                            status_text.empty()
+                            
+                            st.success("✅ Captions generated successfully!")
+                            st.rerun()  # Rerun to show the video output
+                        else:
+                            st.session_state.caption_dreams["status"] = "error"
+                            st.session_state.caption_dreams["error"] = result.get("message", "Unknown error")
+                            
+                            # Clear progress indicators
+                            progress.empty()
+                            status_text.empty()
+                            
+                            st.error(f"❌ Error generating captions: {result.get('message', 'Unknown error')}")
+                            
+                            # If there's a detailed traceback, show it in an expander
+                            if "traceback" in result:
+                                with st.expander("View Error Details"):
+                                    st.code(result["traceback"], language="python")
+                    except Exception as e:
+                        st.session_state.caption_dreams["status"] = "error"
+                        st.session_state.caption_dreams["error"] = str(e)
+                        st.error(f"❌ Error: {str(e)}")
+                        
+                        # If there's a traceback, show it in an expander
+                        with st.expander("View Error Details"):
+                            st.code(traceback.format_exc(), language="python")
+            
+            # Display the output video if available
+            if st.session_state.caption_dreams["status"] == "completed" and os.path.exists(output_path):
+                st.markdown("## Output Video with Animated Captions")
+                st.video(output_path)
+                
+                # Provide download link
+                with open(output_path, "rb") as file:
+                    st.download_button(
+                        label="Download Captioned Video",
+                        data=file,
+                        file_name=output_filename,
+                        mime="video/mp4",
+                        key="download_btn"
+                    )
+                
+                # Mark this step as complete in the workflow
+                mark_step_complete("caption_dreams")
 
 # Run the main function
 if __name__ == "__main__":

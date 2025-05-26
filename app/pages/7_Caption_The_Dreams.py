@@ -266,6 +266,23 @@ def main():
                 )
                 st.session_state.caption_dreams["font_size"] = font_size
                 
+                # Add an option to force captions even if no speech is detected
+                force_captions = st.checkbox(
+                    "Force captions if no speech detected",
+                    value=st.session_state.caption_dreams.get("force_captions", False),
+                    help="Generate captions even if no speech is detected in the video"
+                )
+                st.session_state.caption_dreams["force_captions"] = force_captions
+                
+                # Show default caption input if force captions is enabled
+                if force_captions:
+                    default_caption = st.text_input(
+                        "Default Caption:",
+                        value=st.session_state.caption_dreams.get("default_caption", "No speech detected"),
+                        help="Text to display if no speech is detected"
+                    )
+                    st.session_state.caption_dreams["default_caption"] = default_caption
+                
                 # Position type selection
                 position_type = st.radio(
                     "Caption Position:",
@@ -521,11 +538,13 @@ def main():
                     "font_color": (255, 255, 255),  # White text
                     "stroke_width": 2,
                     "stroke_color": (0, 0, 0),  # Black outline
-                    "bottom_margin": 50
+                    "bottom_margin": 50,
+                    "force_captions_if_no_speech": st.session_state.caption_dreams.get("force_captions", False),
+                    "default_caption": st.session_state.caption_dreams.get("default_caption", "No speech detected")
                 }
                 
                 # Import the functions from the captions module
-                from utils.video.captions import make_frame_with_text, get_caption_style, render_animated_caption, render_basic_caption
+                from utils.video.captions import make_frame_with_text, get_caption_style
                 
                 # Merge the selected style with custom settings
                 style = get_caption_style(st.session_state.caption_dreams.get("selected_style", "tiktok"))
@@ -632,7 +651,9 @@ def main():
                             "horizontal_pos": st.session_state.caption_dreams.get("horizontal_pos", 50) / 100.0,  # Convert to fraction
                             "align": st.session_state.caption_dreams.get("text_align", "center"),
                             "show_textbox": st.session_state.caption_dreams.get("show_textbox", False),
-                            "textbox_opacity": st.session_state.caption_dreams.get("bg_opacity", 70) / 100.0  # Convert to fraction
+                            "textbox_opacity": st.session_state.caption_dreams.get("bg_opacity", 70) / 100.0,  # Convert to fraction
+                            "force_captions_if_no_speech": st.session_state.caption_dreams.get("force_captions", False),
+                            "default_caption": st.session_state.caption_dreams.get("default_caption", "No speech detected")
                         }
                         
                         # Call the captioning function with customization options
@@ -715,7 +736,9 @@ def main():
                     
                     # Check if path exists, if not try to find a similar file
                     if output_path and not os.path.exists(output_path):
+                        # Move this warning into the debug expander instead of showing in main UI
                         st.warning(f"Path does not exist: {output_path}")
+                        
                         # Try to find files with similar names
                         try:
                             output_dir = os.path.dirname(output_path)
@@ -723,9 +746,9 @@ def main():
                             
                             if os.path.exists(output_dir):
                                 files = os.listdir(output_dir)
-                                # Put the file list in a nested expander
-                                with st.expander("Show files in output directory", expanded=False):
-                                    st.code("\n".join(files), language=None)
+                                # Don't use a nested expander - just show the file list directly
+                                st.text("Files in output directory:")
+                                st.code("\n".join(files), language=None)
                                 
                                 # Look for files with similar names (captioned_*)
                                 similar_files = [f for f in files if f.startswith("captioned_")]
@@ -741,7 +764,10 @@ def main():
                         except Exception as e:
                             st.error(f"Error finding similar files: {e}")
                     
+                    # Final check before display
                     st.info(f"Final path exists: {os.path.exists(output_path) if output_path else 'No path'}")
+                    if output_path and os.path.exists(output_path):
+                        st.info(f"File size: {os.path.getsize(output_path)} bytes")
                 
                 # Continue with normal display code
                 if output_path and os.path.exists(output_path):
@@ -836,15 +862,20 @@ def main():
                         st.error(f"Error displaying video: {str(e)}")
                         st.code(traceback.format_exc())
                 else:
+                    # Major fallback - scan the whole output directory for recent videos
                     st.warning(f"Output video file not found at: {output_path}")
+                    
+                    # Add a more user-friendly message
+                    st.info("🔍 Looking for your recently generated videos...")
                     
                     # Try to list files in output directory to help debugging
                     try:
                         output_dir = os.path.dirname(output_path) if output_path else os.path.join(os.getcwd(), "output")
                         if os.path.exists(output_dir):
                             files = os.listdir(output_dir)
-                            with st.expander("Show files in output directory", expanded=False):
-                                st.code("\n".join(files), language=None)
+                            # Show files directly instead of using an expander
+                            st.text("Files in output directory:")
+                            st.code("\n".join(files), language=None)
                             
                             # Show most recent file info
                             if files:

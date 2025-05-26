@@ -343,6 +343,38 @@ def main():
                         help="Control the opacity of the background box"
                     )
                     st.session_state.caption_dreams["bg_opacity"] = bg_opacity
+                
+                # Add caption layout options
+                st.subheader("Caption Layout")
+                
+                # Option to enable multi-line captions
+                enable_multiline = st.checkbox(
+                    "Enable Multi-line Captions",
+                    value=st.session_state.caption_dreams.get("enable_multiline", True),
+                    help="Allow captions to wrap to multiple lines for longer sentences"
+                )
+                st.session_state.caption_dreams["enable_multiline"] = enable_multiline
+                
+                # Maximum width for caption lines
+                max_line_width = st.slider(
+                    "Maximum Line Width:",
+                    min_value=40,
+                    max_value=100,
+                    value=st.session_state.caption_dreams.get("max_line_width", 80),
+                    help="Maximum width of caption lines as percentage of screen width"
+                )
+                st.session_state.caption_dreams["max_line_width"] = max_line_width
+                
+                # Line padding for multi-line captions
+                if enable_multiline:
+                    line_padding = st.slider(
+                        "Line Spacing:",
+                        min_value=0,
+                        max_value=30,
+                        value=st.session_state.caption_dreams.get("line_padding", 10),
+                        help="Space between lines in multi-line captions"
+                    )
+                    st.session_state.caption_dreams["line_padding"] = line_padding
         
         with col2:
             # Transcription engine selection
@@ -540,8 +572,15 @@ def main():
                     "stroke_color": (0, 0, 0),  # Black outline
                     "bottom_margin": 50,
                     "force_captions_if_no_speech": st.session_state.caption_dreams.get("force_captions", False),
-                    "default_caption": st.session_state.caption_dreams.get("default_caption", "No speech detected")
+                    "default_caption": st.session_state.caption_dreams.get("default_caption", "No speech detected"),
+                    "enable_multiline": st.session_state.caption_dreams.get("enable_multiline", True),
+                    "max_line_width": st.session_state.caption_dreams.get("max_line_width", 80),
+                    "line_padding": st.session_state.caption_dreams.get("line_padding", 10)
                 }
+                
+                # Add highlight color if using color_highlight style
+                if st.session_state.caption_dreams.get("animation_style") == "color_highlight":
+                    custom_style["highlight_font_color"] = st.session_state.caption_dreams.get("highlight_font_color", "#FFFF00")
                 
                 # Import the functions from the captions module
                 from utils.video.captions import make_frame_with_text, get_caption_style
@@ -557,6 +596,15 @@ def main():
                 
                 # Get the animation style
                 animation_style = st.session_state.caption_dreams.get("animation_style", "word_by_word")
+                
+                # Add color highlight option if using color_highlight style
+                if animation_style == "color_highlight":
+                    highlight_color = st.color_picker(
+                        "Current Word Highlight Color:",
+                        value=st.session_state.caption_dreams.get("highlight_font_color", "#FFFF00"),  # Default yellow
+                        help="Color for the currently spoken word in color highlight mode"
+                    )
+                    st.session_state.caption_dreams["highlight_font_color"] = highlight_color
                 
                 # Print debug information
                 print(f"Preview settings: Animation style: {animation_style}")
@@ -653,8 +701,15 @@ def main():
                             "show_textbox": st.session_state.caption_dreams.get("show_textbox", False),
                             "textbox_opacity": st.session_state.caption_dreams.get("bg_opacity", 70) / 100.0,  # Convert to fraction
                             "force_captions_if_no_speech": st.session_state.caption_dreams.get("force_captions", False),
-                            "default_caption": st.session_state.caption_dreams.get("default_caption", "No speech detected")
+                            "default_caption": st.session_state.caption_dreams.get("default_caption", "No speech detected"),
+                            "enable_multiline": st.session_state.caption_dreams.get("enable_multiline", True),
+                            "max_line_width": st.session_state.caption_dreams.get("max_line_width", 80),
+                            "line_padding": st.session_state.caption_dreams.get("line_padding", 10)
                         }
+                        
+                        # Add highlight color if using color_highlight style
+                        if st.session_state.caption_dreams.get("animation_style") == "color_highlight":
+                            custom_style["highlight_font_color"] = st.session_state.caption_dreams.get("highlight_font_color", "#FFFF00")
                         
                         # Call the captioning function with customization options
                         result = add_captions_to_video(

@@ -1088,19 +1088,60 @@ def render_animated_caption(frame_img, text, words_with_times, current_time, sty
                 
                 # Get total text of active words
                 active_text = " ".join([w["word"] for w in active_words])
-                text_width, text_height = get_text_size(draw, active_text, font)
                 
-                # Calculate position based on alignment
-                if align == "left":
-                    text_x = start_x
-                elif align == "right":
-                    text_x = start_x + (total_width - text_width)
-                else:  # center
-                    text_x = start_x + ((total_width - text_width) // 2)
+                # Determine max line width - use a fraction of the frame width
+                max_line_width_ratio = style_params.get("max_line_width_ratio", 0.8)  # Default to 80% of frame width
+                max_line_width = int(frame_pil.width * max_line_width_ratio)
                 
-                text_y = start_y
+                # Convert max_line_width parameter from percentage to ratio if provided
+                if "max_line_width" in style_params:
+                    max_line_width = int(frame_pil.width * (style_params.get("max_line_width", 80) / 100.0))
                 
-                # Draw background if needed
+                # Check if active text width exceeds max width and needs wrapping
+                active_text_width, text_height = get_text_size(draw, active_text, font)
+                
+                # Wrap text to multiple lines if needed
+                lines = []
+                current_line = []
+                current_line_width = 0
+                line_padding = style_params.get("line_padding", 10)  # Padding between lines
+                
+                # Check if multi-line captions are enabled
+                enable_multiline = style_params.get("enable_multiline", True)
+                
+                if enable_multiline and active_text_width > max_line_width:
+                    # Split into multiple lines
+                    for word_info in active_words:
+                        word = word_info["word"]
+                        word_width, _ = get_text_size(draw, word, font)
+                        space_width, _ = get_text_size(draw, " ", font)
+                        
+                        # If adding this word would exceed max width, start a new line
+                        if current_line and (current_line_width + word_width + space_width) > max_line_width:
+                            lines.append({"words": current_line, "width": current_line_width})
+                            current_line = [word_info]
+                            current_line_width = word_width
+                        else:
+                            current_line.append(word_info)
+                            current_line_width += word_width + (space_width if current_line else 0)
+                    
+                    # Add the last line
+                    if current_line:
+                        lines.append({"words": current_line, "width": current_line_width})
+                else:
+                    # Single line is sufficient
+                    lines.append({"words": active_words, "width": active_text_width})
+                
+                # Calculate total height based on number of lines
+                total_height = (text_height * len(lines)) + (line_padding * (len(lines) - 1))
+                
+                # Calculate vertical starting position based on multiple lines
+                if position == "custom":
+                    text_y = int(frame_pil.height * v_pos - (total_height / 2))
+                else:
+                    text_y = frame_pil.height - total_height - style_params.get("bottom_margin", 50)
+                
+                # Draw background for all lines if needed
                 if show_textbox:
                     opacity = int(255 * style_params.get("textbox_opacity", 0.7))
                     bg_color = style_params.get("highlight_color", (0, 0, 0))
@@ -1115,45 +1156,76 @@ def render_animated_caption(frame_img, text, words_with_times, current_time, sty
                     
                     padding = 15
                     
+                    # Calculate the bounding box for all lines
+                    max_width = max([line["width"] for line in lines])
+                    if align == "left":
+                        left = start_x - padding
+                        right = start_x + max_width + padding
+                    elif align == "right":
+                        left = start_x + (total_width - max_width) - padding
+                        right = start_x + total_width + padding
+                    else:  # center
+                        left = start_x + ((total_width - max_width) // 2) - padding
+                        right = left + max_width + (padding * 2)
+                    
+                    top = text_y - padding
+                    bottom = text_y + total_height + padding
+                    
                     try:
                         draw.rounded_rectangle(
-                            [text_x - padding, text_y - padding, 
-                            text_x + text_width + padding, text_y + text_height + padding],
+                            [left, top, right, bottom],
                             radius=10,
                             fill=bg_color
                         )
                     except AttributeError:
                         draw.rectangle(
-                            [text_x - padding, text_y - padding, 
-                            text_x + text_width + padding, text_y + text_height + padding],
+                            [left, top, right, bottom],
                             fill=bg_color
                         )
                 
-                # Draw each word with appropriate styling
-                current_x = text_x
-                for i, word_info in enumerate(active_words):
-                    word = word_info["word"]
-                    word_width, word_height = get_text_size(draw, word, font)
+                # Draw each line of words
+                for line_idx, line in enumerate(lines):
+                    line_words = line["words"]
+                    line_width = line["width"]
                     
-                    # Apply special styling for the current word
-                    is_current = (i == len(active_words) - 1) if current_word_index == -1 else (word_info == current_word)
+                    # Calculate horizontal position for this line
+                    if align == "left":
+                        line_x = start_x
+                    elif align == "right":
+                        line_x = start_x + (total_width - line_width)
+                    else:  # center
+                        line_x = start_x + ((total_width - line_width) // 2)
                     
-                    # Use regular or highlighted color
-                    current_font_color = style_params.get("highlight_font_color", (255, 255, 0)) if is_current and animation_style == "color_highlight" else font_color
+                    current_line_y = text_y + (line_idx * (text_height + line_padding))
                     
-                    # Draw the word
-                    draw.text(
-                        (current_x, text_y),
-                        word,
-                        font=font,
-                        fill=current_font_color,
-                        stroke_width=stroke_width,
-                        stroke_fill=stroke_color
-                    )
-                    
-                    # Add space after word
-                    space_width, _ = get_text_size(draw, " ", font)
-                    current_x += word_width + space_width
+                    # Draw each word in the line
+                    current_x = line_x
+                    for i, word_info in enumerate(line_words):
+                        word = word_info["word"]
+                        word_width, word_height = get_text_size(draw, word, font)
+                        
+                        # Check if this is the current word
+                        is_current = (word_info == current_word)
+                        
+                        # Use regular or highlighted color
+                        if is_current and animation_style == "color_highlight":
+                            current_font_color = style_params.get("highlight_font_color", (255, 255, 0))  # Default to yellow
+                        else:
+                            current_font_color = font_color
+                        
+                        # Draw the word
+                        draw.text(
+                            (current_x, current_line_y),
+                            word,
+                            font=font,
+                            fill=current_font_color,
+                            stroke_width=stroke_width,
+                            stroke_fill=stroke_color
+                        )
+                        
+                        # Add space after word
+                        space_width, _ = get_text_size(draw, " ", font)
+                        current_x += word_width + space_width
                 
                 # Composite and return
                 frame_pil = Image.alpha_composite(frame_pil.convert('RGBA'), overlay)

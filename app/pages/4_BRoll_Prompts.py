@@ -157,6 +157,8 @@ def load_broll_prompts():
                 st.session_state.image_template = st.session_state.broll_prompts["image_template"]
             if "map_broll_to_aroll" in st.session_state.broll_prompts:
                 st.session_state.map_broll_to_aroll = st.session_state.broll_prompts["map_broll_to_aroll"]
+            if "broll_aroll_mapping" in st.session_state.broll_prompts:
+                st.session_state.broll_aroll_mapping = st.session_state.broll_prompts["broll_aroll_mapping"]
             return True
     return False
 
@@ -168,7 +170,8 @@ def save_broll_prompts(prompts, broll_type):
         "broll_type": broll_type,
         "exclude_negative_prompts": st.session_state.get("exclude_negative_prompts", False),
         "image_template": st.session_state.get("image_template", "image_homepc"),
-        "map_broll_to_aroll": st.session_state.get("map_broll_to_aroll", False)
+        "map_broll_to_aroll": st.session_state.get("map_broll_to_aroll", False),
+        "broll_aroll_mapping": st.session_state.get("broll_aroll_mapping", {})
     }
     with open(prompts_file, "w") as f:
         json.dump(data, f, indent=4)
@@ -365,6 +368,94 @@ st.session_state.broll_type = broll_type.lower()
 # Show debug info about the selected type
 st.info(f"Selected B-Roll type: **{broll_type}** (stored as '{st.session_state.broll_type}')")
 
+# Add a sequence mapping editor to define which A-roll segments go with which B-roll segments
+st.subheader("B-Roll to A-Roll Mapping")
+st.markdown("""
+Define which A-roll segments will be heard during each B-roll visual. This mapping will be used to generate relevant prompts 
+that match what's being spoken during the B-roll segments.
+""")
+
+# Get all segments to create the mapping UI
+all_segments = st.session_state.segments
+aroll_segments = [seg for seg in all_segments if seg["type"] == "A-Roll"]
+broll_segments = [seg for seg in all_segments if seg["type"] == "B-Roll"]
+
+# Initialize sequence mapping if not present
+if "broll_aroll_mapping" not in st.session_state:
+    # Default mapping is where B-roll N corresponds to A-roll N+1
+    st.session_state.broll_aroll_mapping = {}
+    for i, broll in enumerate(broll_segments):
+        broll_idx = all_segments.index(broll)
+        # Find the next A-roll segment if it exists
+        next_aroll_idx = None
+        if broll_idx + 1 < len(all_segments) and all_segments[broll_idx + 1]["type"] == "A-Roll":
+            next_aroll_idx = broll_idx + 1
+            
+        st.session_state.broll_aroll_mapping[f"segment_{i}"] = {
+            "broll_idx": broll_idx,
+            "aroll_idx": next_aroll_idx,
+            "broll_content": broll["content"][:50] + "..." if len(broll["content"]) > 50 else broll["content"],
+            "aroll_content": all_segments[next_aroll_idx]["content"][:50] + "..." if next_aroll_idx is not None and len(all_segments[next_aroll_idx]["content"]) > 50 else "None"
+        }
+
+# Create the mapping UI
+with st.expander("Edit B-Roll to A-Roll Mapping", expanded=True):
+    st.markdown("Each B-roll segment needs to be paired with the A-roll segment that will play as audio during that B-roll visual. This ensures your prompts generate visuals that match what's being spoken.")
+    
+    # Create a mapping UI for each B-roll segment
+    mapping_changed = False
+    updated_mapping = {}
+    
+    for i, broll in enumerate(broll_segments):
+        broll_id = f"segment_{i}"
+        st.markdown(f"### B-Roll Segment {i+1}")
+        st.markdown(f"**Content:** {broll['content'][:100]}{'...' if len(broll['content']) > 100 else ''}")
+        
+        # Get current mapping if it exists
+        current_mapping = st.session_state.broll_aroll_mapping.get(broll_id, {})
+        current_aroll_idx = current_mapping.get("aroll_idx", None)
+        
+        # Create dropdown options for A-roll segments
+        aroll_options = [(-1, "-- None --")] + [(idx, f"A-Roll {j+1}: {seg['content'][:30]}...") 
+                                               for j, (idx, seg) in enumerate([(all_segments.index(seg), seg) for seg in aroll_segments])]
+        
+        # Find the current selection index
+        default_index = 0  # Default to "None"
+        for j, (idx, _) in enumerate(aroll_options):
+            if idx == current_aroll_idx:
+                default_index = j
+                break
+        
+        # Create the dropdown
+        selected_option = st.selectbox(
+            f"Select which A-Roll audio plays during this B-Roll visual:",
+            options=[opt[0] for opt in aroll_options],
+            format_func=lambda x: next((opt[1] for opt in aroll_options if opt[0] == x), "Unknown"),
+            index=default_index,
+            key=f"broll_mapping_{i}"
+        )
+        
+        # Update the mapping
+        new_aroll_idx = selected_option if selected_option >= 0 else None
+        new_aroll_content = all_segments[new_aroll_idx]["content"][:50] + "..." if new_aroll_idx is not None and len(all_segments[new_aroll_idx]["content"]) > 50 else "None"
+        
+        updated_mapping[broll_id] = {
+            "broll_idx": all_segments.index(broll),
+            "aroll_idx": new_aroll_idx,
+            "broll_content": broll["content"][:50] + "..." if len(broll["content"]) > 50 else broll["content"],
+            "aroll_content": new_aroll_content
+        }
+        
+        if current_aroll_idx != new_aroll_idx:
+            mapping_changed = True
+        
+        st.divider()
+    
+    # Save button for the mapping
+    if mapping_changed or st.button("Save Mapping"):
+        st.session_state.broll_aroll_mapping = updated_mapping
+        st.success("B-Roll to A-Roll mapping saved!")
+
 # Add image workflow selection if image type is selected
 if st.session_state.broll_type == "image":
     # Initialize session state for image template if not exists
@@ -483,23 +574,20 @@ if st.session_state.ollama_models:
                     
                     # Find corresponding A-Roll segment for prompt generation if requested
                     if st.session_state.map_broll_to_aroll:
-                        # Get all segments
-                        all_segments = st.session_state.segments
+                        # Get the explicit mapping that was created by the user
+                        broll_aroll_mapping = st.session_state.get("broll_aroll_mapping", {})
+                        segment_id = f"segment_{i}"
                         
-                        # Find the B-roll segment index in all segments
-                        segment_index = -1
-                        for idx, seg in enumerate(all_segments):
-                            if seg["type"] == "B-Roll" and seg["content"] == segment["content"]:
-                                segment_index = idx
-                                break
-                        
-                        # The A-Roll that plays during this B-Roll is typically the NEXT segment (N+1)
-                        # This matches the pattern in the example where A-Roll 3 plays with B-Roll 2, A-Roll 5 with B-Roll 4, etc.
-                        if segment_index >= 0 and segment_index < len(all_segments) - 1 and all_segments[segment_index+1]["type"] == "A-Roll":
-                            aroll_segment = all_segments[segment_index+1]
-                            # Use the A-Roll content + B-Roll visuals
-                            content_for_prompt = f"{aroll_segment['content']} (showing visuals related to: {segment['content']})"
-                            status_text.text(f"Generating prompt for B-Roll {i+1} based on A-Roll content '{aroll_segment['content'][:30]}...'")
+                        if segment_id in broll_aroll_mapping:
+                            mapping_data = broll_aroll_mapping[segment_id]
+                            aroll_idx = mapping_data.get("aroll_idx")
+                            
+                            # If a valid A-roll index was mapped to this B-roll
+                            if aroll_idx is not None and 0 <= aroll_idx < len(all_segments):
+                                aroll_segment = all_segments[aroll_idx]
+                                # Use the A-Roll content + B-Roll visuals
+                                content_for_prompt = f"{aroll_segment['content']} (showing visuals related to: {segment['content']})"
+                                status_text.text(f"Generating prompt for B-Roll {i+1} based on mapped A-Roll content '{aroll_segment['content'][:30]}...'")
                     
                     # Print debug information about the content type
                     print(f"Generating {i+1}/{len(broll_segments)} as {'video' if is_video else 'image'} (broll_type: {st.session_state.broll_type})")
@@ -600,23 +688,20 @@ if "prompts" in st.session_state.broll_prompts and st.session_state.broll_prompt
                         
                         # Find corresponding A-Roll segment for prompt generation if requested
                         if st.session_state.map_broll_to_aroll:
-                            # Get all segments
-                            all_segments = st.session_state.segments
+                            # Get the explicit mapping that was created by the user
+                            broll_aroll_mapping = st.session_state.get("broll_aroll_mapping", {})
+                            segment_id = f"segment_{i}"
                             
-                            # Find the B-roll segment index in all segments
-                            segment_index = -1
-                            for idx, seg in enumerate(all_segments):
-                                if seg["type"] == "B-Roll" and seg["content"] == segment["content"]:
-                                    segment_index = idx
-                                    break
-                            
-                            # The A-Roll that plays during this B-Roll is typically the NEXT segment (N+1)
-                            # This matches the pattern in the example where A-Roll 3 plays with B-Roll 2, A-Roll 5 with B-Roll 4, etc.
-                            if segment_index >= 0 and segment_index < len(all_segments) - 1 and all_segments[segment_index+1]["type"] == "A-Roll":
-                                aroll_segment = all_segments[segment_index+1]
-                                # Use the A-Roll content + B-Roll visuals
-                                content_for_prompt = f"{aroll_segment['content']} (showing visuals related to: {segment['content']})"
-                                st.info(f"Generating prompt based on A-Roll content: '{aroll_segment['content'][:50]}...'")
+                            if segment_id in broll_aroll_mapping:
+                                mapping_data = broll_aroll_mapping[segment_id]
+                                aroll_idx = mapping_data.get("aroll_idx")
+                                
+                                # If a valid A-roll index was mapped to this B-roll
+                                if aroll_idx is not None and 0 <= aroll_idx < len(all_segments):
+                                    aroll_segment = all_segments[aroll_idx]
+                                    # Use the A-Roll content + B-Roll visuals
+                                    content_for_prompt = f"{aroll_segment['content']} (showing visuals related to: {segment['content']})"
+                                    st.info(f"Generating prompt for B-Roll {i+1} based on mapped A-Roll content '{aroll_segment['content'][:30]}...'")
                         
                         new_prompt = generate_prompt_with_ollama(
                             current_model, 

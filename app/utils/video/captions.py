@@ -610,10 +610,14 @@ DREAM_ANIMATION_STYLES = {
     "color_highlight": {
         "name": "Color Highlight",
         "description": "Current words are highlighted with a different color"
+    },
+    "single_word_focus": {
+        "name": "Single Word Focus",
+        "description": "Only the current word being spoken is displayed, with emphasis"
     }
 }
 
-# Modified function to support animation styles
+# Modified function to support animation styles but avoid recursion
 def make_frame_with_text(frame_img, text, words_with_times, current_time, style, effect_params=None, animation_style=None):
     """
     Create a frame with text overlay using the specified style
@@ -630,473 +634,548 @@ def make_frame_with_text(frame_img, text, words_with_times, current_time, style,
     Returns:
         numpy array: The frame with text overlay
     """
-    # If no animation style specified, use traditional caption rendering without recursion
-    if not animation_style or animation_style not in DREAM_ANIMATION_STYLES:
-        # Don't call add_caption_to_frame as it would create an infinite recursion
-        # Instead implement the basic caption logic here
-        if not DEPENDENCIES_AVAILABLE:
-            return frame_img
-        
-        try:
-            # Create a PIL image from the frame
-            frame_pil = Image.fromarray(frame_img)
-            
-            # Create a transparent overlay for text
-            overlay = Image.new('RGBA', frame_pil.size, (0, 0, 0, 0))
-            draw = ImageDraw.Draw(overlay)
-            
-            # Get style parameters
-            if isinstance(style, dict):
-                style_params = style
-            else:
-                style_params = get_caption_style(style)
-            
-            # Get font information
-            font_path = style_params.get("font_path", get_system_font("Arial"))
-            font_size = style_params.get("font_size", 36)
-            font_color = style_params.get("font_color", "#FFFFFF")
-            stroke_width = style_params.get("stroke_width", 2)
-            stroke_color = style_params.get("stroke_color", "#000000")
-            
-            # Load font
-            try:
-                font = ImageFont.truetype(font_path, font_size)
-            except Exception as e:
-                print(f"Warning: Error loading font: {e}")
-                font = ImageFont.load_default()
-            
-            # Get text dimensions
-            text_width, text_height = get_text_size(draw, text, font)
-            
-            # Calculate position
-            text_x = (frame_pil.width - text_width) // 2
-            text_y = frame_pil.height - text_height - style_params.get("bottom_margin", 50)
-            
-            # Draw text
-            draw.text((text_x, text_y), text, font=font, fill=font_color, 
-                    stroke_width=stroke_width, stroke_fill=stroke_color)
-            
-            # Composite the overlay on the frame
-            frame_pil = Image.alpha_composite(frame_pil.convert('RGBA'), overlay)
-            return np.array(frame_pil.convert('RGB'))
-        except Exception as e:
-            print(f"Error in make_frame_with_text: {e}")
-            return frame_img
-    
-    # Process with dream animation style
-    return add_animated_caption_to_frame(frame_img, text, words_with_times, current_time, style, animation_style, effect_params)
-
-# New function to handle dream animation styles
-def add_animated_caption_to_frame(frame_img, text, words_with_times, current_time, style, animation_style, effect_params=None):
-    """
-    Add animated captions to the frame using dream animation styles
-    
-    Args:
-        frame_img: The frame image as a numpy array
-        text: The text to display
-        words_with_times: List of word timing info
-        current_time: Current time in the video
-        style: The caption style to use (string name or dictionary of style parameters)
-        animation_style: The animation style to use
-        effect_params: Optional parameters for effects, can include custom style parameters
-        
-    Returns:
-        numpy array: The frame with animated captions
-    """
     if not DEPENDENCIES_AVAILABLE:
         return frame_img
     
-    # Get style parameters
-    if isinstance(style, dict):
-        # If style is already a dictionary, use it directly
-        style_params = style
-    else:
-        # Otherwise get the style by name
-        style_params = get_caption_style(style)
-    
-    # If we have custom parameters in effect_params, apply them
-    if effect_params and isinstance(effect_params, dict):
-        # Create a copy of style_params to avoid modifying the original
-        if style_params:
-            style_params = style_params.copy()
-        else:
-            style_params = {}
-        
-        # Update with custom parameters
-        style_params.update(effect_params)
-    
-    if not style_params:
-        return frame_img
-    
-    # Create a copy of the frame
-    frame_pil = Image.fromarray(frame_img)
-    
-    # Create a transparent overlay for text
-    overlay = Image.new('RGBA', frame_pil.size, (0, 0, 0, 0))
-    draw = ImageDraw.Draw(overlay)
-    
-    # Get font information
-    font_path = style_params.get("font_path", get_system_font("Arial"))
-    font_size = style_params.get("font_size", 36)
-    font_color = style_params.get("font_color", "#FFFFFF")
-    stroke_width = style_params.get("stroke_width", 2)
-    stroke_color = style_params.get("stroke_color", "#000000")
-    
-    # Load font
     try:
-        font = ImageFont.truetype(font_path, font_size)
+        # Get style parameters
+        if isinstance(style, dict):
+            style_params = style
+        else:
+            style_params = get_caption_style(style)
+        
+        # Process animation style
+        if animation_style and animation_style in DREAM_ANIMATION_STYLES:
+            # Handle animated caption styles directly here instead of calling another function
+            return render_animated_caption(frame_img, text, words_with_times, current_time, style_params, animation_style, effect_params)
+        
+        # Basic non-animated caption
+        return render_basic_caption(frame_img, text, style_params)
     except Exception as e:
-        print(f"Warning: Error loading font: {e}")
-        font = ImageFont.load_default()
-    
-    # If no words with timing info, just show the text centered
-    if not words_with_times:
-        # Get text dimensions and position
+        print(f"Error in make_frame_with_text: {e}")
+        return frame_img
+
+def render_basic_caption(frame_img, text, style_params):
+    """Render a basic caption on a frame without animation"""
+    try:
+        print(f"render_basic_caption called with text: {text[:30]}...")
+        
+        # Create a PIL image from the frame
+        frame_pil = Image.fromarray(frame_img)
+        
+        # Create a transparent overlay for text
+        overlay = Image.new('RGBA', frame_pil.size, (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay)
+        
+        # Get font information
+        font_path = style_params.get("font_path", get_system_font("Arial"))
+        font_size = style_params.get("font_size", 36)
+        font_color = style_params.get("font_color", "#FFFFFF")
+        stroke_width = style_params.get("stroke_width", 2)
+        stroke_color = style_params.get("stroke_color", "#000000")
+        
+        print(f"Using font: {font_path}, size: {font_size}")
+        
+        # Load font
+        try:
+            font = ImageFont.truetype(font_path, font_size)
+        except Exception as e:
+            print(f"Warning: Error loading font: {e}")
+            font = ImageFont.load_default()
+        
+        # Get text dimensions
         text_width, text_height = get_text_size(draw, text, font)
-        text_x = (frame_pil.width - text_width) // 2
-        text_y = frame_pil.height - text_height - style_params.get("bottom_margin", 50)
+        print(f"Text dimensions: {text_width}x{text_height}")
+        
+        # Get position information
+        position = style_params.get("position", "bottom")
+        print(f"Position: {position}")
+        
+        if position == "custom":
+            # Get custom position as fractions of the frame dimensions
+            h_pos = style_params.get("horizontal_pos", 0.5)  # Default to center
+            v_pos = style_params.get("vertical_pos", 0.8)    # Default to near bottom
+            
+            # Calculate position in pixels
+            text_x = int(frame_pil.width * h_pos - (text_width / 2))
+            text_y = int(frame_pil.height * v_pos - (text_height / 2))
+            print(f"Custom position: {text_x}, {text_y}")
+        else:
+            # Default positioning at bottom
+            text_x = (frame_pil.width - text_width) // 2
+            text_y = frame_pil.height - text_height - style_params.get("bottom_margin", 50)
+            print(f"Default position: {text_x}, {text_y}")
+        
+        # Check if we should draw a text box background
+        show_textbox = style_params.get("show_textbox", False)
+        if show_textbox:
+            print("Drawing text box background")
+            # Get textbox opacity
+            opacity = int(255 * style_params.get("textbox_opacity", 0.7))
+            
+            # Get textbox color with opacity
+            bg_color = style_params.get("highlight_color", (0, 0, 0))
+            
+            # If bg_color is a tuple, ensure it has alpha
+            if isinstance(bg_color, tuple):
+                if len(bg_color) == 3:
+                    bg_color = bg_color + (opacity,)
+                elif len(bg_color) == 4:
+                    # Replace alpha with our calculated opacity
+                    bg_color = bg_color[:3] + (opacity,)
+            else:
+                # Default to semi-transparent black
+                bg_color = (0, 0, 0, opacity)
+            
+            padding = 15
+            
+            # Draw rounded rectangle background
+            draw.rounded_rectangle(
+                [text_x - padding, text_y - padding, 
+                text_x + text_width + padding, text_y + text_height + padding],
+                radius=10,
+                fill=bg_color
+            )
         
         # Draw text
-        draw.text((text_x, text_y), text, font=font, fill=font_color, 
-                  stroke_width=stroke_width, stroke_fill=stroke_color)
+        print(f"Drawing text: {text[:30]}...")
+        draw.text(
+            (text_x, text_y), 
+            text, 
+            font=font, 
+            fill=font_color,
+            stroke_width=stroke_width,
+            stroke_fill=stroke_color
+        )
         
         # Composite the overlay on the frame
         frame_pil = Image.alpha_composite(frame_pil.convert('RGBA'), overlay)
-        return np.array(frame_pil.convert('RGB'))
-    
-    # Process words with timing
-    active_words = []
-    pending_words = []
-    
-    # Calculate total width and height for positioning
-    total_text = " ".join([w["word"] for w in words_with_times])
-    total_width, total_height = get_text_size(draw, total_text, font)
-    
-    # Calculate the starting position for the text block
-    start_x = (frame_pil.width - total_width) // 2
-    start_y = frame_pil.height - total_height - style_params.get("bottom_margin", 50)
-    
-    # Get position information from style_params
-    position = style_params.get("position", "bottom")
-    if position == "custom":
-        # Get custom position as fractions of the frame dimensions
-        h_pos = style_params.get("horizontal_pos", 0.5)  # Default to center
-        v_pos = style_params.get("vertical_pos", 0.8)    # Default to near bottom
-        
-        # Calculate starting position in pixels
-        start_x = int(frame_pil.width * h_pos - (total_width / 2))
-        start_y = int(frame_pil.height * v_pos - (total_height / 2))
-        
-        # Update x_pos with new starting position
-        x_pos = start_x
-    else:
-        # Use the default bottom positioning (already calculated above)
-        pass
+        result = np.array(frame_pil.convert('RGB'))
+        print("Basic caption rendering completed successfully")
+        return result
+    except Exception as e:
+        print(f"Error in render_basic_caption: {e}")
+        traceback.print_exc()
+        return frame_img
 
-    # Check if we should draw a text box background
-    show_textbox = style_params.get("show_textbox", False)
-    if show_textbox:
-        # Get textbox opacity
-        opacity = int(255 * style_params.get("textbox_opacity", 0.7))
+def render_animated_caption(frame_img, text, words_with_times, current_time, style_params, animation_style, effect_params=None):
+    """
+    Render an animated caption on a frame based on the animation style
+    All rendering is done directly in this function to avoid recursion
+    """
+    try:
+        if not words_with_times:
+            # No word timing info available, fall back to basic caption
+            return render_basic_caption(frame_img, text, style_params)
         
-        # Get textbox color with opacity
-        bg_color = style_params.get("highlight_color", (0, 0, 0))
+        # Create a PIL image from the frame
+        frame_pil = Image.fromarray(frame_img)
         
-        # If bg_color is a tuple, ensure it has alpha
-        if isinstance(bg_color, tuple):
-            if len(bg_color) == 3:
-                bg_color = bg_color + (opacity,)
-            elif len(bg_color) == 4:
-                # Replace alpha with our calculated opacity
-                bg_color = bg_color[:3] + (opacity,)
+        # Create a transparent overlay for text
+        overlay = Image.new('RGBA', frame_pil.size, (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay)
+        
+        # Get font information
+        font_path = style_params.get("font_path", get_system_font("Arial"))
+        font_size = style_params.get("font_size", 36)
+        font_color = style_params.get("font_color", "#FFFFFF")
+        stroke_width = style_params.get("stroke_width", 2)
+        stroke_color = style_params.get("stroke_color", "#000000")
+        
+        # Load font
+        try:
+            font = ImageFont.truetype(font_path, font_size)
+        except Exception as e:
+            print(f"Warning: Error loading font: {e}")
+            font = ImageFont.load_default()
+        
+        # Calculate total width and height for positioning
+        total_text = " ".join([w["word"] for w in words_with_times if isinstance(w, dict) and "word" in w])
+        total_width, total_height = get_text_size(draw, total_text, font)
+        
+        # Calculate the starting position for the text block
+        position = style_params.get("position", "bottom")
+        
+        if position == "custom":
+            # Get custom position as fractions of the frame dimensions
+            h_pos = style_params.get("horizontal_pos", 0.5)  # Default to center
+            v_pos = style_params.get("vertical_pos", 0.8)    # Default to near bottom
+            
+            # Calculate starting position in pixels
+            start_x = int(frame_pil.width * h_pos - (total_width / 2))
+            start_y = int(frame_pil.height * v_pos - (total_height / 2))
         else:
-            # Default to semi-transparent black
-            bg_color = (0, 0, 0, opacity)
+            # Default bottom positioning
+            start_x = (frame_pil.width - total_width) // 2
+            start_y = frame_pil.height - total_height - style_params.get("bottom_margin", 50)
         
-        padding = 15
+        # Check if we should draw a text box background
+        show_textbox = style_params.get("show_textbox", False)
+        if show_textbox:
+            # Get textbox opacity
+            opacity = int(255 * style_params.get("textbox_opacity", 0.7))
+            
+            # Get textbox color with opacity
+            bg_color = style_params.get("highlight_color", (0, 0, 0))
+            
+            # If bg_color is a tuple, ensure it has alpha
+            if isinstance(bg_color, tuple):
+                if len(bg_color) == 3:
+                    bg_color = bg_color + (opacity,)
+                elif len(bg_color) == 4:
+                    # Replace alpha with our calculated opacity
+                    bg_color = bg_color[:3] + (opacity,)
+            else:
+                # Default to semi-transparent black
+                bg_color = (0, 0, 0, opacity)
+            
+            padding = 15
+            
+            # Draw rounded rectangle background for the entire text
+            draw.rounded_rectangle(
+                [start_x - padding, start_y - padding, 
+                start_x + total_width + padding, start_y + total_height + padding],
+                radius=10,
+                fill=bg_color
+            )
         
-        # Draw rounded rectangle background for the entire text
-        draw.rounded_rectangle(
-            [start_x - padding, start_y - padding, 
-            start_x + total_width + padding, start_y + total_height + padding],
-            radius=10,
-            fill=bg_color
-        )
-
-    # Process each word
-    x_pos = start_x
-    
-    # Handle single word focus animation separately
-    if animation_style == "single_word_focus":
-        # Find the current word being spoken
-        current_word = None
-        current_word_text = ""
+        # Handle single word focus animation separately
+        if animation_style == "single_word_focus":
+            # Find the current word being spoken
+            current_word = None
+            current_word_text = ""
+            current_word_index = -1
+            
+            # First pass: try to find the exact current word
+            for i, word_info in enumerate(words_with_times):
+                if not isinstance(word_info, dict) or "word" not in word_info or "start" not in word_info or "end" not in word_info:
+                    continue
+                    
+                word = word_info["word"]
+                word_start = word_info["start"] 
+                word_end = word_info["end"]
+                
+                # Add a small buffer to the end time to avoid gaps
+                # This helps ensure words don't disappear between spoken words
+                buffer_time = 0.1
+                
+                # Check if this is the current word
+                if word_start <= current_time <= (word_end + buffer_time):
+                    current_word = word_info
+                    current_word_text = word
+                    current_word_index = i
+                    break
+            
+            # Second pass: if no word is active, find the closest word
+            if not current_word and words_with_times:
+                # Find the closest word in time
+                closest_word = None
+                min_distance = float('inf')
+                
+                for i, word_info in enumerate(words_with_times):
+                    if not isinstance(word_info, dict) or "word" not in word_info or "start" not in word_info or "end" not in word_info:
+                        continue
+                        
+                    word_start = word_info["start"]
+                    word_end = word_info["end"]
+                    
+                    # Distance to start and end times
+                    start_distance = abs(current_time - word_start)
+                    end_distance = abs(current_time - word_end)
+                    
+                    # Take the minimum distance
+                    distance = min(start_distance, end_distance)
+                    
+                    if distance < min_distance:
+                        min_distance = distance
+                        closest_word = word_info
+                        current_word_index = i
+            
+            # If we found a current word, display only that word
+            if current_word:
+                # Make the word larger for emphasis, but not too large
+                # Limit scaling based on word length
+                scale_factor = 1.5  # Default scale factor
+                if len(current_word_text) > 10:
+                    # Reduce scale for longer words
+                    scale_factor = 1.3
+                elif len(current_word_text) > 5:
+                    scale_factor = 1.4
+                
+                large_font_size = int(font_size * scale_factor)
+                try:
+                    large_font = ImageFont.truetype(font_path, large_font_size)
+                except Exception as e:
+                    print(f"Warning: Error loading font: {e}")
+                    large_font = font
+                    
+                # Get new dimensions with the larger font
+                word_width, word_height = get_text_size(draw, current_word_text, large_font)
+                
+                # Calculate position for the centered single word
+                if position == "custom":
+                    word_x = int(frame_pil.width * h_pos - (word_width / 2))
+                    word_y = int(frame_pil.height * v_pos - (word_height / 2))
+                else:
+                    word_x = (frame_pil.width - word_width) // 2
+                    word_y = frame_pil.height - word_height - style_params.get("bottom_margin", 50)
+                
+                # Draw text with a highlight background if requested
+                if show_textbox:
+                    # Get textbox opacity
+                    opacity = int(255 * style_params.get("textbox_opacity", 0.7))
+                    
+                    # Get textbox color with opacity
+                    highlight_color = style_params.get("highlight_color", (0, 0, 0))
+                    
+                    # If highlight_color is a tuple, ensure it has alpha
+                    if isinstance(highlight_color, tuple):
+                        if len(highlight_color) == 3:
+                            highlight_color = highlight_color + (opacity,)
+                        elif len(highlight_color) == 4:
+                            # Replace alpha with our calculated opacity
+                            highlight_color = highlight_color[:3] + (opacity,)
+                    else:
+                        # Default to semi-transparent black
+                        highlight_color = (0, 0, 0, opacity)
+                    
+                    # Ensure padding is appropriate for the word size
+                    padding = min(30, max(20, int(word_width * 0.1)))  # Between 20-30px based on word width
+                    
+                    # Draw rounded rectangle background with enough padding
+                    draw.rounded_rectangle(
+                        [word_x - padding, word_y - padding, 
+                        word_x + word_width + padding, word_y + word_height + padding],
+                        radius=12,
+                        fill=highlight_color
+                    )
+                
+                # Draw the word with the larger font
+                draw.text(
+                    (word_x, word_y), 
+                    current_word_text, 
+                    font=large_font, 
+                    fill=font_color,
+                    stroke_width=stroke_width,
+                    stroke_fill=stroke_color
+                )
+                
+                # Display a message about word timing (for debugging)
+                print(f"Showing word '{current_word_text}' at time {current_time:.2f}s (word {current_word_index+1}/{len(words_with_times)})")
+                
+                # Composite the overlay on the frame
+                frame_pil = Image.alpha_composite(frame_pil.convert('RGBA'), overlay)
+                return np.array(frame_pil.convert('RGB'))
+            else:
+                # If no current word and we're at the beginning, show the first word
+                if current_time < 1.0 and words_with_times:
+                    first_word = words_with_times[0]["word"]
+                    print(f"Showing first word '{first_word}' before official start time")
+                    # Create a temporary overlay for the first word
+                    temp_overlay = Image.new('RGBA', frame_pil.size, (0, 0, 0, 0))
+                    temp_draw = ImageDraw.Draw(temp_overlay)
+                    
+                    # Use the same font and rendering logic as above
+                    large_font_size = int(font_size * 1.4)
+                    try:
+                        large_font = ImageFont.truetype(font_path, large_font_size)
+                    except Exception:
+                        large_font = font
+                        
+                    word_width, word_height = get_text_size(temp_draw, first_word, large_font)
+                    word_x = (frame_pil.width - word_width) // 2
+                    word_y = frame_pil.height - word_height - style_params.get("bottom_margin", 50)
+                    
+                    # Draw text
+                    temp_draw.text(
+                        (word_x, word_y), 
+                        first_word, 
+                        font=large_font, 
+                        fill=font_color,
+                        stroke_width=stroke_width,
+                        stroke_fill=stroke_color
+                    )
+                    
+                    # Composite and return
+                    frame_pil = Image.alpha_composite(frame_pil.convert('RGBA'), temp_overlay)
+                    return np.array(frame_pil.convert('RGB'))
+        
+        # For other animation styles, process each word
+        x_pos = start_x
         
         for word_info in words_with_times:
+            # Check if word_info has the expected structure
+            if not isinstance(word_info, dict) or "word" not in word_info or "start" not in word_info or "end" not in word_info:
+                continue
+                
             word = word_info["word"]
             word_start = word_info["start"] 
             word_end = word_info["end"]
             
-            # Check if this is the current word
-            if word_start <= current_time <= word_end:
-                current_word = word_info
-                current_word_text = word
-                break
-        
-        # If we found a current word, display only that word
-        if current_word:
-            # Calculate the position for the centered single word
-            word_width, word_height = get_text_size(draw, current_word_text, font)
-            
-            # Get position from style parameters
-            position = style_params.get("position", "bottom")
-            
-            if position == "custom":
-                # Get custom position from style parameters (as fractions of frame dimensions)
-                h_pos = style_params.get("horizontal_pos", 0.5)  # Default to center
-                v_pos = style_params.get("vertical_pos", 0.8)    # Default to near bottom
-                
-                # Calculate pixel coordinates
-                word_x = int(frame_pil.width * h_pos - (word_width / 2))
-                word_y = int(frame_pil.height * v_pos - (word_height / 2))
-            else:
-                # Default bottom positioning
-                word_x = (frame_pil.width - word_width) // 2
-                word_y = frame_pil.height - word_height - style_params.get("bottom_margin", 50)
-            
-            # Make the word larger for emphasis
-            large_font_size = int(font_size * 1.5)  # 50% larger
-            try:
-                large_font = ImageFont.truetype(font_path, large_font_size)
-            except Exception as e:
-                print(f"Warning: Error loading font: {e}")
-                large_font = font
-                
-            # Get new dimensions with the larger font
-            word_width, word_height = get_text_size(draw, current_word_text, large_font)
-            
-            # Recalculate position with new dimensions
-            if position == "custom":
-                word_x = int(frame_pil.width * h_pos - (word_width / 2))
-                word_y = int(frame_pil.height * v_pos - (word_height / 2))
-            else:
-                word_x = (frame_pil.width - word_width) // 2
-                word_y = frame_pil.height - word_height - style_params.get("bottom_margin", 50)
-            
-            # Draw text with a highlight background if requested
-            show_textbox = style_params.get("show_textbox", False)
-            if show_textbox:
-                # Get textbox opacity
-                opacity = int(255 * style_params.get("textbox_opacity", 0.7))
-                
-                # Get textbox color with opacity
-                highlight_color = style_params.get("highlight_color", (0, 0, 0))
-                
-                # If highlight_color is a tuple, ensure it has alpha
-                if isinstance(highlight_color, tuple):
-                    if len(highlight_color) == 3:
-                        highlight_color = highlight_color + (opacity,)
-                    elif len(highlight_color) == 4:
-                        # Replace alpha with our calculated opacity
-                        highlight_color = highlight_color[:3] + (opacity,)
-                else:
-                    # Default to semi-transparent black
-                    highlight_color = (0, 0, 0, opacity)
-                
-                padding = 20
-                
-                # Draw rounded rectangle background
-                draw.rounded_rectangle(
-                    [word_x - padding, word_y - padding, 
-                    word_x + word_width + padding, word_y + word_height + padding],
-                    radius=12,
-                    fill=highlight_color
-                )
-            
-            # Draw the word with the larger font
-            draw.text(
-                (word_x, word_y), 
-                current_word_text, 
-                font=large_font, 
-                fill=font_color,
-                stroke_width=stroke_width,
-                stroke_fill=stroke_color
+            # Check if this word should be visible
+            is_active = word_start <= current_time and (
+                animation_style == "word_by_word" or current_time <= word_end + 0.5
             )
             
-            # Composite the overlay on the frame
-            frame_pil = Image.alpha_composite(frame_pil.convert('RGBA'), overlay)
-            return np.array(frame_pil.convert('RGB'))
+            # Get word dimensions
+            word_width, word_height = get_text_size(draw, word + " ", font)
             
-        # If no current word, return the original frame
-        return frame_img
-    
-    # For other animation styles, continue with the existing code
-    for word_info in words_with_times:
-        word = word_info["word"]
-        word_start = word_info["start"] 
-        word_end = word_info["end"]
-        
-        # Check if this word should be visible
-        is_active = word_start <= current_time and (
-            animation_style == "word_by_word" or current_time <= word_end + 0.5
-        )
-        
-        # Get word dimensions
-        word_width, word_height = get_text_size(draw, word + " ", font)
-        
-        if is_active:
-            # Apply animation style
-            if animation_style == "word_by_word":
-                # Simply display the word
-                alpha = 255
-                scale = 1.0
-                color = font_color
-                
-            elif animation_style == "fade_in_out":
-                # Calculate fade in/out
-                if current_time < word_start + 0.3:
-                    # Fade in
-                    progress = (current_time - word_start) / 0.3
-                    alpha = int(255 * progress)
-                elif current_time > word_end:
-                    # Fade out
-                    progress = 1.0 - min(1.0, (current_time - word_end) / 0.5)
-                    alpha = int(255 * progress)
-                else:
-                    # Fully visible
+            if is_active:
+                # Apply animation style
+                if animation_style == "word_by_word":
+                    # Simply display the word
                     alpha = 255
-                
-                scale = 1.0
-                color = font_color
-                
-            elif animation_style == "scale_pulse":
-                # Scale up when the word is first spoken
-                # Add safety check to avoid division by zero or negative scale
-                min_scale = 0.01  # Prevent zero or negative scale
-                if current_time < word_start + 0.3:
-                    # Scale up
-                    progress = (current_time - word_start) / 0.3
-                    # Ensure scale is within reasonable bounds
-                    scale = max(min_scale, 1.0 + (0.5 * (1.0 - progress)))
-                elif current_time > word_end:
-                    # Scale down when word is done
-                    progress = 1.0 - min(1.0, (current_time - word_end) / 0.5)
-                    # Ensure scale is at least the minimum value
-                    scale = max(min_scale, 1.0 * progress)
-                else:
-                    # Normal size
                     scale = 1.0
-                
-                alpha = 255
-                color = font_color
-                
-            elif animation_style == "color_highlight":
-                # Change color for the current word
-                alpha = 255
-                scale = 1.0
-                
-                # Determine if this is the current word being spoken
-                is_current = (word_start <= current_time <= word_end)
-                
-                if is_current:
-                    # Use highlight color
-                    highlight_color = style_params.get("highlight_color", "#FFFF00")  # Yellow highlight by default
+                    color = font_color
                     
-                    # Handle different color formats
-                    if isinstance(highlight_color, str) and highlight_color.startswith("#"):
-                        # Convert hex to RGB
-                        if len(highlight_color) == 7:  # #RRGGBB
-                            r = int(highlight_color[1:3], 16)
-                            g = int(highlight_color[3:5], 16)
-                            b = int(highlight_color[5:7], 16)
-                            color = (r, g, b, alpha)
+                elif animation_style == "fade_in_out":
+                    # Calculate fade in/out
+                    if current_time < word_start + 0.3:
+                        # Fade in
+                        progress = (current_time - word_start) / 0.3
+                        alpha = int(255 * progress)
+                    elif current_time > word_end:
+                        # Fade out
+                        progress = 1.0 - min(1.0, (current_time - word_end) / 0.5)
+                        alpha = int(255 * progress)
+                    else:
+                        # Fully visible
+                        alpha = 255
+                    
+                    scale = 1.0
+                    color = font_color
+                    
+                elif animation_style == "scale_pulse":
+                    # Scale up when the word is first spoken
+                    # Add safety check to avoid division by zero or negative scale
+                    min_scale = 0.01  # Prevent zero or negative scale
+                    if current_time < word_start + 0.3:
+                        # Scale up
+                        progress = (current_time - word_start) / 0.3
+                        # Ensure scale is within reasonable bounds
+                        scale = max(min_scale, 1.0 + (0.5 * (1.0 - progress)))
+                    elif current_time > word_end:
+                        # Scale down when word is done
+                        progress = 1.0 - min(1.0, (current_time - word_end) / 0.5)
+                        # Ensure scale is at least the minimum value
+                        scale = max(min_scale, 1.0 * progress)
+                    else:
+                        # Normal size
+                        scale = 1.0
+                    
+                    alpha = 255
+                    color = font_color
+                    
+                elif animation_style == "color_highlight":
+                    # Change color for the current word
+                    alpha = 255
+                    scale = 1.0
+                    
+                    # Determine if this is the current word being spoken
+                    is_current = (word_start <= current_time <= word_end)
+                    
+                    if is_current:
+                        # Use highlight color
+                        highlight_color = style_params.get("highlight_color", "#FFFF00")  # Yellow highlight by default
+                        
+                        # Handle different color formats
+                        if isinstance(highlight_color, str) and highlight_color.startswith("#"):
+                            # Convert hex to RGB
+                            if len(highlight_color) == 7:  # #RRGGBB
+                                r = int(highlight_color[1:3], 16)
+                                g = int(highlight_color[3:5], 16)
+                                b = int(highlight_color[5:7], 16)
+                                color = (r, g, b, alpha)
+                            else:
+                                # Default to yellow if invalid format
+                                color = (255, 255, 0, alpha)
+                        elif isinstance(highlight_color, tuple):
+                            # Use the tuple directly
+                            if len(highlight_color) == 3:
+                                color = highlight_color + (alpha,)
+                            else:
+                                color = highlight_color
                         else:
-                            # Default to yellow if invalid format
+                            # Default to yellow
                             color = (255, 255, 0, alpha)
-                    elif isinstance(highlight_color, tuple):
-                        # Use the tuple directly
-                        if len(highlight_color) == 3:
-                            color = highlight_color + (alpha,)
-                        else:
-                            color = highlight_color
                     else:
-                        # Default to yellow
-                        color = (255, 255, 0, alpha)
-                else:
-                    # Use normal color
-                    if isinstance(font_color, str) and font_color.startswith("#"):
-                        # Convert hex to RGB
-                        if len(font_color) == 7:  # #RRGGBB
-                            r = int(font_color[1:3], 16)
-                            g = int(font_color[3:5], 16)
-                            b = int(font_color[5:7], 16)
-                            color = (r, g, b, alpha)
+                        # Use normal color
+                        if isinstance(font_color, str) and font_color.startswith("#"):
+                            # Convert hex to RGB
+                            if len(font_color) == 7:  # #RRGGBB
+                                r = int(font_color[1:3], 16)
+                                g = int(font_color[3:5], 16)
+                                b = int(font_color[5:7], 16)
+                                color = (r, g, b, alpha)
+                            else:
+                                # Default to white if invalid format
+                                color = (255, 255, 255, alpha)
+                        elif isinstance(font_color, tuple):
+                            # Use the tuple directly
+                            if len(font_color) == 3:
+                                color = font_color + (alpha,)
+                            else:
+                                color = font_color
                         else:
-                            # Default to white if invalid format
+                            # Default to white
                             color = (255, 255, 255, alpha)
-                    elif isinstance(font_color, tuple):
-                        # Use the tuple directly
-                        if len(font_color) == 3:
-                            color = font_color + (alpha,)
-                        else:
-                            color = font_color
-                    else:
-                        # Default to white
-                        color = (255, 255, 255, alpha)
-            
-            # Apply the effects
-            if scale != 1.0:
-                # Scale the font for this word
-                scaled_font_size = int(font_size * scale)
-                try:
-                    scaled_font = ImageFont.truetype(font_path, scaled_font_size)
-                except Exception as e:
-                    print(f"Warning: Error loading font: {e}")
-                    scaled_font = font
                 
-                # Get new dimensions
-                try:
-                    new_width, new_height = get_text_size(draw, word + " ", scaled_font)
-                except Exception as e:
-                    # Fallback if text size calculation fails
-                    print(f"Warning: Error calculating text size: {e}")
-                    new_width, new_height = word_width, word_height
-                
-                # Adjust position to keep text baseline aligned
-                y_offset = (word_height - new_height) // 2
-                
-                # Draw the scaled word
-                draw.text(
-                    (x_pos, start_y + y_offset), 
-                    word + " ", 
-                    font=scaled_font, 
-                    fill=color, 
-                    stroke_width=stroke_width,
-                    stroke_fill=stroke_color
-                )
-                
-                # Update position
-                x_pos += new_width
+                # Apply the effects
+                if scale != 1.0:
+                    # Scale the font for this word
+                    scaled_font_size = int(font_size * scale)
+                    try:
+                        scaled_font = ImageFont.truetype(font_path, scaled_font_size)
+                    except Exception as e:
+                        print(f"Warning: Error loading font: {e}")
+                        scaled_font = font
+                    
+                    # Get new dimensions
+                    try:
+                        new_width, new_height = get_text_size(draw, word + " ", scaled_font)
+                    except Exception as e:
+                        # Fallback if text size calculation fails
+                        print(f"Warning: Error calculating text size: {e}")
+                        new_width, new_height = word_width, word_height
+                    
+                    # Adjust position to keep text baseline aligned
+                    y_offset = (word_height - new_height) // 2
+                    
+                    # Draw the scaled word
+                    draw.text(
+                        (x_pos, start_y + y_offset), 
+                        word + " ", 
+                        font=scaled_font, 
+                        fill=color, 
+                        stroke_width=stroke_width,
+                        stroke_fill=stroke_color
+                    )
+                    
+                    # Update position
+                    x_pos += new_width
+                else:
+                    # Draw the word with the specified alpha
+                    draw.text(
+                        (x_pos, start_y), 
+                        word + " ", 
+                        font=font, 
+                        fill=color, 
+                        stroke_width=stroke_width,
+                        stroke_fill=stroke_color
+                    )
+                    
+                    # Update position
+                    x_pos += word_width
             else:
-                # Draw the word with the specified alpha
-                draw.text(
-                    (x_pos, start_y), 
-                    word + " ", 
-                    font=font, 
-                    fill=color, 
-                    stroke_width=stroke_width,
-                    stroke_fill=stroke_color
-                )
-                
-                # Update position
+                # Skip this word but update position
                 x_pos += word_width
-        else:
-            # Skip this word but update position
-            x_pos += word_width
-    
-    # Composite the overlay on the frame
-    frame_pil = Image.alpha_composite(frame_pil.convert('RGBA'), overlay)
-    return np.array(frame_pil.convert('RGB'))
+        
+        # Composite the overlay on the frame
+        frame_pil = Image.alpha_composite(frame_pil.convert('RGBA'), overlay)
+        return np.array(frame_pil.convert('RGB'))
+    except Exception as e:
+        print(f"Error in render_animated_caption: {e}")
+        return frame_img
 
 def add_caption_to_frame(frame, text, word_info, current_time, style, effect_params=None):
     """Add caption to a single video frame with current word timing"""
@@ -1114,52 +1193,21 @@ def add_caption_to_frame(frame, text, word_info, current_time, style, effect_par
             # If word_info is a dict with words_with_times key, extract it
             words_with_times = word_info.get("words_with_times", [])
         
-        # Instead of calling make_frame_with_text (which would create recursion),
-        # implement the basic caption logic directly here
-        if not DEPENDENCIES_AVAILABLE:
-            return frame
+        # Get animation style from effect_params if available
+        animation_style = None
+        if effect_params and isinstance(effect_params, dict):
+            animation_style = effect_params.get("animation_style")
         
-        # Create a PIL image from the frame
-        frame_pil = Image.fromarray(frame)
-        
-        # Create a transparent overlay for text
-        overlay = Image.new('RGBA', frame_pil.size, (0, 0, 0, 0))
-        draw = ImageDraw.Draw(overlay)
-        
-        # Get style parameters
-        if isinstance(style, dict):
-            style_params = style
-        else:
-            style_params = get_caption_style(style)
-        
-        # Get font information
-        font_path = style_params.get("font_path", get_system_font("Arial"))
-        font_size = style_params.get("font_size", 36)
-        font_color = style_params.get("font_color", "#FFFFFF")
-        stroke_width = style_params.get("stroke_width", 2)
-        stroke_color = style_params.get("stroke_color", "#000000")
-        
-        # Load font
-        try:
-            font = ImageFont.truetype(font_path, font_size)
-        except Exception as e:
-            print(f"Warning: Error loading font: {e}")
-            font = ImageFont.load_default()
-        
-        # Get text dimensions
-        text_width, text_height = get_text_size(draw, text, font)
-        
-        # Calculate position
-        text_x = (frame_pil.width - text_width) // 2
-        text_y = frame_pil.height - text_height - style_params.get("bottom_margin", 50)
-        
-        # Draw text
-        draw.text((text_x, text_y), text, font=font, fill=font_color, 
-                 stroke_width=stroke_width, stroke_fill=stroke_color)
-        
-        # Composite the overlay on the frame
-        frame_pil = Image.alpha_composite(frame_pil.convert('RGBA'), overlay)
-        return np.array(frame_pil.convert('RGB'))
+        # Use make_frame_with_text to handle the rendering (without recursion)
+        return make_frame_with_text(
+            frame, 
+            text, 
+            words_with_times, 
+            current_time, 
+            style, 
+            effect_params, 
+            animation_style
+        )
     except Exception as e:
         print(f"Error in add_caption_to_frame: {e}")
         return frame
@@ -1185,7 +1233,14 @@ def add_captions_to_video(video_path, output_path=None, style_name="tiktok", mod
     Returns:
         dict: Results with status and output path
     """
+    print(f"\n\n===== Starting add_captions_to_video =====")
+    print(f"Input video: {video_path}")
+    print(f"Output path: {output_path}")
+    print(f"Style: {style_name}")
+    print(f"Animation style: {animation_style}")
+    
     if not DEPENDENCIES_AVAILABLE:
+        print("Required dependencies not available")
         return {"status": "error", "message": "Required dependencies not available"}
     
     try:
@@ -1209,163 +1264,303 @@ def add_captions_to_video(video_path, output_path=None, style_name="tiktok", mod
             os.makedirs(output_dir, exist_ok=True)
             output_path = os.path.join(output_dir, f"captioned_{os.path.basename(video_path)}")
         
-        # Create output directory if it doesn't exist
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        # Make sure the output directory exists
+        output_dir = os.path.dirname(output_path)
+        if not os.path.exists(output_dir):
+            print(f"Creating output directory: {output_dir}")
+            os.makedirs(output_dir, exist_ok=True)
+        
+        # Check if the output directory is writable
+        if not os.access(output_dir, os.W_OK):
+            print(f"Warning: Output directory {output_dir} is not writable")
+            # Try to make it writable
+            try:
+                os.chmod(output_dir, 0o755)
+                print(f"Changed permissions on {output_dir}")
+            except Exception as e:
+                print(f"Failed to change permissions: {e}")
+                # Try an alternative output path
+                alt_output_dir = os.path.join(os.getcwd(), "output")
+                os.makedirs(alt_output_dir, exist_ok=True)
+                output_path = os.path.join(alt_output_dir, f"captioned_{os.path.basename(video_path)}")
+                print(f"Using alternative output path: {output_path}")
+        
+        print(f"Final output path: {output_path}")
+        print(f"Output directory exists: {os.path.exists(os.path.dirname(output_path))}")
+        print(f"Output directory is writable: {os.access(os.path.dirname(output_path), os.W_OK)}")
         
         update_progress(0.1, "Loading video...")
         
         # Load the video
         video = mp.VideoFileClip(video_path)
+        print(f"Video loaded. Duration: {video.duration:.2f}s, Size: {video.size}")
         
         # Apply max duration limit if specified
         if max_duration is not None and max_duration > 0:
             video = video.subclip(0, min(video.duration, max_duration))
+            print(f"Video clipped to {min(video.duration, max_duration):.2f}s")
         
         update_progress(0.2, "Transcribing audio...")
         
         # Transcribe the video
         transcription = transcribe_video(video_path, model_size=model_size, engine=engine)
         
-        if "error" in transcription:
-            return {"status": "error", "message": transcription["error"]}
+        if "status" in transcription and transcription["status"] == "error":
+            return {"status": "error", "message": transcription.get("message", "Unknown transcription error")}
         
         update_progress(0.3, "Processing transcript...")
         
         # Get the words with timing
         words_with_times = []
         
-        for word in transcription.get("words", []):
-            words_with_times.append({
-                "word": word["word"],
-                "start": word["start"],
-                "end": word["end"]
-            })
+        if "words" in transcription and isinstance(transcription["words"], list):
+            for word in transcription["words"]:
+                if isinstance(word, dict) and "word" in word and "start" in word and "end" in word:
+                    words_with_times.append({
+                        "word": word["word"],
+                        "start": word["start"],
+                        "end": word["end"]
+                    })
         
         # If no words were found, try to use segments instead
-        if not words_with_times and "segments" in transcription:
+        if not words_with_times and "segments" in transcription and isinstance(transcription["segments"], list):
             for segment in transcription["segments"]:
-                words_with_times.append({
-                    "word": segment["text"],
-                    "start": segment["start"],
-                    "end": segment["end"]
-                })
+                if isinstance(segment, dict) and "text" in segment and "start" in segment and "end" in segment:
+                    words_with_times.append({
+                        "word": segment["text"],
+                        "start": segment["start"],
+                        "end": segment["end"]
+                    })
         
         # If still no words, return an error
         if not words_with_times:
             return {"status": "error", "message": "No speech detected in the video"}
         
+        print(f"Found {len(words_with_times)} words in transcription")
+        
         update_progress(0.4, "Generating captions...")
         
         # Get the caption style
-        style = get_caption_style(style_name, custom_style)
+        if isinstance(style_name, str):
+            style = get_caption_style(style_name)
+        else:
+            style = style_name  # Assume it's already a style dict
+            
+        # Apply custom style if provided
+        if custom_style:
+            if not style:
+                style = {}
+            for key, value in custom_style.items():
+                style[key] = value
+        
+        print(f"Using style: {style.get('position', 'unknown')}, font_size: {style.get('font_size', 'unknown')}")
         
         # Group words into caption segments for display
         caption_segments = []
-        current_segment = {
-            "words": [],
-            "start": words_with_times[0]["start"],
-            "end": words_with_times[0]["end"],
-            "text": ""
-        }
         
-        max_words_per_segment = style.get("max_words_per_segment", 7)
-        min_segment_duration = style.get("min_segment_duration", 1.0)
-        
-        for word_info in words_with_times:
-            # Check if we should start a new segment
-            if (len(current_segment["words"]) >= max_words_per_segment or
-                (current_segment["words"] and 
-                 word_info["start"] - current_segment["end"] > style.get("segment_break_threshold", 1.0))):
-                
-                # Finalize the current segment
-                if current_segment["words"]:
-                    current_segment["text"] = " ".join([w["word"] for w in current_segment["words"]])
-                    caption_segments.append(current_segment)
-                
-                # Start a new segment
-                current_segment = {
-                    "words": [],
-                    "start": word_info["start"],
-                    "end": word_info["end"],
-                    "text": ""
-                }
+        if words_with_times:
+            current_segment = {
+                "words": [],
+                "start": words_with_times[0]["start"],
+                "end": words_with_times[0]["end"],
+                "text": ""
+            }
             
-            # Add the word to the current segment
-            current_segment["words"].append(word_info)
-            current_segment["end"] = word_info["end"]
+            max_words_per_segment = 7
+            if isinstance(style, dict):
+                max_words_per_segment = style.get("max_words_per_segment", 7)
+            
+            segment_break_threshold = 1.0
+            if isinstance(style, dict):
+                segment_break_threshold = style.get("segment_break_threshold", 1.0)
+            
+            for word_info in words_with_times:
+                # Check if we should start a new segment
+                if (len(current_segment["words"]) >= max_words_per_segment or
+                    (current_segment["words"] and 
+                     word_info["start"] - current_segment["end"] > segment_break_threshold)):
+                    
+                    # Finalize the current segment
+                    if current_segment["words"]:
+                        current_segment["text"] = " ".join([w["word"] for w in current_segment["words"] 
+                                                          if isinstance(w, dict) and "word" in w])
+                        caption_segments.append(current_segment)
+                    
+                    # Start a new segment
+                    current_segment = {
+                        "words": [],
+                        "start": word_info["start"],
+                        "end": word_info["end"],
+                        "text": ""
+                    }
+                
+                # Add the word to the current segment
+                current_segment["words"].append(word_info)
+                current_segment["end"] = word_info["end"]
+            
+            # Add the last segment if it has words
+            if current_segment["words"]:
+                current_segment["text"] = " ".join([w["word"] for w in current_segment["words"] 
+                                                  if isinstance(w, dict) and "word" in w])
+                caption_segments.append(current_segment)
         
-        # Add the last segment if it has words
-        if current_segment["words"]:
-            current_segment["text"] = " ".join([w["word"] for w in current_segment["words"]])
-            caption_segments.append(current_segment)
+        print(f"Created {len(caption_segments)} caption segments")
+        if caption_segments:
+            print(f"First segment: {caption_segments[0].get('text', '')[:30]}...")
         
         update_progress(0.5, "Applying captions to video...")
         
-        # Define function to create caption for a frame
-        def create_caption_frame(get_frame_func_or_img, t):
-            # Handle both frame functions and direct numpy arrays
-            if callable(get_frame_func_or_img):
-                frame_img = get_frame_func_or_img(t)
-            else:
-                frame_img = get_frame_func_or_img
-            # Find the currently active caption segment
-            active_segment = None
-            for segment in caption_segments:
-                if segment["start"] <= t <= segment["end"] + style.get("segment_end_offset", 0.5):
-                    active_segment = segment
-                    break
-            
-            # If no active segment, return the frame as is
-            if not active_segment:
+        # Define a simpler, more reliable caption frame function
+        def caption_frame_maker(get_frame, t):
+            try:
+                # Get the frame image using the provided function or directly use it if it's already a frame
+                if callable(get_frame):
+                    frame_img = get_frame(t)
+                else:
+                    frame_img = get_frame
+                    
+                # Find active segment
+                active_segment = None
+                segment_end_offset = 0.5
+                if isinstance(style, dict):
+                    segment_end_offset = style.get("segment_end_offset", 0.5)
+                
+                for segment in caption_segments:
+                    if segment["start"] <= t <= segment["end"] + segment_end_offset:
+                        active_segment = segment
+                        break
+                
+                # If no active segment, return frame as is
+                if not active_segment:
+                    return frame_img
+                
+                # Get segment info
+                segment_text = active_segment.get("text", "")
+                segment_words = active_segment.get("words", [])
+                
+                # If empty text, return frame as is
+                if not segment_text:
+                    return frame_img
+                
+                # Add caption based on animation style
+                if animation_style and animation_style in DREAM_ANIMATION_STYLES:
+                    # Use direct rendering without function calls
+                    return render_animated_caption(
+                        frame_img,
+                        segment_text,
+                        segment_words,
+                        t,
+                        style,
+                        animation_style,
+                        None
+                    )
+                else:
+                    # Use basic caption
+                    return render_basic_caption(frame_img, segment_text, style)
+            except Exception as e:
+                print(f"Error in caption_frame_maker at t={t}: {e}")
+                traceback.print_exc()
                 return frame_img
+        
+        # Apply the function to each frame
+        try:
+            print("Starting to apply captions to frames...")
+            # Use a more compatible approach by modifying the existing video
+            # This is more reliable than creating a new VideoClip
+            captioned_video = video.fl(caption_frame_maker)
             
-            # Add captions to the frame
-            if animation_style:
-                # Use word-by-word animation
-                return make_frame_with_text(
-                    frame_img, 
-                    active_segment["text"],
-                    active_segment["words"], 
-                    t, 
-                    style_name,
-                    animation_style=animation_style
+            update_progress(0.8, "Writing output video...")
+            print(f"Writing output video to {output_path}")
+            
+            # Create the final video with captions
+            try:
+                update_progress(0.9, "Saving video with captions...")
+                captioned_video.write_videofile(
+                    output_path,
+                    codec="libx264",
+                    audio_codec="aac",
+                    temp_audiofile=tempfile.NamedTemporaryFile(suffix='.m4a', delete=False).name,
+                    remove_temp=True,
+                    threads=4,
+                    preset="medium",
+                    ffmpeg_params=["-crf", "23"],
+                    logger=None
                 )
-            else:
-                # Use standard captions
-                return make_frame_with_text(
-                    frame_img, 
-                    active_segment["text"],
-                    active_segment["words"], 
-                    t,
-                    style
-                )
-        
-        # Apply captions to the video
-        captioned_video = video.fl(create_caption_frame)
-        
-        update_progress(0.8, "Writing output video...")
-        
-        # Write the output video
-        captioned_video.write_videofile(
-            output_path,
-            codec="libx264",
-            audio_codec="aac",
-            temp_audiofile=tempfile.NamedTemporaryFile(suffix='.m4a', delete=False).name,
-            remove_temp=True,
-            threads=2,
-            logger=None
-        )
-        
-        # Clean up
-        video.close()
-        captioned_video.close()
-        
-        update_progress(1.0, "Caption generation complete!")
-        
-        return {
-            "status": "success",
-            "output_path": output_path
-        }
+                
+                # Verify the output file was created
+                if os.path.exists(output_path):
+                    file_size = os.path.getsize(output_path)
+                    print(f"Output file successfully created at: {output_path}")
+                    print(f"File size: {file_size} bytes")
+                    
+                    # Additional verification that file is a valid video
+                    try:
+                        # Import inside this block to ensure it's available
+                        from moviepy.editor import VideoFileClip
+                        
+                        # Just open and get duration to verify it's a valid video
+                        verify_clip = VideoFileClip(output_path)
+                        duration = verify_clip.duration
+                        print(f"Verified video file. Duration: {duration} seconds")
+                        verify_clip.close()
+                    except Exception as e:
+                        print(f"Warning: File was created but may not be a valid video: {e}")
+                        # Continue anyway since the file exists
+                else:
+                    print(f"Error: Output file was not created at: {output_path}")
+                    # Try an alternative approach - use absolute path
+                    alt_path = os.path.abspath(output_path)
+                    print(f"Trying alternative output path: {alt_path}")
+                    captioned_video.write_videofile(
+                        alt_path,
+                        codec="libx264",
+                        audio_codec="aac",
+                        temp_audiofile=tempfile.NamedTemporaryFile(suffix='.m4a', delete=False).name,
+                        remove_temp=True,
+                        threads=4,
+                        preset="medium",
+                        ffmpeg_params=["-crf", "23"],
+                        logger=None
+                    )
+                    
+                    if os.path.exists(alt_path):
+                        print(f"Success with alternative path. File created at: {alt_path}")
+                        output_path = alt_path
+                    else:
+                        print(f"Failed to create output file even with alternative path.")
+                    
+            except Exception as e:
+                print(f"Error saving video: {e}")
+                traceback.print_exc()
+                return {
+                    "status": "error",
+                    "message": f"Error saving video: {str(e)}",
+                    "traceback": traceback.format_exc()
+                }
+            
+            update_progress(1.0, "Caption generation complete!")
+            print("Caption generation complete!")
+            
+            return {
+                "status": "success",
+                "message": "Captions added successfully",
+                "output_path": output_path
+            }
+        except Exception as e:
+            print(f"Error in video processing: {str(e)}")
+            traceback.print_exc()
+            # Make sure to close video objects
+            try:
+                video.close()
+            except Exception:
+                pass
+            try:
+                if 'captioned_video' in locals():
+                    captioned_video.close()
+            except Exception:
+                pass
+            
+            raise
     except Exception as e:
         print(f"Error adding captions: {str(e)}")
         print(traceback.format_exc())

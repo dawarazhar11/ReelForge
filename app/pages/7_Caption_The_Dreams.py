@@ -11,6 +11,8 @@ from pathlib import Path
 import streamlit as st
 import numpy as np
 from PIL import Image
+from datetime import datetime
+import base64
 
 # Add the parent directory to sys.path
 app_dir = Path(__file__).parent.parent.absolute()
@@ -81,6 +83,50 @@ DREAM_ANIMATION_STYLES = {
         "description": "Only shows the current word being spoken with emphasis"
     }
 }
+
+# Add helper function to get a video data URL for embedding
+def get_video_data_url(file_path):
+    """Create a data URL for a video to embed it directly in the page"""
+    try:
+        with open(file_path, 'rb') as f:
+            video_bytes = f.read()
+        b64_video = base64.b64encode(video_bytes).decode()
+        return f"data:video/mp4;base64,{b64_video}"
+    except Exception as e:
+        print(f"Error creating data URL: {e}")
+        return None
+
+# Add helper function to create a temporary HTML file with the video
+def create_html_video_player(file_path):
+    """Create a temporary HTML file with the video and return the path"""
+    try:
+        temp_html_path = os.path.join(os.path.dirname(file_path), "temp_video_player.html")
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Video Player</title>
+            <style>
+                body {{ margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; height: 100vh; }}
+                video {{ max-width: 100%; max-height: 90vh; }}
+            </style>
+        </head>
+        <body>
+            <video controls autoplay>
+                <source src="file://{file_path}" type="video/mp4">
+                Your browser does not support the video tag.
+            </video>
+        </body>
+        </html>
+        """
+        
+        with open(temp_html_path, "w") as f:
+            f.write(html_content)
+            
+        return temp_html_path
+    except Exception as e:
+        print(f"Error creating HTML player: {e}")
+        return None
 
 # Main function
 def main():
@@ -433,8 +479,8 @@ def main():
                     "bottom_margin": 50
                 }
                 
-                # Import the function to add captions to a frame
-                from utils.video.captions import make_frame_with_text, get_caption_style
+                # Import the functions from the captions module
+                from utils.video.captions import make_frame_with_text, get_caption_style, render_animated_caption, render_basic_caption
                 
                 # Merge the selected style with custom settings
                 style = get_caption_style(st.session_state.caption_dreams.get("selected_style", "tiktok"))
@@ -445,23 +491,24 @@ def main():
                 else:
                     style = custom_style
                 
-                # Add captions to the preview frame
-                # The add_animated_caption_to_frame function expects a style_name (string) as 5th parameter
-                # and can take a custom_style as an extra parameter
-                from utils.video.captions import add_animated_caption_to_frame
+                # Get the animation style
+                animation_style = st.session_state.caption_dreams.get("animation_style", "word_by_word")
                 
-                # Get the selected base style name
-                style_name = st.session_state.caption_dreams.get("selected_style", "tiktok")
+                # Print debug information
+                print(f"Preview settings: Animation style: {animation_style}")
+                print(f"Preview text: {preview_text}")
+                print(f"Word count: {len(preview_words)}")
+                print(f"Preview time: {preview_time}")
                 
-                # Add captions with the selected animation style
-                preview_frame = add_animated_caption_to_frame(
+                # Add captions using the make_frame_with_text function that handles animation styles
+                preview_frame = make_frame_with_text(
                     st.session_state.preview_frame.copy(),
                     preview_text,
                     preview_words,
                     preview_time,
-                    style_name,  # Pass the style name (string), not the style dictionary
-                    st.session_state.caption_dreams.get("animation_style", "word_by_word"),
-                    effect_params=custom_style  # Pass custom style as effect_params
+                    style,  # Pass style dictionary directly
+                    None,   # No additional effect params needed
+                    animation_style  # Pass animation style
                 )
                 
                 # Display the preview
@@ -480,9 +527,16 @@ def main():
         
         with generate_tab:
             # Output file path
+            output_dir = os.path.join(os.getcwd(), "output")
+            os.makedirs(output_dir, exist_ok=True)
             output_filename = f"captioned_{os.path.basename(st.session_state.caption_dreams['source_video'])}"
-            output_path = os.path.join("output", output_filename)
+            output_path = os.path.join(output_dir, output_filename)
             st.session_state.caption_dreams["output_path"] = output_path
+            
+            # Debug info about output path
+            st.info(f"Output directory: {output_dir}")
+            st.info(f"Directory exists: {os.path.exists(output_dir)}")
+            st.info(f"Directory writable: {os.access(output_dir, os.W_OK)}")
             
             # Create a column layout for buttons
             col1, col2 = st.columns([1, 2])
@@ -505,6 +559,24 @@ def main():
                         
                         # Update initial status
                         update_progress(0.1, "Preparing to process video...")
+                        
+                        # Ensure output directory exists
+                        output_dir = os.path.join(os.getcwd(), "output")
+                        os.makedirs(output_dir, exist_ok=True)
+                        
+                        # Create output filename using the exact same timestamp as the uploaded file
+                        output_filename = f"captioned_{os.path.basename(st.session_state.caption_dreams['source_video'])}"
+                        output_path = os.path.join(output_dir, output_filename)
+                        
+                        # Log important path information
+                        print(f"Source video: {st.session_state.caption_dreams['source_video']}")
+                        print(f"Generated output path: {output_path}")
+                        print(f"Current working directory: {os.getcwd()}")
+                        
+                        # Update session state with the absolute path
+                        output_path = os.path.abspath(output_path)
+                        st.session_state.caption_dreams["output_path"] = output_path
+                        print(f"Final absolute output path: {output_path}")
                         
                         # Create custom style with the user's customization options
                         custom_style = {
@@ -539,6 +611,19 @@ def main():
                             status_text.empty()
                             
                             st.success("✅ Captions generated successfully!")
+                            
+                            # Debug info
+                            output_file = result.get("output_path", output_path)
+                            print(f"Output file path from result: {output_file}")
+                            print(f"File exists: {os.path.exists(output_file)}")
+                            print(f"File size: {os.path.getsize(output_file) if os.path.exists(output_file) else 'N/A'}")
+                            
+                            # IMPORTANT: Update session state with the path returned from the function
+                            # This is critical in case the backend used an alternative path
+                            st.session_state.caption_dreams["output_path"] = output_file
+                            print(f"Updated session state output path: {st.session_state.caption_dreams['output_path']}")
+                            print(f"Session state status: {st.session_state.caption_dreams['status']}")
+                            
                             st.rerun()  # Rerun to show the video output
                         else:
                             st.session_state.caption_dreams["status"] = "error"
@@ -564,22 +649,166 @@ def main():
                             st.code(traceback.format_exc(), language="python")
             
             # Display the output video if available
-            if st.session_state.caption_dreams["status"] == "completed" and os.path.exists(output_path):
-                st.markdown("## Output Video with Animated Captions")
-                st.video(output_path)
+            if st.session_state.caption_dreams["status"] == "completed":
+                output_path = st.session_state.caption_dreams.get("output_path")
                 
-                # Provide download link
-                with open(output_path, "rb") as file:
-                    st.download_button(
-                        label="Download Captioned Video",
-                        data=file,
-                        file_name=output_filename,
-                        mime="video/mp4",
-                        key="download_btn"
-                    )
+                # Debug info about the video path
+                st.markdown("### Debug Information")
+                st.info(f"Output video status: {'Completed' if st.session_state.caption_dreams['status'] == 'completed' else 'Not completed'}")
+                st.info(f"Output path: {output_path}")
+                st.info(f"Current working directory: {os.getcwd()}")
                 
-                # Mark this step as complete in the workflow
-                mark_step_complete("caption_dreams")
+                # Make sure path is absolute
+                if output_path and not os.path.isabs(output_path):
+                    absolute_path = os.path.abspath(output_path)
+                    st.info(f"Absolute path: {absolute_path}")
+                    output_path = absolute_path
+                
+                # Check if path exists, if not try to find a similar file
+                if output_path and not os.path.exists(output_path):
+                    st.warning(f"Path does not exist: {output_path}")
+                    # Try to find files with similar names
+                    try:
+                        output_dir = os.path.dirname(output_path)
+                        base_name = os.path.basename(output_path)
+                        
+                        if os.path.exists(output_dir):
+                            files = os.listdir(output_dir)
+                            st.info(f"Files in output directory: {files}")
+                            
+                            # Look for files with similar names (captioned_*)
+                            similar_files = [f for f in files if f.startswith("captioned_")]
+                            if similar_files:
+                                # Sort by creation time (newest first)
+                                similar_files.sort(key=lambda x: os.path.getctime(os.path.join(output_dir, x)), reverse=True)
+                                newest_file = similar_files[0]
+                                st.info(f"Found similar file: {newest_file}")
+                                
+                                # Use the newest similar file
+                                output_path = os.path.join(output_dir, newest_file)
+                                st.info(f"Using alternative file: {output_path}")
+                        else:
+                            st.info(f"Output directory does not exist: {output_dir}")
+                    except Exception as e:
+                        st.error(f"Error finding similar files: {e}")
+                
+                st.info(f"Final path exists: {os.path.exists(output_path) if output_path else 'No path'}")
+                
+                if output_path and os.path.exists(output_path):
+                    try:
+                        # Get file size
+                        file_size = os.path.getsize(output_path)
+                        st.info(f"File size: {file_size} bytes")
+                        
+                        # Verify it's a valid video file
+                        if file_size > 0:
+                            st.markdown("## Output Video with Animated Captions")
+                            
+                            # Try multiple approaches to display the video
+                            video_displayed = False
+                            
+                            # Approach 1: Default Streamlit video player
+                            try:
+                                st.video(output_path)
+                                video_displayed = True
+                            except Exception as e1:
+                                st.warning(f"Default video player failed: {str(e1)}")
+                                
+                                # Approach 2: Use bytes
+                                try:
+                                    with open(output_path, "rb") as video_file:
+                                        video_bytes = video_file.read()
+                                        st.video(video_bytes)
+                                        video_displayed = True
+                                except Exception as e2:
+                                    st.warning(f"Bytes-based video player failed: {str(e2)}")
+                                    
+                                    # Approach 3: Use data URL
+                                    try:
+                                        data_url = get_video_data_url(output_path)
+                                        if data_url:
+                                            st.markdown(f"""
+                                            <video width="100%" controls>
+                                              <source src="{data_url}" type="video/mp4">
+                                              Your browser does not support the video tag.
+                                            </video>
+                                            """, unsafe_allow_html=True)
+                                            video_displayed = True
+                                    except Exception as e3:
+                                        st.warning(f"Data URL video player failed: {str(e3)}")
+                                        
+                                        # Approach 4: Create HTML player file
+                                        try:
+                                            html_path = create_html_video_player(output_path)
+                                            if html_path:
+                                                st.markdown(f"📹 [Open Video in Browser](file://{html_path})")
+                                                video_displayed = True
+                                        except Exception as e4:
+                                            st.warning(f"HTML player failed: {str(e4)}")
+                        
+                            # Provide download link regardless of display success
+                            with open(output_path, "rb") as file:
+                                st.download_button(
+                                    label="⬇️ Download Captioned Video",
+                                    data=file,
+                                    file_name=os.path.basename(output_path),
+                                    mime="video/mp4",
+                                    key="download_btn"
+                                )
+                            
+                            # If all display methods failed, show a message
+                            if not video_displayed:
+                                st.error("Could not display the video in the UI, but you can download it using the button above.")
+                                st.info(f"Video file path: {output_path}")
+                                
+                                # Additional option - open directly
+                                if st.button("🎬 Open Video in Default Video Player"):
+                                    import subprocess
+                                    import platform
+                                    
+                                    system = platform.system()
+                                    try:
+                                        if system == "Darwin":  # macOS
+                                            subprocess.call(["open", output_path])
+                                        elif system == "Windows":
+                                            subprocess.call(["start", output_path], shell=True)
+                                        else:  # Linux
+                                            subprocess.call(["xdg-open", output_path])
+                                        st.success("Video opened in external player")
+                                    except Exception as e:
+                                        st.error(f"Failed to open video: {e}")
+                        
+                            # Mark this step as complete in the workflow
+                            mark_step_complete("caption_dreams")
+                        else:
+                            st.error("Output file exists but has zero size.")
+                    except Exception as e:
+                        st.error(f"Error displaying video: {str(e)}")
+                        st.code(traceback.format_exc())
+                else:
+                    st.warning(f"Output video file not found at: {output_path}")
+                    
+                    # Try to list files in output directory to help debugging
+                    try:
+                        output_dir = os.path.dirname(output_path) if output_path else os.path.join(os.getcwd(), "output")
+                        if os.path.exists(output_dir):
+                            files = os.listdir(output_dir)
+                            st.info(f"Files in output directory: {files}")
+                            
+                            # Show most recent file info
+                            if files:
+                                files.sort(key=lambda x: os.path.getctime(os.path.join(output_dir, x)), reverse=True)
+                                recent_file = files[0]
+                                recent_path = os.path.join(output_dir, recent_file)
+                                st.info(f"Most recent file: {recent_file}")
+                                st.info(f"Created: {datetime.fromtimestamp(os.path.getctime(recent_path))}")
+                                st.info(f"Size: {os.path.getsize(recent_path)} bytes")
+                        else:
+                            st.info(f"Output directory does not exist: {output_dir}")
+                    except Exception as e:
+                        st.error(f"Error listing output directory: {str(e)}")
+                    
+                    st.info("Try generating the video again.")
 
 # Run the main function
 if __name__ == "__main__":

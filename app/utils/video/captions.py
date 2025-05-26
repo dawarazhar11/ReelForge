@@ -841,6 +841,12 @@ def render_animated_caption(frame_img, text, words_with_times, current_time, sty
         
         # Handle single word focus animation separately
         if animation_style == "single_word_focus":
+            # Initialize storage for word persistence
+            if not hasattr(render_animated_caption, "prev_word"):
+                render_animated_caption.prev_word = None
+                render_animated_caption.prev_time = 0
+                render_animated_caption.min_display_time = 0.3  # Minimum time to display a word
+            
             # Find the current word being spoken
             current_word = None
             current_word_text = ""
@@ -855,121 +861,144 @@ def render_animated_caption(frame_img, text, words_with_times, current_time, sty
                 word_start = word_info["start"] 
                 word_end = word_info["end"]
                 
-                # Add a small buffer to the end time to avoid gaps
-                # This helps ensure words don't disappear between spoken words
-                buffer_time = 0.1
+                # Add a larger buffer to the end time to avoid gaps
+                buffer_time = 0.3  # Increased buffer
                 
                 # Check if this is the current word
                 if word_start <= current_time <= (word_end + buffer_time):
                     current_word = word_info
                     current_word_text = word
                     current_word_index = i
+                    
+                    # Store for persistence
+                    render_animated_caption.prev_word = word_info
+                    render_animated_caption.prev_time = current_time
                     break
             
-            # Second pass: if no word is active, find the closest word
-            if not current_word and words_with_times:
-                # Find the closest word in time
-                closest_word = None
-                min_distance = float('inf')
-                
-                for i, word_info in enumerate(words_with_times):
-                    if not isinstance(word_info, dict) or "word" not in word_info or "start" not in word_info or "end" not in word_info:
-                        continue
-                        
-                    word_start = word_info["start"]
-                    word_end = word_info["end"]
-                    
-                    # Distance to start and end times
-                    start_distance = abs(current_time - word_start)
-                    end_distance = abs(current_time - word_end)
-                    
-                    # Take the minimum distance
-                    distance = min(start_distance, end_distance)
-                    
-                    if distance < min_distance:
-                        min_distance = distance
-                        closest_word = word_info
-                        current_word_index = i
-            
-            # If we found a current word, display only that word
-            if current_word:
-                # Make the word larger for emphasis, but not too large
-                # Limit scaling based on word length
-                scale_factor = 1.5  # Default scale factor
-                if len(current_word_text) > 10:
-                    # Reduce scale for longer words
-                    scale_factor = 1.3
-                elif len(current_word_text) > 5:
-                    scale_factor = 1.4
-                
-                large_font_size = int(font_size * scale_factor)
-                try:
-                    large_font = ImageFont.truetype(font_path, large_font_size)
-                except Exception as e:
-                    print(f"Warning: Error loading font: {e}")
-                    large_font = font
-                    
-                # Get new dimensions with the larger font
-                word_width, word_height = get_text_size(draw, current_word_text, large_font)
-                
-                # Calculate position for the centered single word
-                if position == "custom":
-                    word_x = int(frame_pil.width * h_pos - (word_width / 2))
-                    word_y = int(frame_pil.height * v_pos - (word_height / 2))
+            # Second pass: if no word is active, try persistence or find closest
+            if not current_word:
+                # Check if we can use the previous word (for minimum display time)
+                if (render_animated_caption.prev_word and 
+                    current_time - render_animated_caption.prev_time < render_animated_caption.min_display_time):
+                    current_word = render_animated_caption.prev_word
+                    current_word_text = current_word["word"]
+                    print(f"Using persisted word '{current_word_text}' at time {current_time:.2f}s")
                 else:
-                    word_x = (frame_pil.width - word_width) // 2
-                    word_y = frame_pil.height - word_height - style_params.get("bottom_margin", 50)
+                    # Find the closest word in time
+                    closest_word = None
+                    min_distance = float('inf')
+                    
+                    for i, word_info in enumerate(words_with_times):
+                        if not isinstance(word_info, dict) or "word" not in word_info or "start" not in word_info or "end" not in word_info:
+                            continue
+                            
+                        word_start = word_info["start"]
+                        word_end = word_info["end"]
+                        
+                        # Distance to start and end times
+                        start_distance = abs(current_time - word_start)
+                        end_distance = abs(current_time - word_end)
+                        
+                        # Take the minimum distance
+                        distance = min(start_distance, end_distance)
+                        
+                        if distance < min_distance:
+                            min_distance = distance
+                            closest_word = word_info
+                            current_word_index = i
+                    
+                    # Use the closest word if it's within a reasonable time range (0.7 seconds)
+                    if closest_word and min_distance < 0.7:
+                        current_word = closest_word
+                        current_word_text = closest_word["word"]
+                        render_animated_caption.prev_word = closest_word
+                        render_animated_caption.prev_time = current_time
+                        print(f"Using closest word '{current_word_text}' at time {current_time:.2f}s (distance: {min_distance:.2f}s)")
+        
+        # If we found a current word, display only that word
+        if current_word:
+            # Determine the font size based on word length
+            scale_factor = 1.5  # Default scale factor
+            if len(current_word_text) > 10:
+                # Reduce scale for longer words
+                scale_factor = 1.3
+            elif len(current_word_text) > 5:
+                scale_factor = 1.4
+            
+            large_font_size = int(font_size * scale_factor)
+            try:
+                large_font = ImageFont.truetype(font_path, large_font_size)
+            except Exception as e:
+                print(f"Warning: Error loading font: {e}")
+                large_font = font
                 
-                # Draw text with a highlight background if requested
-                if show_textbox:
-                    # Get textbox opacity
-                    opacity = int(255 * style_params.get("textbox_opacity", 0.7))
-                    
-                    # Get textbox color with opacity
-                    highlight_color = style_params.get("highlight_color", (0, 0, 0))
-                    
-                    # If highlight_color is a tuple, ensure it has alpha
-                    if isinstance(highlight_color, tuple):
-                        if len(highlight_color) == 3:
-                            highlight_color = highlight_color + (opacity,)
-                        elif len(highlight_color) == 4:
-                            # Replace alpha with our calculated opacity
-                            highlight_color = highlight_color[:3] + (opacity,)
-                    else:
-                        # Default to semi-transparent black
-                        highlight_color = (0, 0, 0, opacity)
-                    
-                    # Ensure padding is appropriate for the word size
-                    padding = min(30, max(20, int(word_width * 0.1)))  # Between 20-30px based on word width
-                    
-                    # Draw rounded rectangle background with enough padding
+            # Get new dimensions with the larger font
+            word_width, word_height = get_text_size(draw, current_word_text, large_font)
+            
+            # Calculate position for the centered single word
+            if position == "custom":
+                word_x = int(frame_pil.width * h_pos - (word_width / 2))
+                word_y = int(frame_pil.height * v_pos - (word_height / 2))
+            else:
+                word_x = (frame_pil.width - word_width) // 2
+                word_y = frame_pil.height - word_height - style_params.get("bottom_margin", 50)
+            
+            # Draw text with a highlight background if requested
+            if show_textbox:
+                # Get textbox opacity
+                opacity = int(255 * style_params.get("textbox_opacity", 0.7))
+                
+                # Get textbox color with opacity
+                highlight_color = style_params.get("highlight_color", (0, 0, 0))
+                
+                # If highlight_color is a tuple, ensure it has alpha
+                if isinstance(highlight_color, tuple):
+                    if len(highlight_color) == 3:
+                        highlight_color = highlight_color + (opacity,)
+                    elif len(highlight_color) == 4:
+                        # Replace alpha with our calculated opacity
+                        highlight_color = highlight_color[:3] + (opacity,)
+                else:
+                    # Default to semi-transparent black
+                    highlight_color = (0, 0, 0, opacity)
+                
+                # Ensure padding is appropriate for the word size
+                padding = min(30, max(20, int(word_width * 0.1)))  # Between 20-30px based on word width
+                
+                # Draw rounded rectangle background with enough padding
+                try:
                     draw.rounded_rectangle(
                         [word_x - padding, word_y - padding, 
                         word_x + word_width + padding, word_y + word_height + padding],
                         radius=12,
                         fill=highlight_color
                     )
-                
-                # Draw the word with the larger font
-                draw.text(
-                    (word_x, word_y), 
-                    current_word_text, 
-                    font=large_font, 
-                    fill=font_color,
-                    stroke_width=stroke_width,
-                    stroke_fill=stroke_color
-                )
-                
-                # Display a message about word timing (for debugging)
-                print(f"Showing word '{current_word_text}' at time {current_time:.2f}s (word {current_word_index+1}/{len(words_with_times)})")
-                
-                # Composite the overlay on the frame
-                frame_pil = Image.alpha_composite(frame_pil.convert('RGBA'), overlay)
-                return np.array(frame_pil.convert('RGB'))
-            else:
-                # If no current word and we're at the beginning, show the first word
-                if current_time < 1.0 and words_with_times:
-                    first_word = words_with_times[0]["word"]
+                except AttributeError:
+                    # Fallback for older PIL versions without rounded_rectangle
+                    draw.rectangle(
+                        [word_x - padding, word_y - padding, 
+                        word_x + word_width + padding, word_y + word_height + padding],
+                        fill=highlight_color
+                    )
+            
+            # Draw the word with the larger font
+            draw.text(
+                (word_x, word_y), 
+                current_word_text, 
+                font=large_font, 
+                fill=font_color,
+                stroke_width=stroke_width,
+                stroke_fill=stroke_color
+            )
+            
+            # Composite the overlay on the frame
+            frame_pil = Image.alpha_composite(frame_pil.convert('RGBA'), overlay)
+            return np.array(frame_pil.convert('RGB'))
+        else:
+            # If no current word and we're at the beginning, show the first word
+            if current_time < 1.0 and words_with_times and len(words_with_times) > 0:
+                first_word = words_with_times[0].get("word", "")
+                if first_word:
                     print(f"Showing first word '{first_word}' before official start time")
                     # Create a temporary overlay for the first word
                     temp_overlay = Image.new('RGBA', frame_pil.size, (0, 0, 0, 0))
@@ -999,180 +1028,9 @@ def render_animated_caption(frame_img, text, words_with_times, current_time, sty
                     # Composite and return
                     frame_pil = Image.alpha_composite(frame_pil.convert('RGBA'), temp_overlay)
                     return np.array(frame_pil.convert('RGB'))
-        
-        # For other animation styles, process each word
-        x_pos = start_x
-        
-        for word_info in words_with_times:
-            # Check if word_info has the expected structure
-            if not isinstance(word_info, dict) or "word" not in word_info or "start" not in word_info or "end" not in word_info:
-                continue
-                
-            word = word_info["word"]
-            word_start = word_info["start"] 
-            word_end = word_info["end"]
-            
-            # Check if this word should be visible
-            is_active = word_start <= current_time and (
-                animation_style == "word_by_word" or current_time <= word_end + 0.5
-            )
-            
-            # Get word dimensions
-            word_width, word_height = get_text_size(draw, word + " ", font)
-            
-            if is_active:
-                # Apply animation style
-                if animation_style == "word_by_word":
-                    # Simply display the word
-                    alpha = 255
-                    scale = 1.0
-                    color = font_color
-                    
-                elif animation_style == "fade_in_out":
-                    # Calculate fade in/out
-                    if current_time < word_start + 0.3:
-                        # Fade in
-                        progress = (current_time - word_start) / 0.3
-                        alpha = int(255 * progress)
-                    elif current_time > word_end:
-                        # Fade out
-                        progress = 1.0 - min(1.0, (current_time - word_end) / 0.5)
-                        alpha = int(255 * progress)
-                    else:
-                        # Fully visible
-                        alpha = 255
-                    
-                    scale = 1.0
-                    color = font_color
-                    
-                elif animation_style == "scale_pulse":
-                    # Scale up when the word is first spoken
-                    # Add safety check to avoid division by zero or negative scale
-                    min_scale = 0.01  # Prevent zero or negative scale
-                    if current_time < word_start + 0.3:
-                        # Scale up
-                        progress = (current_time - word_start) / 0.3
-                        # Ensure scale is within reasonable bounds
-                        scale = max(min_scale, 1.0 + (0.5 * (1.0 - progress)))
-                    elif current_time > word_end:
-                        # Scale down when word is done
-                        progress = 1.0 - min(1.0, (current_time - word_end) / 0.5)
-                        # Ensure scale is at least the minimum value
-                        scale = max(min_scale, 1.0 * progress)
-                    else:
-                        # Normal size
-                        scale = 1.0
-                    
-                    alpha = 255
-                    color = font_color
-                    
-                elif animation_style == "color_highlight":
-                    # Change color for the current word
-                    alpha = 255
-                    scale = 1.0
-                    
-                    # Determine if this is the current word being spoken
-                    is_current = (word_start <= current_time <= word_end)
-                    
-                    if is_current:
-                        # Use highlight color
-                        highlight_color = style_params.get("highlight_color", "#FFFF00")  # Yellow highlight by default
-                        
-                        # Handle different color formats
-                        if isinstance(highlight_color, str) and highlight_color.startswith("#"):
-                            # Convert hex to RGB
-                            if len(highlight_color) == 7:  # #RRGGBB
-                                r = int(highlight_color[1:3], 16)
-                                g = int(highlight_color[3:5], 16)
-                                b = int(highlight_color[5:7], 16)
-                                color = (r, g, b, alpha)
-                            else:
-                                # Default to yellow if invalid format
-                                color = (255, 255, 0, alpha)
-                        elif isinstance(highlight_color, tuple):
-                            # Use the tuple directly
-                            if len(highlight_color) == 3:
-                                color = highlight_color + (alpha,)
-                            else:
-                                color = highlight_color
-                        else:
-                            # Default to yellow
-                            color = (255, 255, 0, alpha)
-                    else:
-                        # Use normal color
-                        if isinstance(font_color, str) and font_color.startswith("#"):
-                            # Convert hex to RGB
-                            if len(font_color) == 7:  # #RRGGBB
-                                r = int(font_color[1:3], 16)
-                                g = int(font_color[3:5], 16)
-                                b = int(font_color[5:7], 16)
-                                color = (r, g, b, alpha)
-                            else:
-                                # Default to white if invalid format
-                                color = (255, 255, 255, alpha)
-                        elif isinstance(font_color, tuple):
-                            # Use the tuple directly
-                            if len(font_color) == 3:
-                                color = font_color + (alpha,)
-                            else:
-                                color = font_color
-                        else:
-                            # Default to white
-                            color = (255, 255, 255, alpha)
-                
-                # Apply the effects
-                if scale != 1.0:
-                    # Scale the font for this word
-                    scaled_font_size = int(font_size * scale)
-                    try:
-                        scaled_font = ImageFont.truetype(font_path, scaled_font_size)
-                    except Exception as e:
-                        print(f"Warning: Error loading font: {e}")
-                        scaled_font = font
-                    
-                    # Get new dimensions
-                    try:
-                        new_width, new_height = get_text_size(draw, word + " ", scaled_font)
-                    except Exception as e:
-                        # Fallback if text size calculation fails
-                        print(f"Warning: Error calculating text size: {e}")
-                        new_width, new_height = word_width, word_height
-                    
-                    # Adjust position to keep text baseline aligned
-                    y_offset = (word_height - new_height) // 2
-                    
-                    # Draw the scaled word
-                    draw.text(
-                        (x_pos, start_y + y_offset), 
-                        word + " ", 
-                        font=scaled_font, 
-                        fill=color, 
-                        stroke_width=stroke_width,
-                        stroke_fill=stroke_color
-                    )
-                    
-                    # Update position
-                    x_pos += new_width
-                else:
-                    # Draw the word with the specified alpha
-                    draw.text(
-                        (x_pos, start_y), 
-                        word + " ", 
-                        font=font, 
-                        fill=color, 
-                        stroke_width=stroke_width,
-                        stroke_fill=stroke_color
-                    )
-                    
-                    # Update position
-                    x_pos += word_width
-            else:
-                # Skip this word but update position
-                x_pos += word_width
-        
-        # Composite the overlay on the frame
-        frame_pil = Image.alpha_composite(frame_pil.convert('RGBA'), overlay)
-        return np.array(frame_pil.convert('RGB'))
+    
+        # If no word to display, return the original frame
+        return frame_img
     except Exception as e:
         print(f"Error in render_animated_caption: {e}")
         return frame_img

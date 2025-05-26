@@ -359,7 +359,14 @@ def main():
                 )
                 st.session_state.caption_dreams["model_size"] = model_size
                 
-                st.info("Larger models are more accurate but require more processing time and memory.")
+                st.info("Model size comparison (Mac performance):")
+                st.markdown("""
+                - **tiny**: Fastest (1-2x realtime on M1/M2), less accurate
+                - **base**: Good balance (1-1.5x realtime on M1/M2)
+                - **small**: More accurate, slower (0.5x realtime)
+                - **medium**: High accuracy, much slower
+                - **large**: Best accuracy, very slow (not recommended on most Macs)
+                """)
             elif engine == "faster_whisper":
                 # For Faster Whisper, allow model size selection
                 model_sizes = ["tiny", "base", "small", "medium", "large"]
@@ -373,9 +380,47 @@ def main():
                 )
                 st.session_state.caption_dreams["model_size"] = model_size
                 
-                st.info("Faster-Whisper provides similar accuracy to Whisper with improved processing speed.")
+                st.info("Faster-Whisper provides similar accuracy to Whisper with improved processing speed on Mac.")
+                st.markdown("""
+                ℹ️ Recommended for M1/M2 Mac users. Uses GPU acceleration when available.
+                - **tiny/base**: 2-3x faster than standard Whisper
+                - **small/medium**: Good balance for Mac users
+                """)
             elif engine == "vosk":
-                st.info("Vosk is a lightweight speech recognition engine that works offline.")
+                st.info("Vosk is a lightweight offline speech recognition engine.")
+                st.markdown("""
+                ℹ️ Advantages for Mac users:
+                - Much faster than Whisper (5-10x realtime)
+                - Lower memory usage
+                - Works entirely offline
+                - Good for longer videos
+                
+                Note: May be less accurate than Whisper for some accents or noisy audio.
+                """)
+            
+            # Add information about other options for Mac users
+            with st.expander("Additional Options for Mac Users"):
+                st.markdown("""
+                ### Other Transcription Options for Mac Users
+                
+                If you're experiencing issues with word timing or accuracy:
+                
+                1. **Apple Speech Framework** (via a Python wrapper)
+                   - Natively optimized for Mac
+                   - Very fast on M1/M2 chips
+                   - Requires additional setup
+                
+                2. **Assembly AI** or **Deepgram** APIs
+                   - Cloud-based, high accuracy
+                   - Requires API key (paid service)
+                   - Often provides superior word-level timing
+                
+                3. **Improving Whisper Performance on Mac**:
+                   - Use "tiny" or "base" models for faster processing
+                   - Close other applications to free up memory
+                   - Run on Apple Silicon Macs (M1/M2) when possible
+                   - Consider using faster-whisper with appropriate compute type
+                """)
         
         # Display the caption generation section
         st.markdown("## Step 3: Generate Animated Captions")
@@ -533,10 +578,11 @@ def main():
             output_path = os.path.join(output_dir, output_filename)
             st.session_state.caption_dreams["output_path"] = output_path
             
-            # Debug info about output path
-            st.info(f"Output directory: {output_dir}")
-            st.info(f"Directory exists: {os.path.exists(output_dir)}")
-            st.info(f"Directory writable: {os.access(output_dir, os.W_OK)}")
+            # Put debug information in collapsible expander
+            with st.expander("🔍 File Path Information", expanded=False):
+                st.info(f"Output directory: {output_dir}")
+                st.info(f"Directory exists: {os.path.exists(output_dir)}")
+                st.info(f"Directory writable: {os.access(output_dir, os.W_OK)}")
             
             # Create a column layout for buttons
             col1, col2 = st.columns([1, 2])
@@ -614,15 +660,18 @@ def main():
                             
                             # Debug info
                             output_file = result.get("output_path", output_path)
-                            print(f"Output file path from result: {output_file}")
-                            print(f"File exists: {os.path.exists(output_file)}")
-                            print(f"File size: {os.path.getsize(output_file) if os.path.exists(output_file) else 'N/A'}")
+                            
+                            # Put technical details in a collapsible expander
+                            with st.expander("🔧 Technical Details", expanded=False):
+                                st.info(f"Output file path from result: {output_file}")
+                                st.info(f"File exists: {os.path.exists(output_file)}")
+                                st.info(f"File size: {os.path.getsize(output_file) if os.path.exists(output_file) else 'N/A'}")
+                                st.info(f"Updated session state output path: {st.session_state.caption_dreams['output_path']}")
+                                st.info(f"Session state status: {st.session_state.caption_dreams['status']}")
                             
                             # IMPORTANT: Update session state with the path returned from the function
                             # This is critical in case the backend used an alternative path
                             st.session_state.caption_dreams["output_path"] = output_file
-                            print(f"Updated session state output path: {st.session_state.caption_dreams['output_path']}")
-                            print(f"Session state status: {st.session_state.caption_dreams['status']}")
                             
                             st.rerun()  # Rerun to show the video output
                         else:
@@ -652,48 +701,49 @@ def main():
             if st.session_state.caption_dreams["status"] == "completed":
                 output_path = st.session_state.caption_dreams.get("output_path")
                 
-                # Debug info about the video path
-                st.markdown("### Debug Information")
-                st.info(f"Output video status: {'Completed' if st.session_state.caption_dreams['status'] == 'completed' else 'Not completed'}")
-                st.info(f"Output path: {output_path}")
-                st.info(f"Current working directory: {os.getcwd()}")
-                
-                # Make sure path is absolute
-                if output_path and not os.path.isabs(output_path):
-                    absolute_path = os.path.abspath(output_path)
-                    st.info(f"Absolute path: {absolute_path}")
-                    output_path = absolute_path
-                
-                # Check if path exists, if not try to find a similar file
-                if output_path and not os.path.exists(output_path):
-                    st.warning(f"Path does not exist: {output_path}")
-                    # Try to find files with similar names
-                    try:
-                        output_dir = os.path.dirname(output_path)
-                        base_name = os.path.basename(output_path)
-                        
-                        if os.path.exists(output_dir):
-                            files = os.listdir(output_dir)
-                            st.info(f"Files in output directory: {files}")
+                # Put debug info in a collapsible expander
+                with st.expander("🔍 Debug Information (click to expand)", expanded=False):
+                    st.info(f"Output video status: {'Completed' if st.session_state.caption_dreams['status'] == 'completed' else 'Not completed'}")
+                    st.info(f"Output path: {output_path}")
+                    st.info(f"Current working directory: {os.getcwd()}")
+                    
+                    # Make sure path is absolute
+                    if output_path and not os.path.isabs(output_path):
+                        absolute_path = os.path.abspath(output_path)
+                        st.info(f"Absolute path: {absolute_path}")
+                        output_path = absolute_path
+                    
+                    # Check if path exists, if not try to find a similar file
+                    if output_path and not os.path.exists(output_path):
+                        st.warning(f"Path does not exist: {output_path}")
+                        # Try to find files with similar names
+                        try:
+                            output_dir = os.path.dirname(output_path)
+                            base_name = os.path.basename(output_path)
                             
-                            # Look for files with similar names (captioned_*)
-                            similar_files = [f for f in files if f.startswith("captioned_")]
-                            if similar_files:
-                                # Sort by creation time (newest first)
-                                similar_files.sort(key=lambda x: os.path.getctime(os.path.join(output_dir, x)), reverse=True)
-                                newest_file = similar_files[0]
-                                st.info(f"Found similar file: {newest_file}")
+                            if os.path.exists(output_dir):
+                                files = os.listdir(output_dir)
+                                # Put the file list in a nested expander
+                                with st.expander("Show files in output directory", expanded=False):
+                                    st.code("\n".join(files), language=None)
                                 
-                                # Use the newest similar file
-                                output_path = os.path.join(output_dir, newest_file)
-                                st.info(f"Using alternative file: {output_path}")
-                        else:
-                            st.info(f"Output directory does not exist: {output_dir}")
-                    except Exception as e:
-                        st.error(f"Error finding similar files: {e}")
+                                # Look for files with similar names (captioned_*)
+                                similar_files = [f for f in files if f.startswith("captioned_")]
+                                if similar_files:
+                                    # Sort by creation time (newest first)
+                                    similar_files.sort(key=lambda x: os.path.getctime(os.path.join(output_dir, x)), reverse=True)
+                                    newest_file = similar_files[0]
+                                    st.info(f"Found similar file: {newest_file}")
+                                    
+                                    # Use the newest similar file
+                                    output_path = os.path.join(output_dir, newest_file)
+                                    st.info(f"Using alternative file: {output_path}")
+                        except Exception as e:
+                            st.error(f"Error finding similar files: {e}")
+                    
+                    st.info(f"Final path exists: {os.path.exists(output_path) if output_path else 'No path'}")
                 
-                st.info(f"Final path exists: {os.path.exists(output_path) if output_path else 'No path'}")
-                
+                # Continue with normal display code
                 if output_path and os.path.exists(output_path):
                     try:
                         # Get file size
@@ -793,7 +843,8 @@ def main():
                         output_dir = os.path.dirname(output_path) if output_path else os.path.join(os.getcwd(), "output")
                         if os.path.exists(output_dir):
                             files = os.listdir(output_dir)
-                            st.info(f"Files in output directory: {files}")
+                            with st.expander("Show files in output directory", expanded=False):
+                                st.code("\n".join(files), language=None)
                             
                             # Show most recent file info
                             if files:

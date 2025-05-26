@@ -97,7 +97,10 @@ OLLAMA_API_URL = "http://100.115.243.42:11434/api"
 COMFYUI_IMAGE_API_URL = "http://100.115.243.42:8000"
 COMFYUI_VIDEO_API_URL = "http://100.86.185.76:8000"
 JSON_TEMPLATES = {
-    "image": "image_homepc.json",
+    "image": {
+        "image_homepc": "image_homepc.json",
+        "flux_schnell": "flux_schnell.json"
+    },
     "video": "wan.json"
 }
 
@@ -148,6 +151,10 @@ def load_broll_prompts():
             st.session_state.broll_prompts = json.load(f)
             if "broll_type" in st.session_state.broll_prompts:
                 st.session_state.broll_type = st.session_state.broll_prompts["broll_type"]
+            if "exclude_negative_prompts" in st.session_state.broll_prompts:
+                st.session_state.exclude_negative_prompts = st.session_state.broll_prompts["exclude_negative_prompts"]
+            if "image_template" in st.session_state.broll_prompts:
+                st.session_state.image_template = st.session_state.broll_prompts["image_template"]
             return True
     return False
 
@@ -156,7 +163,9 @@ def save_broll_prompts(prompts, broll_type):
     prompts_file = project_path / "broll_prompts.json"
     data = {
         "prompts": prompts,
-        "broll_type": broll_type
+        "broll_type": broll_type,
+        "exclude_negative_prompts": st.session_state.get("exclude_negative_prompts", False),
+        "image_template": st.session_state.get("image_template", "image_homepc")
     }
     with open(prompts_file, "w") as f:
         json.dump(data, f, indent=4)
@@ -173,11 +182,32 @@ def generate_prompt_with_ollama(model, segment_text, theme, is_video=False):
         video_or_image = "video" if is_video else "image"
         resolution = settings.get("resolution", "1080x1920")  # Default to 9:16 ratio
         
+        # Add video-specific instructions for motion if generating video
+        video_specific_instructions = "" if not is_video else """
+        For video, you MUST:
+        - Describe specific motion and animation (e.g., slow motion, panning, tracking shots)
+        - Include how elements move or change over the duration of the clip
+        - Describe dynamic camera movements if applicable
+        - Add temporal elements like "as the camera moves..." or "gradually revealing..."
+        - Think cinematically about how the scene unfolds over time
+        """
+        
+        # Select example based on video or image
+        example_prompt = """
+        "A large orange octopus is seen resting on the bottom of the ocean floor, blending in with the sandy and rocky terrain. Its tentacles are spread out around its body, and its eyes are closed. The octopus is unaware of a king crab that is crawling towards it from behind a rock, its claws raised and ready to attack. The scene is captured from a wide angle, showing the vastness and depth of the ocean. The water is clear and blue, with rays of sunlight filtering through."
+        """
+        
+        if is_video:
+            example_prompt = """
+            "A large orange octopus rests on the sandy ocean floor as the camera slowly pans from left to right. Its tentacles gently sway with the current, creating hypnotic motion. As the shot progresses, a king crab emerges from behind a rock, moving deliberately toward the unaware octopus with raised claws. The camera track continues revealing more of the scene, with rays of sunlight dancing through the clear blue water, creating shifting patterns of light on the ocean floor. Small fish dart across the frame, adding dynamism to this underwater tableau."
+            """
+        
         prompt_instructions = f"""
         Create a detailed, cinematic, and visually rich {video_or_image} generation prompt based on this text: "{segment_text}"
         
         The theme is: {theme}
         Target resolution: {resolution} (9:16 ratio)
+        {video_specific_instructions}
         
         Your prompt should:
         1. Create a vivid, detailed scene with a clear subject/focus
@@ -193,7 +223,7 @@ def generate_prompt_with_ollama(model, segment_text, theme, is_video=False):
         5. Be 2-4 sentences maximum with descriptive, evocative language
         
         Here's an excellent example of the level of detail and storytelling I want:
-        "A large orange octopus is seen resting on the bottom of the ocean floor, blending in with the sandy and rocky terrain. Its tentacles are spread out around its body, and its eyes are closed. The octopus is unaware of a king crab that is crawling towards it from behind a rock, its claws raised and ready to attack. The scene is captured from a wide angle, showing the vastness and depth of the ocean. The water is clear and blue, with rays of sunlight filtering through."
+        {example_prompt}
         
         Return ONLY the prompt text, nothing else. No explanations, no "Prompt:" prefix, just the prompt itself.
         """
@@ -232,10 +262,16 @@ def generate_prompt_with_ollama(model, segment_text, theme, is_video=False):
                 time.sleep(1)  # Wait before retrying
                 
         # If we've exhausted retries, return a fallback prompt
-        return f"A detailed {video_or_image} showing {segment_text}, set in a {theme} environment with atmospheric lighting and rich visual elements."
+        if is_video:
+            return f"A detailed {video_or_image} showing {segment_text}, set in a {theme} environment with atmospheric lighting and rich visual elements. The camera slowly pans across the scene with subtle motion elements creating visual interest."
+        else:
+            return f"A detailed {video_or_image} showing {segment_text}, set in a {theme} environment with atmospheric lighting and rich visual elements."
     except Exception as e:
         st.error(f"Error generating prompt: {str(e)}")
-        return f"A detailed {video_or_image} showing {segment_text}, set in a {theme} environment with atmospheric lighting and rich visual elements."
+        if is_video:
+            return f"A detailed {video_or_image} showing {segment_text}, set in a {theme} environment with atmospheric lighting and rich visual elements. The camera slowly pans across the scene with subtle motion elements creating visual interest."
+        else:
+            return f"A detailed {video_or_image} showing {segment_text}, set in a {theme} environment with atmospheric lighting and rich visual elements."
 
 # Function to generate negative prompts automatically - with improved error handling
 def generate_negative_prompt(model, prompt):
@@ -325,6 +361,39 @@ st.session_state.broll_type = broll_type.lower()
 
 # Show debug info about the selected type
 st.info(f"Selected B-Roll type: **{broll_type}** (stored as '{st.session_state.broll_type}')")
+
+# Add image workflow selection if image type is selected
+if st.session_state.broll_type == "image":
+    # Initialize session state for image template if not exists
+    if "image_template" not in st.session_state:
+        st.session_state.image_template = "image_homepc"
+    
+    # Add selection for image template
+    image_template = st.selectbox(
+        "Select Image Workflow Template:",
+        options=list(JSON_TEMPLATES["image"].keys()),
+        index=list(JSON_TEMPLATES["image"].keys()).index(st.session_state.image_template) 
+            if st.session_state.image_template in JSON_TEMPLATES["image"] else 0,
+        format_func=lambda x: x.replace("_", " ").title(),
+        help="Choose which workflow template to use for image generation"
+    )
+    
+    # Store selection in session state
+    st.session_state.image_template = image_template
+    
+    # Show selected template filename
+    st.info(f"Using template: **{JSON_TEMPLATES['image'][image_template]}**")
+
+# Add option to exclude negative prompts
+if "exclude_negative_prompts" not in st.session_state:
+    st.session_state.exclude_negative_prompts = False
+
+exclude_negative = st.checkbox(
+    "Exclude negative prompts from generation",
+    value=st.session_state.exclude_negative_prompts,
+    help="If checked, negative prompts will be ignored during image/video generation"
+)
+st.session_state.exclude_negative_prompts = exclude_negative
 
 # Show default B-roll IDs
 with st.expander("Default B-Roll IDs (Use these for quick assembly)", expanded=False):
@@ -518,7 +587,9 @@ if "prompts" in st.session_state.broll_prompts and st.session_state.broll_prompt
     st.subheader("Integration Information")
     st.markdown("""
     ### ComfyUI Configuration
-    - For image generation: 100.115.243.42:8188 using image_homepc.json
+    - For image generation: 
+      - Default: 100.115.243.42:8188 using image_homepc.json
+      - Alternative: 100.115.243.42:8188 using flux_schnell.json
     - For video generation: 100.86.185.76:8188 using wan.json
     
     The generated prompts are optimized for these endpoints.

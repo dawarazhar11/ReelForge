@@ -26,7 +26,16 @@ def load_workflow(workflow_type="video"):
         if workflow_type == "video":
             workflow_file = "wan.json"
         else:
-            workflow_file = "image_homepc.json"
+            # Check if a specific image template is selected in session state
+            if hasattr(st, 'session_state') and 'image_template' in st.session_state:
+                # Use the selected image template
+                image_template = st.session_state.image_template
+                if image_template == "flux_schnell":
+                    workflow_file = "flux_schnell.json" 
+                else:
+                    workflow_file = "image_homepc.json"  # Default template
+            else:
+                workflow_file = "image_homepc.json"  # Default if no selection found
         
         # Check multiple locations for the workflow file
         possible_paths = [
@@ -80,8 +89,13 @@ def modify_workflow(workflow, params):
                 print(f"Set prompt in node {pos_node_id}")
                 
             if "inputs" in modified_workflow[neg_node_id]:
-                modified_workflow[neg_node_id]["inputs"]["text"] = params.get("negative_prompt", "")
-                print(f"Set negative prompt in node {neg_node_id}")
+                # Check if negative prompts should be excluded
+                if params.get("exclude_negative_prompts", False):
+                    modified_workflow[neg_node_id]["inputs"]["text"] = ""
+                    print(f"Excluded negative prompt in node {neg_node_id}")
+                else:
+                    modified_workflow[neg_node_id]["inputs"]["text"] = params.get("negative_prompt", "")
+                    print(f"Set negative prompt in node {neg_node_id}")
         
         # Find empty latent image nodes for dimensions
         latent_nodes = [k for k in modified_workflow.keys() 
@@ -328,7 +342,9 @@ def generate_broll_sequentially(segments_data, api_url=None, project_path=None):
                 "negative_prompt": segment_data.get("negative_prompt", "ugly, blurry, low quality, deformed"),
                 "width": 1080,
                 "height": 1920,
-                "seed": random.randint(1, 999999999)
+                "seed": random.randint(1, 999999999),
+                "exclude_negative_prompts": st.session_state.get("exclude_negative_prompts", False),
+                "image_template": st.session_state.get("image_template", "image_homepc") if not is_video else None
             }
             
             # Modify workflow

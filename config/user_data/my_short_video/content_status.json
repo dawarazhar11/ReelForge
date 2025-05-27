@@ -1,0 +1,25 @@
+{
+    "broll": {
+        "segment_0": {
+            "status": "complete",
+            "file_path": "config/user_data/my_short_video/media/broll/broll_segment_0_20250526_013547.png",
+            "prompt_id": "016b6e01-94f3-4413-946e-4055cd1860ed",
+            "content_type": "output",
+            "timestamp": "2025-05-26 01:35:47"
+        },
+        "segment_1": {
+            "status": "complete",
+            "file_path": "config/user_data/my_short_video/media/broll/broll_segment_1_20250526_013610.png",
+            "prompt_id": "d37dfff4-68fd-41c5-8498-dcb01f33defd",
+            "content_type": "output",
+            "timestamp": "2025-05-26 01:36:10"
+        },
+        "segment_2": {
+            "status": "complete",
+            "file_path": "config/user_data/my_short_video/media/broll/broll_segment_2_20250526_013629.png",
+            "prompt_id": "a31b4492-80ea-4307-81fe-aa54ed2eddc7",
+            "content_type": "output",
+            "timestamp": "2025-05-26 01:36:29"
+        }
+    }
+}

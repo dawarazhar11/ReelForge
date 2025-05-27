@@ -317,8 +317,8 @@ def transcribe_video(video_path, model_size="base", engine="auto"):
 # Caption style presets
 CAPTION_STYLES = {
     "tiktok": {
-        "font": "Arial-Bold.ttf",
-        "font_size": 40,
+        "font": "Arial Bold.ttf",
+        "font_size": 50,
         "text_color": (255, 255, 255),  # White
         "highlight_color": (0, 0, 0, 180),  # Semi-transparent black
         "highlight_padding": 15,
@@ -326,7 +326,12 @@ CAPTION_STYLES = {
         "align": "center",
         "shadow": True,
         "animate": True,
-        "word_by_word": True
+        "word_by_word": True,
+        "stroke_width": 3,  # Thicker outline for better readability
+        "stroke_color": (0, 0, 0),  # Black outline
+        "bottom_margin": 70,  # Position higher from bottom
+        "show_textbox": True,  # Enable background by default
+        "textbox_opacity": 0.6  # Semi-transparent background
     },
     "modern_bold": {
         "font": "Impact.ttf",
@@ -590,6 +595,14 @@ def get_system_font(font_name):
     if font_name in font_mapping:
         font_name = font_mapping[font_name]
     
+    # First check our app's font directory - this should have priority
+    app_font_dir = os.path.join(os.getcwd(), "fonts")
+    if os.path.exists(app_font_dir):
+        app_font_path = os.path.join(app_font_dir, font_name)
+        if os.path.exists(app_font_path):
+            print(f"Using app font: {app_font_path}")
+            return app_font_path
+    
     # Use more reliable system fonts for macOS
     if sys.platform == "darwin":  # macOS
         # Try user-provided font name first if it's a complete path
@@ -603,7 +616,6 @@ def get_system_font(font_name):
             "/System/Library/Fonts/Supplemental/",
             "/Library/Fonts/",
             os.path.expanduser("~/Library/Fonts/"),
-            os.path.join(os.getcwd(), "fonts/")
         ]
         
         # Try to find the font in system paths
@@ -679,7 +691,6 @@ def get_system_font(font_name):
             "/usr/share/fonts/TTF/",
             "/usr/share/fonts/",
             os.path.expanduser("~/.fonts/"),
-            os.path.join(os.getcwd(), "fonts/")
         ]
         
         # Try to find the font
@@ -1799,7 +1810,13 @@ def get_caption_style(style_name=None, custom_style=None):
     """
     # Use custom style if provided
     if custom_style is not None:
-        return custom_style
+        # Apply default values for any missing critical parameters
+        default_style = CAPTION_STYLES["tiktok"]
+        
+        # Create a new dict with defaults for any missing keys
+        style = default_style.copy()
+        style.update(custom_style)
+        return style
     
     # Use default style if no style name provided
     if style_name is None or style_name not in CAPTION_STYLES:
@@ -1816,6 +1833,16 @@ def download_font(font_name):
     
     # Map of font names to Google Fonts URLs
     font_urls = {
+        # Core system fonts
+        "Arial.ttf": "https://github.com/matomo-org/travis-scripts/raw/master/fonts/Arial.ttf",
+        "Arial Bold.ttf": "https://github.com/matomo-org/travis-scripts/raw/master/fonts/Arial%20Bold.ttf",
+        "Impact.ttf": "https://github.com/matomo-org/travis-scripts/raw/master/fonts/Impact.ttf",
+        "Georgia.ttf": "https://github.com/matomo-org/travis-scripts/raw/master/fonts/Georgia.ttf",
+        "Times New Roman.ttf": "https://github.com/matomo-org/travis-scripts/raw/master/fonts/Times%20New%20Roman.ttf",
+        "Comic Sans MS.ttf": "https://github.com/matomo-org/travis-scripts/raw/master/fonts/Comic%20Sans%20MS.ttf",
+        "Verdana.ttf": "https://github.com/matomo-org/travis-scripts/raw/master/fonts/Verdana.ttf",
+        
+        # Google Fonts
         "Pacifico-Regular.ttf": "https://fonts.gstatic.com/s/pacifico/v22/FwZY7-Qmy14u9lezJ-6H6MmBp0u-.ttf",
         "DancingScript-Regular.ttf": "https://fonts.gstatic.com/s/dancingscript/v24/If2cXTr6YS-zF4S-kcSWSVi_sxjsohD9F50Ruu7BMSo3ROp6hNX6plRP.ttf",
         "Lobster-Regular.ttf": "https://fonts.gstatic.com/s/lobster/v28/neILzCirqoswsqX9zoymM5Ez.ttf",

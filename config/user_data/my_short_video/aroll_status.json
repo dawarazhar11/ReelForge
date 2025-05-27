@@ -1,0 +1,38 @@
+{
+  "segment_0": {
+    "status": "completed",
+    "message": "Status: completed",
+    "video_id": "5169ef5a328149a8b13c365ee7060106",
+    "video_url": "https://files2.heygen.ai/aws_pacific/avatar_tmp/ce20f656fe3c48bb9528cd5079d1bc11/5169ef5a328149a8b13c365ee7060106.mp4?Expires=1748807650&Signature=U--7omgyhHnMKjNaWM8qOXfODoXQN4IwuSFxtEm9BgyU4C~5pJ8m1T0iASTZ~m8pPLKBPjp0zL5bgXI4ImQ1F8pWOzN~DUH4QOz7UpwZejDratm0q6zgA-KRapHczSGWXtJmecB9z4yWodErG73j1-stfZOk7bHtw4rLymRBl6Gsewv01AL2eYJjrabiff4seh4cJaQW3lf26QrCPBXaIhS8CgTS2k3GBDZVlvB5EvC0YeirwiNUQONJGTnTZNdjKMp8CsYiAWUTV~mwxeME~4eTbqAfr4F~6EPUQolwvwygN1zeZnU7OYqw8TdWW96WRQjDpy1Ie~j3ElQF3aPwEw__&Key-Pair-Id=K38HBHX5LX3X2H",
+    "timestamp": 1748202849.9286668,
+    "local_path": "config/user_data/my_short_video/media/a-roll/segment_0.mp4",
+    "downloaded": true
+  },
+  "segment_1": {
+    "status": "completed",
+    "message": "Status: completed",
+    "video_id": "aed87db0234e4965825c7ee4c1067467",
+    "video_url": "https://files2.heygen.ai/aws_pacific/avatar_tmp/ce20f656fe3c48bb9528cd5079d1bc11/aed87db0234e4965825c7ee4c1067467.mp4?Expires=1748807667&Signature=eebaUA6cuZOdgAeHsouzRZZtABJOipy5B5A~9Z-5iozB~gQmZmOqCbhJubpfZCk~3ad~NmBBow6TNY0hcFY21IEPRCbup7p99dLk12u7I2jt1ESrvMXRPWOWMvNXarxHacE4s-IG790fGQLb6vpcMu3s101HUW1ZjgiStti2hCQUTtCoAAf-s4swgXibGnsToBaN85MveFsLacLGvx-qNzrnPsHfzXjZFI8LocTwjFNdwCXVhagh5aZkiDxZmX~XyCPne3fYE76GlhKR6tBShyP6UPrwWLVoDGJLMVcfvBAhpKPsbjzOATXP3VAw0Ox2BPcg-j1Ray5RWTF3dlACWw__&Key-Pair-Id=K38HBHX5LX3X2H",
+    "timestamp": 1748202867.027564,
+    "local_path": "config/user_data/my_short_video/media/a-roll/segment_1.mp4",
+    "downloaded": true
+  },
+  "segment_2": {
+    "status": "completed",
+    "message": "Status: completed",
+    "video_id": "e7d47355c21e4190bad8752c799343ee",
+    "video_url": "https://files2.heygen.ai/aws_pacific/avatar_tmp/ce20f656fe3c48bb9528cd5079d1bc11/e7d47355c21e4190bad8752c799343ee.mp4?Expires=1748807687&Signature=hpKH68FIT8mTiXNiA4wivijAjwbHi-3G5hpNtyS7qp8J4oLAEUpKS1ysJmiEJaWtoQ3atVYbLN8gzY3veFZDrKwhokzgsyw9kckpKN2NdccfXyX2H3mT8JM6Kb4OHZ-cI7YHBBexIHhWYweHhHQ1PuuyBP3rzcwUq8nX00I6fVH1TXA0TGMLCxY7tjAXb1rV8DcR2VxRBMyKtgMHZgWwfunl6~gMBi8wBz-XH8KTL8uR03xZ-98oADlroz0w33iRIhD4lCshR6U~5Yy0YdySVo3Mgk38BucdlkdmyD8c-z3KS5TiqDiJspPIYvPLhPMVd8T8Mpl-3y9oRQRcqEaNWQ__&Key-Pair-Id=K38HBHX5LX3X2H",
+    "timestamp": 1748202887.295941,
+    "local_path": "config/user_data/my_short_video/media/a-roll/segment_2.mp4",
+    "downloaded": true
+  },
+  "segment_3": {
+    "status": "completed",
+    "message": "Status: completed",
+    "video_id": "36064085e2a240768a8368bc6a911aea",
+    "video_url": "https://files2.heygen.ai/aws_pacific/avatar_tmp/ce20f656fe3c48bb9528cd5079d1bc11/36064085e2a240768a8368bc6a911aea.mp4?Expires=1748807710&Signature=c4Hd9FJJ6MDn4N2VcqLxx~HxdpOXP6Fuiq33gJ9WsAJ3AFJrzKW-5ap13F9wryMMIROCDo5xuwoQtd1aSPqRF-OjulW6RoF8MwOjMoAymh9-jsA5jCLAih3up7yxaA4cYGBwOoXPxqr73b4OR37vBIfG7qZylOEw0lz2C22WrNlgiAI9TxDzIeuC-m8xsNO6FEwsXjBR1BneNre1La0vGvEpHnQ83vPFDb2fysiGQUAHmi-S3JNMuxxy664Rs5FeaRB7GFP5RfW6-0h-oTeWa9x1vP4S7p9Y5HsvIMLaIs8LGVx3Rst7fEDv8KiWeosLDTllUk-a19lNeL0LHYrKlA__&Key-Pair-Id=K38HBHX5LX3X2H",
+    "timestamp": 1748202910.353428,
+    "local_path": "config/user_data/my_short_video/media/a-roll/segment_3.mp4",
+    "downloaded": true
+  }
+}

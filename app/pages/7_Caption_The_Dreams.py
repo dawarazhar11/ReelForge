@@ -283,7 +283,7 @@ def main():
                     "Font Size:", 
                     min_value=20, 
                     max_value=80, 
-                    value=st.session_state.caption_dreams.get("font_size", 40),
+                    value=st.session_state.caption_dreams.get("font_size", 50),
                     step=2,
                     help="Adjust the size of the caption text"
                 )
@@ -351,7 +351,7 @@ def main():
                 # Option to show textbox background
                 show_textbox = st.checkbox(
                     "Show Text Box Background", 
-                    value=st.session_state.caption_dreams.get("show_textbox", False),
+                    value=st.session_state.caption_dreams.get("show_textbox", True),
                     help="Add a background box behind the text for better visibility"
                 )
                 st.session_state.caption_dreams["show_textbox"] = show_textbox
@@ -389,7 +389,7 @@ def main():
                 selected_font = st.selectbox(
                     "Font Style:",
                     available_fonts,
-                    index=available_fonts.index(st.session_state.caption_dreams.get("font_style", "Default")),
+                    index=available_fonts.index(st.session_state.caption_dreams.get("font_style", "Arial Bold")),
                     help="Choose a font style for your captions"
                 )
                 st.session_state.caption_dreams["font_style"] = selected_font
@@ -407,7 +407,7 @@ def main():
                     "Text Outline Width:", 
                     min_value=0, 
                     max_value=5, 
-                    value=st.session_state.caption_dreams.get("stroke_width", 2),
+                    value=st.session_state.caption_dreams.get("stroke_width", 3),
                     help="Width of the text outline/stroke (0 for no outline)"
                 )
                 st.session_state.caption_dreams["stroke_width"] = stroke_width
@@ -645,8 +645,8 @@ def main():
                     "show_textbox": st.session_state.caption_dreams.get("show_textbox", False),
                     "textbox_opacity": st.session_state.caption_dreams.get("bg_opacity", 70) / 100.0,
                     "font_color": st.session_state.caption_dreams.get("text_color", "#FFFFFF"),
-                    "font_path": get_font_path(st.session_state.caption_dreams.get("font_style", "Default")),
-                    "stroke_width": st.session_state.caption_dreams.get("stroke_width", 2),
+                    "font_path": get_font_path(st.session_state.caption_dreams.get("font_style", "Arial Bold")),
+                    "stroke_width": st.session_state.caption_dreams.get("stroke_width", 3),
                     "stroke_color": st.session_state.caption_dreams.get("stroke_color", "#000000"),
                     "bottom_margin": 50,
                     "force_captions_if_no_speech": st.session_state.caption_dreams.get("force_captions", False),
@@ -792,8 +792,8 @@ def main():
                             "show_textbox": st.session_state.caption_dreams.get("show_textbox", False),
                             "textbox_opacity": st.session_state.caption_dreams.get("bg_opacity", 70) / 100.0,  # Convert to fraction
                             "font_color": st.session_state.caption_dreams.get("text_color", "#FFFFFF"),
-                            "font_path": get_font_path(st.session_state.caption_dreams.get("font_style", "Default")),
-                            "stroke_width": st.session_state.caption_dreams.get("stroke_width", 2),
+                            "font_path": get_font_path(st.session_state.caption_dreams.get("font_style", "Arial Bold")),
+                            "stroke_width": st.session_state.caption_dreams.get("stroke_width", 3),
                             "stroke_color": st.session_state.caption_dreams.get("stroke_color", "#000000"),
                             "force_captions_if_no_speech": st.session_state.caption_dreams.get("force_captions", False),
                             "default_caption": st.session_state.caption_dreams.get("default_caption", "No speech detected"),

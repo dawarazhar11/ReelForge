@@ -240,329 +240,462 @@ def main():
     if st.session_state.caption_dreams["source_video"]:
         st.markdown("## Step 2: Configure Caption Settings")
         
-        # Create columns for settings
-        col1, col2 = st.columns(2)
+        # Create a new two-column layout for the entire configuration + preview area
+        settings_col, preview_col = st.columns([3, 2])
         
-        with col1:
-            # Caption style selection
-            st.subheader("Caption Base Style")
-            # Get available caption styles
-            styles = get_available_caption_styles()
+        with settings_col:
+            # Create columns for settings within the left column
+            col1, col2 = st.columns(2)
             
-            selected_style = st.selectbox(
-                "Base Style:",
-                list(styles.keys()),
-                index=list(styles.keys()).index(st.session_state.caption_dreams.get("selected_style", "tiktok")),
-                format_func=lambda x: styles[x] if x in styles else x.replace("_", " ").title(),
-                key="style_select"
-            )
-            st.session_state.caption_dreams["selected_style"] = selected_style
-            
-            # Animation style selection
-            st.subheader("Word Animation Style")
-            # Filter out the problematic scale_pulse style
-            available_animation_styles = {k: v for k, v in DREAM_ANIMATION_STYLES.items() if k != "scale_pulse"}
-            selected_animation = st.selectbox(
-                "Animation Type:",
-                list(available_animation_styles.keys()),
-                index=list(available_animation_styles.keys()).index(
-                    st.session_state.caption_dreams.get("animation_style", "word_by_word")
-                ),
-                format_func=lambda x: available_animation_styles[x]["name"],
-                key="animation_select"
-            )
-            st.session_state.caption_dreams["animation_style"] = selected_animation
-            
-            # Display description
-            st.info(available_animation_styles[selected_animation]["description"])
-            
-            # Add Caption Customization Options in an expander
-            with st.expander("Caption Customization", expanded=True):
-                # Font size customization
-                font_size = st.slider(
-                    "Font Size:", 
-                    min_value=20, 
-                    max_value=80, 
-                    value=st.session_state.caption_dreams.get("font_size", 50),
-                    step=2,
-                    help="Adjust the size of the caption text"
-                )
-                st.session_state.caption_dreams["font_size"] = font_size
+            with col1:
+                # Caption style selection
+                st.subheader("Caption Base Style")
+                # Get available caption styles
+                styles = get_available_caption_styles()
                 
-                # Add an option to force captions even if no speech is detected
-                force_captions = st.checkbox(
-                    "Force captions if no speech detected",
-                    value=st.session_state.caption_dreams.get("force_captions", False),
-                    help="Generate captions even if no speech is detected in the video"
+                selected_style = st.selectbox(
+                    "Base Style:",
+                    list(styles.keys()),
+                    index=list(styles.keys()).index(st.session_state.caption_dreams.get("selected_style", "tiktok")),
+                    format_func=lambda x: styles[x] if x in styles else x.replace("_", " ").title(),
+                    key="style_select"
                 )
-                st.session_state.caption_dreams["force_captions"] = force_captions
+                st.session_state.caption_dreams["selected_style"] = selected_style
                 
-                # Show default caption input if force captions is enabled
-                if force_captions:
-                    default_caption = st.text_input(
-                        "Default Caption:",
-                        value=st.session_state.caption_dreams.get("default_caption", "No speech detected"),
-                        help="Text to display if no speech is detected"
+                # Animation style selection
+                st.subheader("Word Animation Style")
+                # Filter out the problematic scale_pulse style
+                available_animation_styles = {k: v for k, v in DREAM_ANIMATION_STYLES.items() if k != "scale_pulse"}
+                selected_animation = st.selectbox(
+                    "Animation Type:",
+                    list(available_animation_styles.keys()),
+                    index=list(available_animation_styles.keys()).index(
+                        st.session_state.caption_dreams.get("animation_style", "word_by_word")
+                    ),
+                    format_func=lambda x: available_animation_styles[x]["name"],
+                    key="animation_select"
+                )
+                st.session_state.caption_dreams["animation_style"] = selected_animation
+                
+                # Display description
+                st.info(available_animation_styles[selected_animation]["description"])
+                
+                # Add Caption Customization Options in an expander
+                with st.expander("Caption Customization", expanded=True):
+                    # Font size customization
+                    font_size = st.slider(
+                        "Font Size:", 
+                        min_value=20, 
+                        max_value=80, 
+                        value=st.session_state.caption_dreams.get("font_size", 50),
+                        step=2,
+                        help="Adjust the size of the caption text"
                     )
-                    st.session_state.caption_dreams["default_caption"] = default_caption
-                
-                # Position type selection
-                position_type = st.radio(
-                    "Caption Position:",
-                    ["Bottom", "Custom Position"],
-                    index=0 if st.session_state.caption_dreams.get("position_type", "bottom") == "bottom" else 1,
-                    help="Choose where to place captions"
-                )
-                st.session_state.caption_dreams["position_type"] = position_type.lower().replace(" ", "_")
-                
-                # Show custom position controls if custom position is selected
-                if position_type == "Custom Position":
-                    # Vertical position (top to bottom)
-                    vertical_pos = st.slider(
-                        "Vertical Position:", 
-                        min_value=0, 
-                        max_value=100, 
-                        value=st.session_state.caption_dreams.get("vertical_pos", 80),
-                        help="Position from top (0) to bottom (100)"
-                    )
-                    st.session_state.caption_dreams["vertical_pos"] = vertical_pos
+                    st.session_state.caption_dreams["font_size"] = font_size
                     
-                    # Horizontal position (left to right)
-                    horizontal_pos = st.slider(
-                        "Horizontal Position:", 
-                        min_value=0, 
-                        max_value=100, 
-                        value=st.session_state.caption_dreams.get("horizontal_pos", 50),
-                        help="Position from left (0) to right (100)"
+                    # Add an option to force captions even if no speech is detected
+                    force_captions = st.checkbox(
+                        "Force captions if no speech detected",
+                        value=st.session_state.caption_dreams.get("force_captions", False),
+                        help="Generate captions even if no speech is detected in the video"
                     )
-                    st.session_state.caption_dreams["horizontal_pos"] = horizontal_pos
-                
-                # Text alignment options
-                text_align = st.radio(
-                    "Text Alignment:",
-                    ["Left", "Center", "Right"],
-                    index=["left", "center", "right"].index(
-                        st.session_state.caption_dreams.get("text_align", "center")
-                    ),
-                    help="Set how the text is aligned"
-                )
-                st.session_state.caption_dreams["text_align"] = text_align.lower()
-                
-                # Option to show textbox background
-                show_textbox = st.checkbox(
-                    "Show Text Box Background", 
-                    value=st.session_state.caption_dreams.get("show_textbox", True),
-                    help="Add a background box behind the text for better visibility"
-                )
-                st.session_state.caption_dreams["show_textbox"] = show_textbox
-                
-                # Textbox background opacity if showing textbox
-                if show_textbox:
-                    bg_opacity = st.slider(
-                        "Background Opacity:", 
-                        min_value=0, 
-                        max_value=100, 
-                        value=st.session_state.caption_dreams.get("bg_opacity", 70),
-                        help="Control the opacity of the background box"
-                    )
-                    st.session_state.caption_dreams["bg_opacity"] = bg_opacity
+                    st.session_state.caption_dreams["force_captions"] = force_captions
                     
-                    # Background color picker
-                    bg_color = st.color_picker(
-                        "Background Color:",
-                        value=st.session_state.caption_dreams.get("bg_color", "#000000"),  # Default black
-                        help="Choose the color for the caption background"
+                    # Show default caption input if force captions is enabled
+                    if force_captions:
+                        default_caption = st.text_input(
+                            "Default Caption:",
+                            value=st.session_state.caption_dreams.get("default_caption", "No speech detected"),
+                            help="Text to display if no speech is detected"
+                        )
+                        st.session_state.caption_dreams["default_caption"] = default_caption
+                    
+                    # Position type selection
+                    position_type = st.radio(
+                        "Caption Position:",
+                        ["Bottom", "Custom Position"],
+                        index=0 if st.session_state.caption_dreams.get("position_type", "bottom") == "bottom" else 1,
+                        help="Choose where to place captions"
                     )
-                    st.session_state.caption_dreams["bg_color"] = bg_color
-                
-                # Add font styling options
-                st.subheader("Font Styling")
-                
-                # Font selection
-                available_fonts = [
-                    "Default", "Arial", "Arial Bold", "Impact", "Georgia", 
-                    "Times New Roman", "Courier New", "Verdana", "Comic Sans MS",
-                    "Brush Script MT", "Pacifico", "Dancing Script", "Lobster",
-                    "Satisfy", "Great Vibes", "Sacramento"
-                ]
-                
-                selected_font = st.selectbox(
-                    "Font Style:",
-                    available_fonts,
-                    index=available_fonts.index(st.session_state.caption_dreams.get("font_style", "Arial Bold")),
-                    help="Choose a font style for your captions"
-                )
-                st.session_state.caption_dreams["font_style"] = selected_font
-                
-                # Text color picker
-                text_color = st.color_picker(
-                    "Text Color:",
-                    value=st.session_state.caption_dreams.get("text_color", "#FFFFFF"),  # Default white
-                    help="Choose the main color for caption text"
-                )
-                st.session_state.caption_dreams["text_color"] = text_color
-                
-                # Text outline (stroke) width
-                stroke_width = st.slider(
-                    "Text Outline Width:", 
-                    min_value=0, 
-                    max_value=5, 
-                    value=st.session_state.caption_dreams.get("stroke_width", 3),
-                    help="Width of the text outline/stroke (0 for no outline)"
-                )
-                st.session_state.caption_dreams["stroke_width"] = stroke_width
-                
-                # Outline color picker (if stroke width > 0)
-                if stroke_width > 0:
-                    stroke_color = st.color_picker(
-                        "Outline Color:",
-                        value=st.session_state.caption_dreams.get("stroke_color", "#000000"),  # Default black
-                        help="Choose the color for the text outline"
+                    st.session_state.caption_dreams["position_type"] = position_type.lower().replace(" ", "_")
+                    
+                    # Show custom position controls if custom position is selected
+                    if position_type == "Custom Position":
+                        # Vertical position (top to bottom)
+                        vertical_pos = st.slider(
+                            "Vertical Position:", 
+                            min_value=0, 
+                            max_value=100, 
+                            value=st.session_state.caption_dreams.get("vertical_pos", 80),
+                            help="Position from top (0) to bottom (100)"
+                        )
+                        st.session_state.caption_dreams["vertical_pos"] = vertical_pos
+                        
+                        # Horizontal position (left to right)
+                        horizontal_pos = st.slider(
+                            "Horizontal Position:", 
+                            min_value=0, 
+                            max_value=100, 
+                            value=st.session_state.caption_dreams.get("horizontal_pos", 50),
+                            help="Position from left (0) to right (100)"
+                        )
+                        st.session_state.caption_dreams["horizontal_pos"] = horizontal_pos
+                    
+                    # Text alignment options
+                    text_align = st.radio(
+                        "Text Alignment:",
+                        ["Left", "Center", "Right"],
+                        index=["left", "center", "right"].index(
+                            st.session_state.caption_dreams.get("text_align", "center")
+                        ),
+                        help="Set how the text is aligned"
                     )
-                    st.session_state.caption_dreams["stroke_color"] = stroke_color
-                
-                # Add caption layout options
-                st.subheader("Caption Layout")
-                
-                # Option to enable multi-line captions
-                enable_multiline = st.checkbox(
-                    "Enable Multi-line Captions",
-                    value=st.session_state.caption_dreams.get("enable_multiline", True),
-                    help="Allow captions to wrap to multiple lines for longer sentences"
-                )
-                st.session_state.caption_dreams["enable_multiline"] = enable_multiline
-                
-                # Maximum width for caption lines
-                max_line_width = st.slider(
-                    "Maximum Line Width:",
-                    min_value=40,
-                    max_value=100,
-                    value=st.session_state.caption_dreams.get("max_line_width", 80),
-                    help="Maximum width of caption lines as percentage of screen width"
-                )
-                st.session_state.caption_dreams["max_line_width"] = max_line_width
-                
-                # Line padding for multi-line captions
-                if enable_multiline:
-                    line_padding = st.slider(
-                        "Line Spacing:",
-                        min_value=0,
-                        max_value=30,
-                        value=st.session_state.caption_dreams.get("line_padding", 10),
-                        help="Space between lines in multi-line captions"
+                    st.session_state.caption_dreams["text_align"] = text_align.lower()
+                    
+                    # Option to show textbox background
+                    show_textbox = st.checkbox(
+                        "Show Text Box Background", 
+                        value=st.session_state.caption_dreams.get("show_textbox", True),
+                        help="Add a background box behind the text for better visibility"
                     )
-                    st.session_state.caption_dreams["line_padding"] = line_padding
-        
-        with col2:
-            # Transcription engine selection
-            st.subheader("Speech Recognition Engine")
+                    st.session_state.caption_dreams["show_textbox"] = show_textbox
+                    
+                    # Textbox background opacity if showing textbox
+                    if show_textbox:
+                        bg_opacity = st.slider(
+                            "Background Opacity:", 
+                            min_value=0, 
+                            max_value=100, 
+                            value=st.session_state.caption_dreams.get("bg_opacity", 70),
+                            help="Control the opacity of the background box"
+                        )
+                        st.session_state.caption_dreams["bg_opacity"] = bg_opacity
+                        
+                        # Background color picker
+                        bg_color = st.color_picker(
+                            "Background Color:",
+                            value=st.session_state.caption_dreams.get("bg_color", "#000000"),  # Default black
+                            help="Choose the color for the caption background"
+                        )
+                        st.session_state.caption_dreams["bg_color"] = bg_color
+                    
+                    # Add font styling options
+                    st.subheader("Font Styling")
+                    
+                    # Font selection
+                    available_fonts = [
+                        "Default", "Arial", "Arial Bold", "Impact", "Georgia", 
+                        "Times New Roman", "Courier New", "Verdana", "Comic Sans MS",
+                        "Brush Script MT", "Pacifico", "Dancing Script", "Lobster",
+                        "Satisfy", "Great Vibes", "Sacramento"
+                    ]
+                    
+                    selected_font = st.selectbox(
+                        "Font Style:",
+                        available_fonts,
+                        index=available_fonts.index(st.session_state.caption_dreams.get("font_style", "Arial Bold")),
+                        help="Choose a font style for your captions"
+                    )
+                    st.session_state.caption_dreams["font_style"] = selected_font
+                    
+                    # Text color picker
+                    text_color = st.color_picker(
+                        "Text Color:",
+                        value=st.session_state.caption_dreams.get("text_color", "#FFFFFF"),  # Default white
+                        help="Choose the main color for caption text"
+                    )
+                    st.session_state.caption_dreams["text_color"] = text_color
+                    
+                    # Text outline (stroke) width
+                    stroke_width = st.slider(
+                        "Text Outline Width:", 
+                        min_value=0, 
+                        max_value=5, 
+                        value=st.session_state.caption_dreams.get("stroke_width", 3),
+                        help="Width of the text outline/stroke (0 for no outline)"
+                    )
+                    st.session_state.caption_dreams["stroke_width"] = stroke_width
+                    
+                    # Outline color picker (if stroke width > 0)
+                    if stroke_width > 0:
+                        stroke_color = st.color_picker(
+                            "Outline Color:",
+                            value=st.session_state.caption_dreams.get("stroke_color", "#000000"),  # Default black
+                            help="Choose the color for the text outline"
+                        )
+                        st.session_state.caption_dreams["stroke_color"] = stroke_color
+                    
+                    # Add caption layout options
+                    st.subheader("Caption Layout")
+                    
+                    # Option to enable multi-line captions
+                    enable_multiline = st.checkbox(
+                        "Enable Multi-line Captions",
+                        value=st.session_state.caption_dreams.get("enable_multiline", True),
+                        help="Allow captions to wrap to multiple lines for longer sentences"
+                    )
+                    st.session_state.caption_dreams["enable_multiline"] = enable_multiline
+                    
+                    # Maximum width for caption lines
+                    max_line_width = st.slider(
+                        "Maximum Line Width:",
+                        min_value=40,
+                        max_value=100,
+                        value=st.session_state.caption_dreams.get("max_line_width", 80),
+                        help="Maximum width of caption lines as percentage of screen width"
+                    )
+                    st.session_state.caption_dreams["max_line_width"] = max_line_width
+                    
+                    # Line padding for multi-line captions
+                    if enable_multiline:
+                        line_padding = st.slider(
+                            "Line Spacing:",
+                            min_value=0,
+                            max_value=30,
+                            value=st.session_state.caption_dreams.get("line_padding", 10),
+                            help="Space between lines in multi-line captions"
+                        )
+                        st.session_state.caption_dreams["line_padding"] = line_padding
             
-            # Get available engines
-            available_engines = ["auto"] + get_available_engines()
-            
-            engine = st.selectbox(
-                "Transcription Engine:",
-                available_engines,
-                index=available_engines.index(
-                    st.session_state.caption_dreams.get("transcription_engine", "auto")
-                ),
-                key="engine_select"
-            )
-            st.session_state.caption_dreams["transcription_engine"] = engine
-            
-            if engine == "auto":
-                st.info("Auto will choose the best available engine (Whisper preferred if available).")
-            elif engine == "whisper":
-                # For Whisper, allow model size selection
-                model_sizes = ["tiny", "base", "small", "medium", "large"]
-                model_size = st.selectbox(
-                    "Whisper Model Size:",
-                    model_sizes,
-                    index=model_sizes.index(
-                        st.session_state.caption_dreams.get("model_size", "base")
+            with col2:
+                # Transcription engine selection
+                st.subheader("Speech Recognition Engine")
+                
+                # Get available engines
+                available_engines = ["auto"] + get_available_engines()
+                
+                engine = st.selectbox(
+                    "Transcription Engine:",
+                    available_engines,
+                    index=available_engines.index(
+                        st.session_state.caption_dreams.get("transcription_engine", "auto")
                     ),
-                    key="model_size_select"
+                    key="engine_select"
                 )
-                st.session_state.caption_dreams["model_size"] = model_size
+                st.session_state.caption_dreams["transcription_engine"] = engine
                 
-                st.info("Model size comparison (Mac performance):")
-                st.markdown("""
-                - **tiny**: Fastest (1-2x realtime on M1/M2), less accurate
-                - **base**: Good balance (1-1.5x realtime on M1/M2)
-                - **small**: More accurate, slower (0.5x realtime)
-                - **medium**: High accuracy, much slower
-                - **large**: Best accuracy, very slow (not recommended on most Macs)
-                """)
-            elif engine == "faster_whisper":
-                # For Faster Whisper, allow model size selection
-                model_sizes = ["tiny", "base", "small", "medium", "large"]
-                model_size = st.selectbox(
-                    "Faster Whisper Model Size:",
-                    model_sizes,
-                    index=model_sizes.index(
-                        st.session_state.caption_dreams.get("model_size", "base")
-                    ),
-                    key="model_size_select"
-                )
-                st.session_state.caption_dreams["model_size"] = model_size
+                if engine == "auto":
+                    st.info("Auto will choose the best available engine (Whisper preferred if available).")
+                elif engine == "whisper":
+                    # For Whisper, allow model size selection
+                    model_sizes = ["tiny", "base", "small", "medium", "large"]
+                    model_size = st.selectbox(
+                        "Whisper Model Size:",
+                        model_sizes,
+                        index=model_sizes.index(
+                            st.session_state.caption_dreams.get("model_size", "base")
+                        ),
+                        key="model_size_select"
+                    )
+                    st.session_state.caption_dreams["model_size"] = model_size
+                    
+                    st.info("Model size comparison (Mac performance):")
+                    st.markdown("""
+                    - **tiny**: Fastest (1-2x realtime on M1/M2), less accurate
+                    - **base**: Good balance (1-1.5x realtime on M1/M2)
+                    - **small**: More accurate, slower (0.5x realtime)
+                    - **medium**: High accuracy, much slower
+                    - **large**: Best accuracy, very slow (not recommended on most Macs)
+                    """)
+                elif engine == "faster_whisper":
+                    # For Faster Whisper, allow model size selection
+                    model_sizes = ["tiny", "base", "small", "medium", "large"]
+                    model_size = st.selectbox(
+                        "Faster Whisper Model Size:",
+                        model_sizes,
+                        index=model_sizes.index(
+                            st.session_state.caption_dreams.get("model_size", "base")
+                        ),
+                        key="model_size_select"
+                    )
+                    st.session_state.caption_dreams["model_size"] = model_size
+                    
+                    st.info("Faster-Whisper provides similar accuracy to Whisper with improved processing speed on Mac.")
+                    st.markdown("""
+                    ℹ️ Recommended for M1/M2 Mac users. Uses GPU acceleration when available.
+                    - **tiny/base**: 2-3x faster than standard Whisper
+                    - **small/medium**: Good balance for Mac users
+                    """)
+                elif engine == "vosk":
+                    st.info("Vosk is a lightweight offline speech recognition engine.")
+                    st.markdown("""
+                    ℹ️ Advantages for Mac users:
+                    - Much faster than Whisper (5-10x realtime)
+                    - Lower memory usage
+                    - Works entirely offline
+                    - Good for longer videos
+                    
+                    Note: May be less accurate than Whisper for some accents or noisy audio.
+                    """)
                 
-                st.info("Faster-Whisper provides similar accuracy to Whisper with improved processing speed on Mac.")
-                st.markdown("""
-                ℹ️ Recommended for M1/M2 Mac users. Uses GPU acceleration when available.
-                - **tiny/base**: 2-3x faster than standard Whisper
-                - **small/medium**: Good balance for Mac users
-                """)
-            elif engine == "vosk":
-                st.info("Vosk is a lightweight offline speech recognition engine.")
-                st.markdown("""
-                ℹ️ Advantages for Mac users:
-                - Much faster than Whisper (5-10x realtime)
-                - Lower memory usage
-                - Works entirely offline
-                - Good for longer videos
+                # Add information about other options for Mac users
+                with st.expander("Additional Options for Mac Users"):
+                    st.markdown("""
+                    ### Other Transcription Options for Mac Users
+                    
+                    If you're experiencing issues with word timing or accuracy:
+                    
+                    1. **Apple Speech Framework** (via a Python wrapper)
+                       - Natively optimized for Mac
+                       - Very fast on M1/M2 chips
+                       - Requires additional setup
+                    
+                    2. **Assembly AI** or **Deepgram** APIs
+                       - Cloud-based, high accuracy
+                       - Requires API key (paid service)
+                       - Often provides superior word-level timing
+                    
+                    3. **Improving Whisper Performance on Mac**:
+                       - Use "tiny" or "base" models for faster processing
+                       - Close other applications to free up memory
+                       - Run on Apple Silicon Macs (M1/M2) when possible
+                       - Consider using faster-whisper with appropriate compute type
+                    """)
                 
-                Note: May be less accurate than Whisper for some accents or noisy audio.
-                """)
+            # Put the generation button at the bottom of the settings column
+            st.markdown("## Step 3: Generate Animated Captions")
             
-            # Add information about other options for Mac users
-            with st.expander("Additional Options for Mac Users"):
-                st.markdown("""
-                ### Other Transcription Options for Mac Users
-                
-                If you're experiencing issues with word timing or accuracy:
-                
-                1. **Apple Speech Framework** (via a Python wrapper)
-                   - Natively optimized for Mac
-                   - Very fast on M1/M2 chips
-                   - Requires additional setup
-                
-                2. **Assembly AI** or **Deepgram** APIs
-                   - Cloud-based, high accuracy
-                   - Requires API key (paid service)
-                   - Often provides superior word-level timing
-                
-                3. **Improving Whisper Performance on Mac**:
-                   - Use "tiny" or "base" models for faster processing
-                   - Close other applications to free up memory
-                   - Run on Apple Silicon Macs (M1/M2) when possible
-                   - Consider using faster-whisper with appropriate compute type
-                """)
+            # Create a column layout for buttons
+            gen_col1, gen_col2 = st.columns([1, 2])
+            
+            with gen_col1:
+                # Generate captions button
+                if st.button("✨ Generate Animated Captions", key="generate_btn", use_container_width=True):
+                    try:
+                        # Start the caption generation process
+                        st.session_state.caption_dreams["status"] = "processing"
+                        
+                        # Create a progress bar
+                        progress = st.progress(0)
+                        status_text = st.empty()
+                        
+                        # Define a callback for progress updates
+                        def update_progress(progress_value, message):
+                            progress.progress(progress_value)
+                            status_text.text(message)
+                        
+                        # Update initial status
+                        update_progress(0.1, "Preparing to process video...")
+                        
+                        # Ensure output directory exists
+                        output_dir = os.path.join(os.getcwd(), "output")
+                        os.makedirs(output_dir, exist_ok=True)
+                        
+                        # Create output filename using the exact same timestamp as the uploaded file
+                        output_filename = f"captioned_{os.path.basename(st.session_state.caption_dreams['source_video'])}"
+                        output_path = os.path.join(output_dir, output_filename)
+                        
+                        # Log important path information
+                        print(f"Source video: {st.session_state.caption_dreams['source_video']}")
+                        print(f"Generated output path: {output_path}")
+                        print(f"Current working directory: {os.getcwd()}")
+                        
+                        # Update session state with the absolute path
+                        output_path = os.path.abspath(output_path)
+                        st.session_state.caption_dreams["output_path"] = output_path
+                        print(f"Final absolute output path: {output_path}")
+                        
+                        # Create custom style with the user's customization options
+                        custom_style = {
+                            "font_size": st.session_state.caption_dreams.get("font_size", 50),
+                            "position": "custom" if st.session_state.caption_dreams.get("position_type") == "custom_position" else "bottom",
+                            "vertical_pos": st.session_state.caption_dreams.get("vertical_pos", 80) / 100.0,  # Convert to fraction
+                            "horizontal_pos": st.session_state.caption_dreams.get("horizontal_pos", 50) / 100.0,  # Convert to fraction
+                            "align": st.session_state.caption_dreams.get("text_align", "center"),
+                            "show_textbox": st.session_state.caption_dreams.get("show_textbox", True),
+                            "textbox_opacity": st.session_state.caption_dreams.get("bg_opacity", 70) / 100.0,  # Convert to fraction
+                            "font_color": st.session_state.caption_dreams.get("text_color", "#FFFFFF"),
+                            "font_path": get_font_path(st.session_state.caption_dreams.get("font_style", "Arial Bold")),
+                            "stroke_width": st.session_state.caption_dreams.get("stroke_width", 3),
+                            "stroke_color": st.session_state.caption_dreams.get("stroke_color", "#000000"),
+                            "force_captions_if_no_speech": st.session_state.caption_dreams.get("force_captions", False),
+                            "default_caption": st.session_state.caption_dreams.get("default_caption", "No speech detected"),
+                            "enable_multiline": st.session_state.caption_dreams.get("enable_multiline", True),
+                            "max_line_width": st.session_state.caption_dreams.get("max_line_width", 80),
+                            "line_padding": st.session_state.caption_dreams.get("line_padding", 10)
+                        }
+                        
+                        # Add background color if specified
+                        if st.session_state.caption_dreams.get("show_textbox", True):
+                            # Convert hex color to RGB tuple
+                            bg_color_hex = st.session_state.caption_dreams.get("bg_color", "#000000")
+                            # Remove # prefix if present
+                            bg_color_hex = bg_color_hex.lstrip('#')
+                            # Convert hex to RGB
+                            bg_color_rgb = tuple(int(bg_color_hex[i:i+2], 16) for i in (0, 2, 4))
+                            # Add opacity
+                            opacity = int(255 * (st.session_state.caption_dreams.get("bg_opacity", 70) / 100.0))
+                            bg_color_rgba = bg_color_rgb + (opacity,)
+                            custom_style["highlight_color"] = bg_color_rgba
+                        
+                        # Add highlight color if using color_highlight style
+                        if st.session_state.caption_dreams.get("animation_style") == "color_highlight":
+                            custom_style["highlight_font_color"] = st.session_state.caption_dreams.get("highlight_font_color", "#FFFF00")
+                        
+                        # Call the captioning function with customization options
+                        result = add_captions_to_video(
+                            st.session_state.caption_dreams["source_video"],
+                            output_path=output_path,
+                            style_name=st.session_state.caption_dreams.get("selected_style", "tiktok"),
+                            model_size=st.session_state.caption_dreams.get("model_size", "base"),
+                            engine=st.session_state.caption_dreams.get("transcription_engine", "auto"),
+                            animation_style=st.session_state.caption_dreams.get("animation_style", "word_by_word"),
+                            custom_style=custom_style,
+                            progress_callback=update_progress
+                        )
+                        
+                        # Check result
+                        if result.get("status") == "success":
+                            st.session_state.caption_dreams["status"] = "completed"
+                            mark_step_complete("caption_dreams")
+                            
+                            # Clear progress indicators
+                            progress.empty()
+                            status_text.empty()
+                            
+                            st.success("✅ Captions generated successfully!")
+                            
+                            # Debug info
+                            output_file = result.get("output_path", output_path)
+                            
+                            # IMPORTANT: Update session state with the path returned from the function
+                            # This is critical in case the backend used an alternative path
+                            st.session_state.caption_dreams["output_path"] = output_file
+                            
+                            st.rerun()  # Rerun to show the video output
+                        else:
+                            st.session_state.caption_dreams["status"] = "error"
+                            st.session_state.caption_dreams["error"] = result.get("message", "Unknown error")
+                            
+                            # Clear progress indicators
+                            progress.empty()
+                            status_text.empty()
+                            
+                            st.error(f"❌ Error generating captions: {result.get('message', 'Unknown error')}")
+                            
+                            # If there's a detailed traceback, show it in an expander
+                            if "traceback" in result:
+                                with st.expander("View Error Details"):
+                                    st.code(result["traceback"], language="python")
+                    except Exception as e:
+                        st.session_state.caption_dreams["status"] = "error"
+                        st.session_state.caption_dreams["error"] = str(e)
+                        st.error(f"❌ Error: {str(e)}")
+                        
+                        # If there's a traceback, show it in an expander
+                        with st.expander("View Error Details"):
+                            st.code(traceback.format_exc(), language="python")
         
-        # Display the caption generation section
-        st.markdown("## Step 3: Generate Animated Captions")
-        
-        # Add Live Preview section
-        st.markdown("### 🔍 Live Caption Preview")
-        st.info("See how your captions will look before generating the final video. This preview shows captions in a 9:16 ratio format.")
-        
-        # Create tabs for preview and generation
-        preview_tab, generate_tab = st.tabs(["Preview Captions", "Generate Final Video"])
-        
-        with preview_tab:
+        # PREVIEW COLUMN - Now in the right column instead of below settings
+        with preview_col:
+            # Add Live Preview section
+            st.markdown("### 🔍 Live Caption Preview")
+            st.info("Preview how your captions will look on your video.")
+            
             # Create a preview frame (black background with 9:16 ratio)
             if "preview_frame" not in st.session_state:
                 # Create a blank 9:16 frame
-                preview_width, preview_height = 540, 960  # 9:16 ratio, half resolution for performance
+                preview_width, preview_height = 400, 711  # 9:16 ratio, reduced resolution for better layout
                 preview_frame = np.zeros((preview_height, preview_width, 3), dtype=np.uint8)
                 
                 # Try to extract an actual frame from the video if possible
@@ -594,7 +727,7 @@ def main():
                             # Crop to target height
                             crop_y = (new_height - preview_height) // 2
                             preview_frame = np.array(resized.crop((0, crop_y, preview_width, crop_y + preview_height)))
-                    
+                
                     video.close()
                 except Exception as e:
                     st.warning(f"Could not extract preview frame: {str(e)}")
@@ -637,12 +770,12 @@ def main():
             try:
                 # Create a custom style dictionary with current settings
                 custom_style = {
-                    "font_size": st.session_state.caption_dreams.get("font_size", 40),
+                    "font_size": st.session_state.caption_dreams.get("font_size", 50),
                     "position": "custom" if st.session_state.caption_dreams.get("position_type") == "custom_position" else "bottom",
                     "vertical_pos": st.session_state.caption_dreams.get("vertical_pos", 80) / 100.0,
                     "horizontal_pos": st.session_state.caption_dreams.get("horizontal_pos", 50) / 100.0,
                     "align": st.session_state.caption_dreams.get("text_align", "center"),
-                    "show_textbox": st.session_state.caption_dreams.get("show_textbox", False),
+                    "show_textbox": st.session_state.caption_dreams.get("show_textbox", True),
                     "textbox_opacity": st.session_state.caption_dreams.get("bg_opacity", 70) / 100.0,
                     "font_color": st.session_state.caption_dreams.get("text_color", "#FFFFFF"),
                     "font_path": get_font_path(st.session_state.caption_dreams.get("font_style", "Arial Bold")),
@@ -657,7 +790,7 @@ def main():
                 }
                 
                 # Add background color if specified
-                if st.session_state.caption_dreams.get("show_textbox", False):
+                if st.session_state.caption_dreams.get("show_textbox", True):
                     # Convert hex color to RGB tuple
                     bg_color_hex = st.session_state.caption_dreams.get("bg_color", "#000000")
                     # Remove # prefix if present
@@ -722,338 +855,58 @@ def main():
                 )
                 
                 # Add a note about the preview
-                st.info("This is a simulation of how your captions will appear in the final video. The actual results may vary slightly based on your video content and resolution.")
+                st.info("This is a simulation of how your captions will appear in the final video.")
                 
             except Exception as e:
                 st.error(f"Error generating preview: {str(e)}")
                 st.code(traceback.format_exc())
         
-        with generate_tab:
-            # Output file path
-            output_dir = os.path.join(os.getcwd(), "output")
-            os.makedirs(output_dir, exist_ok=True)
-            output_filename = f"captioned_{os.path.basename(st.session_state.caption_dreams['source_video'])}"
-            output_path = os.path.join(output_dir, output_filename)
-            st.session_state.caption_dreams["output_path"] = output_path
+        # Output video display - This is outside the main columns layout
+        if st.session_state.caption_dreams["status"] == "completed":
+            output_path = st.session_state.caption_dreams.get("output_path")
             
-            # Put debug information in collapsible expander
-            with st.expander("🔍 File Path Information", expanded=False):
-                st.info(f"Output directory: {output_dir}")
-                st.info(f"Directory exists: {os.path.exists(output_dir)}")
-                st.info(f"Directory writable: {os.access(output_dir, os.W_OK)}")
-            
-            # Create a column layout for buttons
-            col1, col2 = st.columns([1, 2])
-            
-            with col1:
-                # Generate captions button
-                if st.button("✨ Generate Animated Captions", key="generate_btn", use_container_width=True):
-                    try:
-                        # Start the caption generation process
-                        st.session_state.caption_dreams["status"] = "processing"
-                        
-                        # Create a progress bar
-                        progress = st.progress(0)
-                        status_text = st.empty()
-                        
-                        # Define a callback for progress updates
-                        def update_progress(progress_value, message):
-                            progress.progress(progress_value)
-                            status_text.text(message)
-                        
-                        # Update initial status
-                        update_progress(0.1, "Preparing to process video...")
-                        
-                        # Ensure output directory exists
-                        output_dir = os.path.join(os.getcwd(), "output")
-                        os.makedirs(output_dir, exist_ok=True)
-                        
-                        # Create output filename using the exact same timestamp as the uploaded file
-                        output_filename = f"captioned_{os.path.basename(st.session_state.caption_dreams['source_video'])}"
-                        output_path = os.path.join(output_dir, output_filename)
-                        
-                        # Log important path information
-                        print(f"Source video: {st.session_state.caption_dreams['source_video']}")
-                        print(f"Generated output path: {output_path}")
-                        print(f"Current working directory: {os.getcwd()}")
-                        
-                        # Update session state with the absolute path
-                        output_path = os.path.abspath(output_path)
-                        st.session_state.caption_dreams["output_path"] = output_path
-                        print(f"Final absolute output path: {output_path}")
-                        
-                        # Create custom style with the user's customization options
-                        custom_style = {
-                            "font_size": st.session_state.caption_dreams.get("font_size", 40),
-                            "position": "custom" if st.session_state.caption_dreams.get("position_type") == "custom_position" else "bottom",
-                            "vertical_pos": st.session_state.caption_dreams.get("vertical_pos", 80) / 100.0,  # Convert to fraction
-                            "horizontal_pos": st.session_state.caption_dreams.get("horizontal_pos", 50) / 100.0,  # Convert to fraction
-                            "align": st.session_state.caption_dreams.get("text_align", "center"),
-                            "show_textbox": st.session_state.caption_dreams.get("show_textbox", False),
-                            "textbox_opacity": st.session_state.caption_dreams.get("bg_opacity", 70) / 100.0,  # Convert to fraction
-                            "font_color": st.session_state.caption_dreams.get("text_color", "#FFFFFF"),
-                            "font_path": get_font_path(st.session_state.caption_dreams.get("font_style", "Arial Bold")),
-                            "stroke_width": st.session_state.caption_dreams.get("stroke_width", 3),
-                            "stroke_color": st.session_state.caption_dreams.get("stroke_color", "#000000"),
-                            "force_captions_if_no_speech": st.session_state.caption_dreams.get("force_captions", False),
-                            "default_caption": st.session_state.caption_dreams.get("default_caption", "No speech detected"),
-                            "enable_multiline": st.session_state.caption_dreams.get("enable_multiline", True),
-                            "max_line_width": st.session_state.caption_dreams.get("max_line_width", 80),
-                            "line_padding": st.session_state.caption_dreams.get("line_padding", 10)
-                        }
-                        
-                        # Add background color if specified
-                        if st.session_state.caption_dreams.get("show_textbox", False):
-                            # Convert hex color to RGB tuple
-                            bg_color_hex = st.session_state.caption_dreams.get("bg_color", "#000000")
-                            # Remove # prefix if present
-                            bg_color_hex = bg_color_hex.lstrip('#')
-                            # Convert hex to RGB
-                            bg_color_rgb = tuple(int(bg_color_hex[i:i+2], 16) for i in (0, 2, 4))
-                            # Add opacity
-                            opacity = int(255 * (st.session_state.caption_dreams.get("bg_opacity", 70) / 100.0))
-                            bg_color_rgba = bg_color_rgb + (opacity,)
-                            custom_style["highlight_color"] = bg_color_rgba
-                        
-                        # Add highlight color if using color_highlight style
-                        if st.session_state.caption_dreams.get("animation_style") == "color_highlight":
-                            custom_style["highlight_font_color"] = st.session_state.caption_dreams.get("highlight_font_color", "#FFFF00")
-                        
-                        # Call the captioning function with customization options
-                        result = add_captions_to_video(
-                            st.session_state.caption_dreams["source_video"],
-                            output_path=output_path,
-                            style_name=st.session_state.caption_dreams.get("selected_style", "tiktok"),
-                            model_size=st.session_state.caption_dreams.get("model_size", "base"),
-                            engine=st.session_state.caption_dreams.get("transcription_engine", "auto"),
-                            animation_style=st.session_state.caption_dreams.get("animation_style", "word_by_word"),
-                            custom_style=custom_style,
-                            progress_callback=update_progress
-                        )
-                        
-                        # Check result
-                        if result.get("status") == "success":
-                            st.session_state.caption_dreams["status"] = "completed"
-                            mark_step_complete("caption_dreams")
-                            
-                            # Clear progress indicators
-                            progress.empty()
-                            status_text.empty()
-                            
-                            st.success("✅ Captions generated successfully!")
-                            
-                            # Debug info
-                            output_file = result.get("output_path", output_path)
-                            
-                            # Put technical details in a collapsible expander
-                            with st.expander("🔧 Technical Details", expanded=False):
-                                st.info(f"Output file path from result: {output_file}")
-                                st.info(f"File exists: {os.path.exists(output_file)}")
-                                st.info(f"File size: {os.path.getsize(output_file) if os.path.exists(output_file) else 'N/A'}")
-                                st.info(f"Updated session state output path: {st.session_state.caption_dreams['output_path']}")
-                                st.info(f"Session state status: {st.session_state.caption_dreams['status']}")
-                            
-                            # IMPORTANT: Update session state with the path returned from the function
-                            # This is critical in case the backend used an alternative path
-                            st.session_state.caption_dreams["output_path"] = output_file
-                            
-                            st.rerun()  # Rerun to show the video output
-                        else:
-                            st.session_state.caption_dreams["status"] = "error"
-                            st.session_state.caption_dreams["error"] = result.get("message", "Unknown error")
-                            
-                            # Clear progress indicators
-                            progress.empty()
-                            status_text.empty()
-                            
-                            st.error(f"❌ Error generating captions: {result.get('message', 'Unknown error')}")
-                            
-                            # If there's a detailed traceback, show it in an expander
-                            if "traceback" in result:
-                                with st.expander("View Error Details"):
-                                    st.code(result["traceback"], language="python")
-                    except Exception as e:
-                        st.session_state.caption_dreams["status"] = "error"
-                        st.session_state.caption_dreams["error"] = str(e)
-                        st.error(f"❌ Error: {str(e)}")
-                        
-                        # If there's a traceback, show it in an expander
-                        with st.expander("View Error Details"):
-                            st.code(traceback.format_exc(), language="python")
-            
-            # Display the output video if available
-            if st.session_state.caption_dreams["status"] == "completed":
-                output_path = st.session_state.caption_dreams.get("output_path")
+            # Put debug info in a collapsible expander
+            with st.expander("🔍 Debug Information (click to expand)", expanded=False):
+                st.info(f"Output video status: {'Completed' if st.session_state.caption_dreams['status'] == 'completed' else 'Not completed'}")
+                st.info(f"Output path: {output_path}")
                 
-                # Put debug info in a collapsible expander
-                with st.expander("🔍 Debug Information (click to expand)", expanded=False):
-                    st.info(f"Output video status: {'Completed' if st.session_state.caption_dreams['status'] == 'completed' else 'Not completed'}")
-                    st.info(f"Output path: {output_path}")
-                    st.info(f"Current working directory: {os.getcwd()}")
+            if output_path and os.path.exists(output_path):
+                try:
+                    # Get file size
+                    file_size = os.path.getsize(output_path)
                     
-                    # Make sure path is absolute
-                    if output_path and not os.path.isabs(output_path):
-                        absolute_path = os.path.abspath(output_path)
-                        st.info(f"Absolute path: {absolute_path}")
-                        output_path = absolute_path
-                    
-                    # Check if path exists, if not try to find a similar file
-                    if output_path and not os.path.exists(output_path):
-                        # Move this warning into the debug expander instead of showing in main UI
-                        st.warning(f"Path does not exist: {output_path}")
+                    # Verify it's a valid video file
+                    if file_size > 0:
+                        st.markdown("## Output Video with Animated Captions")
                         
-                        # Try to find files with similar names
+                        # Try to display the video
                         try:
-                            output_dir = os.path.dirname(output_path)
-                            base_name = os.path.basename(output_path)
-                            
-                            if os.path.exists(output_dir):
-                                files = os.listdir(output_dir)
-                                # Don't use a nested expander - just show the file list directly
-                                st.text("Files in output directory:")
-                                st.code("\n".join(files), language=None)
-                                
-                                # Look for files with similar names (captioned_*)
-                                similar_files = [f for f in files if f.startswith("captioned_")]
-                                if similar_files:
-                                    # Sort by creation time (newest first)
-                                    similar_files.sort(key=lambda x: os.path.getctime(os.path.join(output_dir, x)), reverse=True)
-                                    newest_file = similar_files[0]
-                                    st.info(f"Found similar file: {newest_file}")
-                                    
-                                    # Use the newest similar file
-                                    output_path = os.path.join(output_dir, newest_file)
-                                    st.info(f"Using alternative file: {output_path}")
-                        except Exception as e:
-                            st.error(f"Error finding similar files: {e}")
-                    
-                    # Final check before display
-                    st.info(f"Final path exists: {os.path.exists(output_path) if output_path else 'No path'}")
-                    if output_path and os.path.exists(output_path):
-                        st.info(f"File size: {os.path.getsize(output_path)} bytes")
-                
-                # Continue with normal display code
-                if output_path and os.path.exists(output_path):
-                    try:
-                        # Get file size
-                        file_size = os.path.getsize(output_path)
-                        st.info(f"File size: {file_size} bytes")
+                            st.video(output_path)
+                        except Exception as e1:
+                            st.warning(f"Default video player failed: {str(e1)}")
+                            # Add fallback display options here if needed
                         
-                        # Verify it's a valid video file
-                        if file_size > 0:
-                            st.markdown("## Output Video with Animated Captions")
-                            
-                            # Try multiple approaches to display the video
-                            video_displayed = False
-                            
-                            # Approach 1: Default Streamlit video player
-                            try:
-                                st.video(output_path)
-                                video_displayed = True
-                            except Exception as e1:
-                                st.warning(f"Default video player failed: {str(e1)}")
-                                
-                                # Approach 2: Use bytes
-                                try:
-                                    with open(output_path, "rb") as video_file:
-                                        video_bytes = video_file.read()
-                                        st.video(video_bytes)
-                                        video_displayed = True
-                                except Exception as e2:
-                                    st.warning(f"Bytes-based video player failed: {str(e2)}")
-                                    
-                                    # Approach 3: Use data URL
-                                    try:
-                                        data_url = get_video_data_url(output_path)
-                                        if data_url:
-                                            st.markdown(f"""
-                                            <video width="100%" controls>
-                                              <source src="{data_url}" type="video/mp4">
-                                              Your browser does not support the video tag.
-                                            </video>
-                                            """, unsafe_allow_html=True)
-                                            video_displayed = True
-                                    except Exception as e3:
-                                        st.warning(f"Data URL video player failed: {str(e3)}")
-                                        
-                                        # Approach 4: Create HTML player file
-                                        try:
-                                            html_path = create_html_video_player(output_path)
-                                            if html_path:
-                                                st.markdown(f"📹 [Open Video in Browser](file://{html_path})")
-                                                video_displayed = True
-                                        except Exception as e4:
-                                            st.warning(f"HTML player failed: {str(e4)}")
+                        # Provide download link
+                        with open(output_path, "rb") as file:
+                            st.download_button(
+                                label="⬇️ Download Captioned Video",
+                                data=file,
+                                file_name=os.path.basename(output_path),
+                                mime="video/mp4",
+                                key="download_btn"
+                            )
                         
-                            # Provide download link regardless of display success
-                            with open(output_path, "rb") as file:
-                                st.download_button(
-                                    label="⬇️ Download Captioned Video",
-                                    data=file,
-                                    file_name=os.path.basename(output_path),
-                                    mime="video/mp4",
-                                    key="download_btn"
-                                )
-                            
-                            # If all display methods failed, show a message
-                            if not video_displayed:
-                                st.error("Could not display the video in the UI, but you can download it using the button above.")
-                                st.info(f"Video file path: {output_path}")
-                                
-                                # Additional option - open directly
-                                if st.button("🎬 Open Video in Default Video Player"):
-                                    import subprocess
-                                    import platform
-                                    
-                                    system = platform.system()
-                                    try:
-                                        if system == "Darwin":  # macOS
-                                            subprocess.call(["open", output_path])
-                                        elif system == "Windows":
-                                            subprocess.call(["start", output_path], shell=True)
-                                        else:  # Linux
-                                            subprocess.call(["xdg-open", output_path])
-                                        st.success("Video opened in external player")
-                                    except Exception as e:
-                                        st.error(f"Failed to open video: {e}")
-                        
-                            # Mark this step as complete in the workflow
-                            mark_step_complete("caption_dreams")
-                        else:
-                            st.error("Output file exists but has zero size.")
-                    except Exception as e:
-                        st.error(f"Error displaying video: {str(e)}")
-                        st.code(traceback.format_exc())
-                else:
-                    # Major fallback - scan the whole output directory for recent videos
-                    st.warning(f"Output video file not found at: {output_path}")
-                    
-                    # Add a more user-friendly message
-                    st.info("🔍 Looking for your recently generated videos...")
-                    
-                    # Try to list files in output directory to help debugging
-                    try:
-                        output_dir = os.path.dirname(output_path) if output_path else os.path.join(os.getcwd(), "output")
-                        if os.path.exists(output_dir):
-                            files = os.listdir(output_dir)
-                            # Show files directly instead of using an expander
-                            st.text("Files in output directory:")
-                            st.code("\n".join(files), language=None)
-                            
-                            # Show most recent file info
-                            if files:
-                                files.sort(key=lambda x: os.path.getctime(os.path.join(output_dir, x)), reverse=True)
-                                recent_file = files[0]
-                                recent_path = os.path.join(output_dir, recent_file)
-                                st.info(f"Most recent file: {recent_file}")
-                                st.info(f"Created: {datetime.fromtimestamp(os.path.getctime(recent_path))}")
-                                st.info(f"Size: {os.path.getsize(recent_path)} bytes")
-                        else:
-                            st.info(f"Output directory does not exist: {output_dir}")
-                    except Exception as e:
-                        st.error(f"Error listing output directory: {str(e)}")
-                    
-                    st.info("Try generating the video again.")
+                        # Mark this step as complete in the workflow
+                        mark_step_complete("caption_dreams")
+                    else:
+                        st.error("Output file exists but has zero size.")
+                except Exception as e:
+                    st.error(f"Error displaying video: {str(e)}")
+                    st.code(traceback.format_exc())
+            else:
+                # Show error if output file not found
+                st.warning(f"Output video file not found at: {output_path}")
+                st.info("Try generating the video again.")
 
 # Run the main function
 if __name__ == "__main__":

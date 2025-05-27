@@ -96,6 +96,34 @@ def get_text_size(draw, text, font):
             # Last resort fallback - estimate based on font size
             return (len(text) * font.size * 0.6, font.size * 1.2)
 
+# Helper function to convert hex color to RGB or RGBA tuple
+def hex_to_rgb(hex_color, alpha=None):
+    """Convert hex color string to RGB or RGBA tuple"""
+    if not hex_color:
+        return (255, 255, 255)  # Default to white
+        
+    if isinstance(hex_color, tuple):
+        # Already a tuple, just return it
+        return hex_color
+        
+    # Remove # prefix if present
+    hex_color = hex_color.lstrip('#')
+    
+    # Handle shorthand hex
+    if len(hex_color) == 3:
+        hex_color = ''.join([c*2 for c in hex_color])
+    
+    # Convert hex to RGB
+    try:
+        rgb = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+        # Add alpha if specified
+        if alpha is not None:
+            return rgb + (alpha,)
+        return rgb
+    except ValueError:
+        # Fall back to white if invalid hex
+        return (255, 255, 255) if alpha is None else (255, 255, 255, alpha)
+
 def check_dependencies():
     """Check if all required dependencies are installed"""
     missing = []
@@ -670,9 +698,9 @@ def render_basic_caption(frame_img, text, style_params):
         # Get font information
         font_path = style_params.get("font_path", get_system_font("Arial"))
         font_size = style_params.get("font_size", 36)
-        font_color = style_params.get("font_color", "#FFFFFF")
+        font_color = hex_to_rgb(style_params.get("font_color", "#FFFFFF"))
         stroke_width = style_params.get("stroke_width", 2)
-        stroke_color = style_params.get("stroke_color", "#000000")
+        stroke_color = hex_to_rgb(style_params.get("stroke_color", "#000000"))
         
         print(f"Using font: {font_path}, size: {font_size}")
         
@@ -716,16 +744,20 @@ def render_basic_caption(frame_img, text, style_params):
             # Get textbox color with opacity
             bg_color = style_params.get("highlight_color", (0, 0, 0))
             
-            # If bg_color is a tuple, ensure it has alpha
-            if isinstance(bg_color, tuple):
-                if len(bg_color) == 3:
-                    bg_color = bg_color + (opacity,)
-                elif len(bg_color) == 4:
-                    # Replace alpha with our calculated opacity
-                    bg_color = bg_color[:3] + (opacity,)
+            # Convert hex color to RGB if needed
+            if isinstance(bg_color, str):
+                bg_color = hex_to_rgb(bg_color, opacity)
             else:
-                # Default to semi-transparent black
-                bg_color = (0, 0, 0, opacity)
+                # If bg_color is a tuple, ensure it has alpha
+                if isinstance(bg_color, tuple):
+                    if len(bg_color) == 3:
+                        bg_color = bg_color + (opacity,)
+                    elif len(bg_color) == 4:
+                        # Replace alpha with our calculated opacity
+                        bg_color = bg_color[:3] + (opacity,)
+                else:
+                    # Default to semi-transparent black
+                    bg_color = (0, 0, 0, opacity)
             
             padding = 15
             
@@ -778,9 +810,9 @@ def render_animated_caption(frame_img, text, words_with_times, current_time, sty
         # Get font information
         font_path = style_params.get("font_path", get_system_font("Arial"))
         font_size = style_params.get("font_size", 36)
-        font_color = style_params.get("font_color", "#FFFFFF")
+        font_color = hex_to_rgb(style_params.get("font_color", "#FFFFFF"))
         stroke_width = style_params.get("stroke_width", 2)
-        stroke_color = style_params.get("stroke_color", "#000000")
+        stroke_color = hex_to_rgb(style_params.get("stroke_color", "#000000"))
         
         # Load font
         try:
@@ -818,16 +850,20 @@ def render_animated_caption(frame_img, text, words_with_times, current_time, sty
             # Get textbox color with opacity
             bg_color = style_params.get("highlight_color", (0, 0, 0))
             
-            # If bg_color is a tuple, ensure it has alpha
-            if isinstance(bg_color, tuple):
-                if len(bg_color) == 3:
-                    bg_color = bg_color + (opacity,)
-                elif len(bg_color) == 4:
-                    # Replace alpha with our calculated opacity
-                    bg_color = bg_color[:3] + (opacity,)
+            # Convert hex color to RGB if needed
+            if isinstance(bg_color, str):
+                bg_color = hex_to_rgb(bg_color, opacity)
             else:
-                # Default to semi-transparent black
-                bg_color = (0, 0, 0, opacity)
+                # If bg_color is a tuple, ensure it has alpha
+                if isinstance(bg_color, tuple):
+                    if len(bg_color) == 3:
+                        bg_color = bg_color + (opacity,)
+                    elif len(bg_color) == 4:
+                        # Replace alpha with our calculated opacity
+                        bg_color = bg_color[:3] + (opacity,)
+                else:
+                    # Default to semi-transparent black
+                    bg_color = (0, 0, 0, opacity)
             
             padding = 15
             
@@ -951,16 +987,20 @@ def render_animated_caption(frame_img, text, words_with_times, current_time, sty
                     # Get textbox color with opacity
                     highlight_color = style_params.get("highlight_color", (0, 0, 0))
                     
-                    # If highlight_color is a tuple, ensure it has alpha
-                    if isinstance(highlight_color, tuple):
-                        if len(highlight_color) == 3:
-                            highlight_color = highlight_color + (opacity,)
-                        elif len(highlight_color) == 4:
-                            # Replace alpha with our calculated opacity
-                            highlight_color = highlight_color[:3] + (opacity,)
+                    # Convert hex color to RGB if needed
+                    if isinstance(highlight_color, str):
+                        highlight_color = hex_to_rgb(highlight_color, opacity)
                     else:
-                        # Default to semi-transparent black
-                        highlight_color = (0, 0, 0, opacity)
+                        # If highlight_color is a tuple, ensure it has alpha
+                        if isinstance(highlight_color, tuple):
+                            if len(highlight_color) == 3:
+                                highlight_color = highlight_color + (opacity,)
+                            elif len(highlight_color) == 4:
+                                # Replace alpha with our calculated opacity
+                                highlight_color = highlight_color[:3] + (opacity,)
+                        else:
+                            # Default to semi-transparent black
+                            highlight_color = (0, 0, 0, opacity)
                     
                     # Ensure padding is appropriate for the word size
                     padding = min(30, max(20, int(word_width * 0.1)))  # Between 20-30px based on word width
@@ -1147,13 +1187,20 @@ def render_animated_caption(frame_img, text, words_with_times, current_time, sty
                     opacity = int(255 * style_params.get("textbox_opacity", 0.7))
                     bg_color = style_params.get("highlight_color", (0, 0, 0))
                     
-                    if isinstance(bg_color, tuple):
-                        if len(bg_color) == 3:
-                            bg_color = bg_color + (opacity,)
-                        elif len(bg_color) == 4:
-                            bg_color = bg_color[:3] + (opacity,)
+                    # Convert hex color to RGB if needed
+                    if isinstance(bg_color, str):
+                        bg_color = hex_to_rgb(bg_color, opacity)
                     else:
-                        bg_color = (0, 0, 0, opacity)
+                        # If bg_color is a tuple, ensure it has alpha
+                        if isinstance(bg_color, tuple):
+                            if len(bg_color) == 3:
+                                bg_color = bg_color + (opacity,)
+                            elif len(bg_color) == 4:
+                                # Replace alpha with our calculated opacity
+                                bg_color = bg_color[:3] + (opacity,)
+                        else:
+                            # Default to semi-transparent black
+                            bg_color = (0, 0, 0, opacity)
                     
                     padding = 15
                     
@@ -1210,7 +1257,8 @@ def render_animated_caption(frame_img, text, words_with_times, current_time, sty
                         
                         # Use regular or highlighted color
                         if is_current and animation_style == "color_highlight":
-                            current_font_color = style_params.get("highlight_font_color", (255, 255, 0))  # Default to yellow
+                            highlight_font_color = style_params.get("highlight_font_color", "#FFFF00")
+                            current_font_color = hex_to_rgb(highlight_font_color)
                         else:
                             current_font_color = font_color
                         

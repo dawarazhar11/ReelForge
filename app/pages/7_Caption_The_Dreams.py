@@ -128,6 +128,29 @@ def create_html_video_player(file_path):
         print(f"Error creating HTML player: {e}")
         return None
 
+# Helper function to map font names to actual font files
+def get_font_path(font_name):
+    """Map font names to actual font files or styles"""
+    font_mapping = {
+        "Default": None,  # Will use system default
+        "Arial": "Arial.ttf",
+        "Arial Bold": "Arial-Bold.ttf",
+        "Impact": "Impact.ttf",
+        "Georgia": "Georgia.ttf",
+        "Times New Roman": "Times New Roman.ttf",
+        "Courier New": "Courier New.ttf",
+        "Verdana": "Verdana.ttf",
+        "Comic Sans MS": "Comic Sans MS.ttf",
+        "Brush Script MT": "Brush Script MT.ttf",
+        "Pacifico": "Pacifico-Regular.ttf",
+        "Dancing Script": "DancingScript-Regular.ttf",
+        "Lobster": "Lobster-Regular.ttf",
+        "Satisfy": "Satisfy-Regular.ttf",
+        "Great Vibes": "GreatVibes-Regular.ttf",
+        "Sacramento": "Sacramento-Regular.ttf"
+    }
+    return font_mapping.get(font_name)
+
 # Main function
 def main():
     # Header and navigation
@@ -343,6 +366,60 @@ def main():
                         help="Control the opacity of the background box"
                     )
                     st.session_state.caption_dreams["bg_opacity"] = bg_opacity
+                    
+                    # Background color picker
+                    bg_color = st.color_picker(
+                        "Background Color:",
+                        value=st.session_state.caption_dreams.get("bg_color", "#000000"),  # Default black
+                        help="Choose the color for the caption background"
+                    )
+                    st.session_state.caption_dreams["bg_color"] = bg_color
+                
+                # Add font styling options
+                st.subheader("Font Styling")
+                
+                # Font selection
+                available_fonts = [
+                    "Default", "Arial", "Arial Bold", "Impact", "Georgia", 
+                    "Times New Roman", "Courier New", "Verdana", "Comic Sans MS",
+                    "Brush Script MT", "Pacifico", "Dancing Script", "Lobster",
+                    "Satisfy", "Great Vibes", "Sacramento"
+                ]
+                
+                selected_font = st.selectbox(
+                    "Font Style:",
+                    available_fonts,
+                    index=available_fonts.index(st.session_state.caption_dreams.get("font_style", "Default")),
+                    help="Choose a font style for your captions"
+                )
+                st.session_state.caption_dreams["font_style"] = selected_font
+                
+                # Text color picker
+                text_color = st.color_picker(
+                    "Text Color:",
+                    value=st.session_state.caption_dreams.get("text_color", "#FFFFFF"),  # Default white
+                    help="Choose the main color for caption text"
+                )
+                st.session_state.caption_dreams["text_color"] = text_color
+                
+                # Text outline (stroke) width
+                stroke_width = st.slider(
+                    "Text Outline Width:", 
+                    min_value=0, 
+                    max_value=5, 
+                    value=st.session_state.caption_dreams.get("stroke_width", 2),
+                    help="Width of the text outline/stroke (0 for no outline)"
+                )
+                st.session_state.caption_dreams["stroke_width"] = stroke_width
+                
+                # Outline color picker (if stroke width > 0)
+                if stroke_width > 0:
+                    stroke_color = st.color_picker(
+                        "Outline Color:",
+                        value=st.session_state.caption_dreams.get("stroke_color", "#000000"),  # Default black
+                        help="Choose the color for the text outline"
+                    )
+                    st.session_state.caption_dreams["stroke_color"] = stroke_color
                 
                 # Add caption layout options
                 st.subheader("Caption Layout")
@@ -567,9 +644,10 @@ def main():
                     "align": st.session_state.caption_dreams.get("text_align", "center"),
                     "show_textbox": st.session_state.caption_dreams.get("show_textbox", False),
                     "textbox_opacity": st.session_state.caption_dreams.get("bg_opacity", 70) / 100.0,
-                    "font_color": (255, 255, 255),  # White text
-                    "stroke_width": 2,
-                    "stroke_color": (0, 0, 0),  # Black outline
+                    "font_color": st.session_state.caption_dreams.get("text_color", "#FFFFFF"),
+                    "font_path": get_font_path(st.session_state.caption_dreams.get("font_style", "Default")),
+                    "stroke_width": st.session_state.caption_dreams.get("stroke_width", 2),
+                    "stroke_color": st.session_state.caption_dreams.get("stroke_color", "#000000"),
                     "bottom_margin": 50,
                     "force_captions_if_no_speech": st.session_state.caption_dreams.get("force_captions", False),
                     "default_caption": st.session_state.caption_dreams.get("default_caption", "No speech detected"),
@@ -577,6 +655,19 @@ def main():
                     "max_line_width": st.session_state.caption_dreams.get("max_line_width", 80),
                     "line_padding": st.session_state.caption_dreams.get("line_padding", 10)
                 }
+                
+                # Add background color if specified
+                if st.session_state.caption_dreams.get("show_textbox", False):
+                    # Convert hex color to RGB tuple
+                    bg_color_hex = st.session_state.caption_dreams.get("bg_color", "#000000")
+                    # Remove # prefix if present
+                    bg_color_hex = bg_color_hex.lstrip('#')
+                    # Convert hex to RGB
+                    bg_color_rgb = tuple(int(bg_color_hex[i:i+2], 16) for i in (0, 2, 4))
+                    # Add opacity
+                    opacity = int(255 * (st.session_state.caption_dreams.get("bg_opacity", 70) / 100.0))
+                    bg_color_rgba = bg_color_rgb + (opacity,)
+                    custom_style["highlight_color"] = bg_color_rgba
                 
                 # Add highlight color if using color_highlight style
                 if st.session_state.caption_dreams.get("animation_style") == "color_highlight":
@@ -700,12 +791,29 @@ def main():
                             "align": st.session_state.caption_dreams.get("text_align", "center"),
                             "show_textbox": st.session_state.caption_dreams.get("show_textbox", False),
                             "textbox_opacity": st.session_state.caption_dreams.get("bg_opacity", 70) / 100.0,  # Convert to fraction
+                            "font_color": st.session_state.caption_dreams.get("text_color", "#FFFFFF"),
+                            "font_path": get_font_path(st.session_state.caption_dreams.get("font_style", "Default")),
+                            "stroke_width": st.session_state.caption_dreams.get("stroke_width", 2),
+                            "stroke_color": st.session_state.caption_dreams.get("stroke_color", "#000000"),
                             "force_captions_if_no_speech": st.session_state.caption_dreams.get("force_captions", False),
                             "default_caption": st.session_state.caption_dreams.get("default_caption", "No speech detected"),
                             "enable_multiline": st.session_state.caption_dreams.get("enable_multiline", True),
                             "max_line_width": st.session_state.caption_dreams.get("max_line_width", 80),
                             "line_padding": st.session_state.caption_dreams.get("line_padding", 10)
                         }
+                        
+                        # Add background color if specified
+                        if st.session_state.caption_dreams.get("show_textbox", False):
+                            # Convert hex color to RGB tuple
+                            bg_color_hex = st.session_state.caption_dreams.get("bg_color", "#000000")
+                            # Remove # prefix if present
+                            bg_color_hex = bg_color_hex.lstrip('#')
+                            # Convert hex to RGB
+                            bg_color_rgb = tuple(int(bg_color_hex[i:i+2], 16) for i in (0, 2, 4))
+                            # Add opacity
+                            opacity = int(255 * (st.session_state.caption_dreams.get("bg_opacity", 70) / 100.0))
+                            bg_color_rgba = bg_color_rgb + (opacity,)
+                            custom_style["highlight_color"] = bg_color_rgba
                         
                         # Add highlight color if using color_highlight style
                         if st.session_state.caption_dreams.get("animation_style") == "color_highlight":

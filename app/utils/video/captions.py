@@ -14,6 +14,9 @@ from pathlib import Path
 from datetime import datetime
 import shutil
 import math
+import requests
+from PIL import Image, ImageDraw, ImageFont
+import numpy as np
 
 # Add parent directory to path
 app_root = Path(__file__).parent.parent.parent.absolute()
@@ -563,63 +566,143 @@ def get_system_font(font_name):
     import os
     import sys
     
+    # Map friendly font names to system fonts
+    font_mapping = {
+        "Arial": "Arial.ttf",
+        "Arial Bold": "Arial Bold.ttf",
+        "Arial-Bold": "Arial Bold.ttf",
+        "Impact": "Impact.ttf",
+        "Georgia": "Georgia.ttf",
+        "Times New Roman": "Times New Roman.ttf",
+        "Courier New": "Courier New.ttf",
+        "Verdana": "Verdana.ttf",
+        "Comic Sans MS": "Comic Sans MS.ttf",
+        "Brush Script MT": "Brush Script MT.ttf",
+        "Pacifico": "Pacifico-Regular.ttf",
+        "Dancing Script": "DancingScript-Regular.ttf",
+        "Lobster": "Lobster-Regular.ttf",
+        "Satisfy": "Satisfy-Regular.ttf",
+        "Great Vibes": "GreatVibes-Regular.ttf",
+        "Sacramento": "Sacramento-Regular.ttf"
+    }
+    
+    # Convert user-friendly font name to filename if mapping exists
+    if font_name in font_mapping:
+        font_name = font_mapping[font_name]
+    
     # Use more reliable system fonts for macOS
     if sys.platform == "darwin":  # macOS
-        # Try user-provided font name first
+        # Try user-provided font name first if it's a complete path
         if font_name and os.path.exists(font_name):
+            print(f"Found exact font path: {font_name}")
             return font_name
             
-        # macOS system fonts that are more reliable
-        if font_name in ["Arial-Bold.ttf", "Arial Bold.ttf", "arialbd.ttf"]:
-            font_path = "/System/Library/Fonts/Supplemental/Arial Bold.ttf"
-            if os.path.exists(font_path):
-                return font_path
-        elif font_name in ["Arial.ttf", "arial.ttf"]:
-            font_path = "/System/Library/Fonts/Supplemental/Arial.ttf"
-            if os.path.exists(font_path):
-                return font_path
-        elif font_name in ["Impact.ttf", "impact.ttf"]:
-            font_path = "/System/Library/Fonts/Supplemental/Impact.ttf"
-            if os.path.exists(font_path):
-                return font_path
-    
-        # Fallback system fonts on macOS
-        fallbacks = [
-            "/System/Library/Fonts/Helvetica.ttc",
-            "/System/Library/Fonts/Geneva.ttf",
-            "/System/Library/Fonts/HelveticaNeue.ttc",
-            "/Library/Fonts/Arial.ttf"
+        # Check common system font locations
+        system_font_paths = [
+            "/System/Library/Fonts/",
+            "/System/Library/Fonts/Supplemental/",
+            "/Library/Fonts/",
+            os.path.expanduser("~/Library/Fonts/"),
+            os.path.join(os.getcwd(), "fonts/")
         ]
-        for fallback in fallbacks:
-            if os.path.exists(fallback):
-                return fallback
-        return "/System/Library/Fonts/Helvetica.ttc"
+        
+        # Try to find the font in system paths
+        for path in system_font_paths:
+            if os.path.exists(path + font_name):
+                print(f"Found font in system path: {path + font_name}")
+                return path + font_name
+        
+        # Fallback fonts on macOS
+        mac_fallbacks = {
+            "Arial.ttf": "/System/Library/Fonts/Supplemental/Arial.ttf",
+            "Arial Bold.ttf": "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+            "Impact.ttf": "/Library/Fonts/Impact.ttf",
+            "Georgia.ttf": "/Library/Fonts/Georgia.ttf",
+            "Times New Roman.ttf": "/Library/Fonts/Times New Roman.ttf",
+            # Standard system fonts that should always be available
+            "fallback1": "/System/Library/Fonts/Helvetica.ttc",
+            "fallback2": "/System/Library/Fonts/Geneva.ttf",
+            "fallback3": "/System/Library/Fonts/HelveticaNeue.ttc"
+        }
+        
+        # Try font name in fallbacks
+        if font_name in mac_fallbacks and os.path.exists(mac_fallbacks[font_name]):
+            print(f"Using Mac fallback font: {mac_fallbacks[font_name]}")
+            return mac_fallbacks[font_name]
+            
+        # Use any available fallback
+        for _, fallback_path in mac_fallbacks.items():
+            if os.path.exists(fallback_path):
+                print(f"Using generic fallback font: {fallback_path}")
+                return fallback_path
+                
+        print("No fonts found, using default")
+        return None
         
     # Windows paths
     elif sys.platform == "win32":  # Windows
         font_dir = "C:\\Windows\\Fonts"
-        if font_name in ["Arial-Bold.ttf", "Arial Bold.ttf", "arialbd.ttf"]:
-            return os.path.join(font_dir, "arialbd.ttf")
-        elif font_name in ["Arial.ttf", "arial.ttf"]:
-            return os.path.join(font_dir, "arial.ttf")
-        elif font_name in ["Impact.ttf", "impact.ttf"]:
-            return os.path.join(font_dir, "impact.ttf")
-        else:
-            # Fallback to Arial
-            return os.path.join(font_dir, "arial.ttf")
+        if os.path.exists(os.path.join(font_dir, font_name)):
+            return os.path.join(font_dir, font_name)
+            
+        # Windows fallbacks
+        win_fallbacks = {
+            "Arial.ttf": "arial.ttf",
+            "Arial Bold.ttf": "arialbd.ttf",
+            "Impact.ttf": "impact.ttf",
+            "Georgia.ttf": "georgia.ttf",
+            "Times New Roman.ttf": "times.ttf",
+            "Courier New.ttf": "cour.ttf",
+            "Verdana.ttf": "verdana.ttf",
+            "Comic Sans MS.ttf": "comic.ttf"
+        }
+        
+        # Try fallback name
+        if font_name in win_fallbacks:
+            fallback = os.path.join(font_dir, win_fallbacks[font_name])
+            if os.path.exists(fallback):
+                return fallback
+                
+        # Default to Arial
+        default = os.path.join(font_dir, "arial.ttf")
+        if os.path.exists(default):
+            return default
+            
+        print("No fonts found on Windows, using default")
+        return None
     
     # Linux and others
     else:
-        # Try to use DejaVu fonts which are commonly available
-        if font_name in ["Arial-Bold.ttf", "Arial Bold.ttf", "arialbd.ttf"]:
-            return "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-        elif font_name in ["Arial.ttf", "arial.ttf"]:
-            return "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-        elif font_name in ["Impact.ttf", "impact.ttf"]:
-            return "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-        else:
-            # Fallback
-            return "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+        # Common Linux font directories
+        linux_font_dirs = [
+            "/usr/share/fonts/truetype/",
+            "/usr/share/fonts/TTF/",
+            "/usr/share/fonts/",
+            os.path.expanduser("~/.fonts/"),
+            os.path.join(os.getcwd(), "fonts/")
+        ]
+        
+        # Try to find the font
+        for dir_path in linux_font_dirs:
+            # Recursive search in common directories
+            for root, _, files in os.walk(dir_path):
+                if font_name in files:
+                    return os.path.join(root, font_name)
+        
+        # Linux fallbacks
+        linux_fallbacks = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf"
+        ]
+        
+        for fallback in linux_fallbacks:
+            if os.path.exists(fallback):
+                return fallback
+                
+        print("No fonts found on Linux, using default")
+        return None
 
 # Define dream animation styles for word-by-word captioning
 DREAM_ANIMATION_STYLES = {
@@ -808,18 +891,39 @@ def render_animated_caption(frame_img, text, words_with_times, current_time, sty
         draw = ImageDraw.Draw(overlay)
         
         # Get font information
-        font_path = style_params.get("font_path", get_system_font("Arial"))
+        font_name = style_params.get("font_path", "Arial.ttf")
         font_size = style_params.get("font_size", 36)
         font_color = hex_to_rgb(style_params.get("font_color", "#FFFFFF"))
         stroke_width = style_params.get("stroke_width", 2)
         stroke_color = hex_to_rgb(style_params.get("stroke_color", "#000000"))
         
-        # Load font
+        # Load font with robust error handling
+        font_path = get_system_font(font_name)
         try:
-            font = ImageFont.truetype(font_path, font_size)
+            if font_path:
+                font = ImageFont.truetype(font_path, font_size)
+            else:
+                # If font not found, download it or use a default
+                font_path = download_font(font_name)
+                if font_path:
+                    font = ImageFont.truetype(font_path, font_size)
+                else:
+                    # Use default font as last resort
+                    print(f"Using default font (failed to find {font_name})")
+                    try:
+                        # Try system Helvetica as backup
+                        font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", font_size)
+                    except:
+                        # Last resort fallback
+                        font = ImageFont.load_default()
         except Exception as e:
-            print(f"Warning: Error loading font: {e}")
-            font = ImageFont.load_default()
+            print(f"Font error: {e}, using default")
+            try:
+                # Try system Helvetica as backup
+                font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", font_size)
+            except:
+                # Last resort fallback
+                font = ImageFont.load_default()
         
         # Calculate total width and height for positioning
         total_text = " ".join([w["word"] for w in words_with_times if isinstance(w, dict) and "word" in w])
@@ -1703,6 +1807,61 @@ def get_caption_style(style_name=None, custom_style=None):
     
     # Return the style
     return CAPTION_STYLES[style_name]
+
+def download_font(font_name):
+    """Download and save a font if not available locally"""
+    import os
+    import requests
+    from pathlib import Path
+    
+    # Map of font names to Google Fonts URLs
+    font_urls = {
+        "Pacifico-Regular.ttf": "https://fonts.gstatic.com/s/pacifico/v22/FwZY7-Qmy14u9lezJ-6H6MmBp0u-.ttf",
+        "DancingScript-Regular.ttf": "https://fonts.gstatic.com/s/dancingscript/v24/If2cXTr6YS-zF4S-kcSWSVi_sxjsohD9F50Ruu7BMSo3ROp6hNX6plRP.ttf",
+        "Lobster-Regular.ttf": "https://fonts.gstatic.com/s/lobster/v28/neILzCirqoswsqX9zoymM5Ez.ttf",
+        "Satisfy-Regular.ttf": "https://fonts.gstatic.com/s/satisfy/v17/rP2Hp2yn6lkG50LoCZOIHTWEBlw.ttf",
+        "GreatVibes-Regular.ttf": "https://fonts.gstatic.com/s/greatvibes/v14/RWmMoKWR9v4ksMfaWd_JN9XFiaE.ttf",
+        "Sacramento-Regular.ttf": "https://fonts.gstatic.com/s/sacramento/v13/buEzpo6gcdjy0EiZMBUG4CMf_f5Iai0.ttf"
+    }
+    
+    # Extract font filename from the full font name if needed
+    for key in font_urls.keys():
+        if key in font_name or font_name == key:
+            font_name = key
+            break
+    
+    # Check if we have a URL for this font
+    if font_name not in font_urls:
+        print(f"No download URL for font: {font_name}")
+        return None
+        
+    # Create fonts directory if it doesn't exist
+    fonts_dir = Path(os.path.join(os.getcwd(), "fonts"))
+    fonts_dir.mkdir(exist_ok=True)
+    
+    # Full path for the font file
+    font_path = os.path.join(fonts_dir, font_name)
+    
+    # If the font already exists, return its path
+    if os.path.exists(font_path):
+        print(f"Font already downloaded: {font_path}")
+        return font_path
+        
+    # Download the font
+    try:
+        print(f"Downloading font: {font_name}")
+        response = requests.get(font_urls[font_name])
+        response.raise_for_status()  # Raise exception for HTTP errors
+        
+        # Save the font
+        with open(font_path, 'wb') as f:
+            f.write(response.content)
+            
+        print(f"Font downloaded successfully to: {font_path}")
+        return font_path
+    except Exception as e:
+        print(f"Error downloading font {font_name}: {e}")
+        return None
 
 if __name__ == "__main__":
     # Simple command-line interface for testing

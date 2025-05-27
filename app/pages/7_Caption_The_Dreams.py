@@ -132,9 +132,9 @@ def create_html_video_player(file_path):
 def get_font_path(font_name):
     """Map font names to actual font files or styles"""
     font_mapping = {
-        "Default": None,  # Will use system default
+        "Default": "Arial.ttf",  # Default to Arial
         "Arial": "Arial.ttf",
-        "Arial Bold": "Arial-Bold.ttf",
+        "Arial Bold": "Arial Bold.ttf",
         "Impact": "Impact.ttf",
         "Georgia": "Georgia.ttf",
         "Times New Roman": "Times New Roman.ttf",
@@ -149,7 +149,7 @@ def get_font_path(font_name):
         "Great Vibes": "GreatVibes-Regular.ttf",
         "Sacramento": "Sacramento-Regular.ttf"
     }
-    return font_mapping.get(font_name)
+    return font_mapping.get(font_name, "Arial.ttf")
 
 # Main function
 def main():

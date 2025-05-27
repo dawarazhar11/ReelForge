@@ -1,0 +1,4 @@
+# Header and Navigation
+render_step_header("5A A-Roll Video Production", "Generate presenter video using HeyGen AI")
+
+# ... existing code ... 

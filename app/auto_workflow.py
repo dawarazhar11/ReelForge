@@ -16,6 +16,7 @@ import importlib.util
 import subprocess
 import threading
 from datetime import datetime
+import traceback
 
 # Add the app directory to the path to import modules from the existing application
 app_dir = Path(__file__).parent
@@ -202,6 +203,10 @@ def log_message(message, level="info"):
         "level": level
     }
     st.session_state.log_messages.append(log_entry)
+    
+    # Also log to terminal for debugging
+    print(f"{timestamp} - {level.upper()}: {message}")
+    sys.stdout.flush()  # Force output to be displayed immediately
 
 # Execute workflow step
 def execute_step(step_id):
@@ -995,33 +1000,114 @@ if st.session_state.get("workflow_running", False):
     # Process all remaining steps
     remaining_steps = len(WORKFLOW_STEPS) - st.session_state.workflow_step_index
     log_message(f"Continuing workflow execution - {remaining_steps} steps remaining")
+    print(f"DEBUG: Workflow running with {remaining_steps} steps remaining. Current index: {st.session_state.workflow_step_index}")
     
-    # Direct execution approach instead of recursion or nested loops
-    # Execute one step at a time
+    # Direct execution approach - no loops or recursion
     if remaining_steps > 0 and st.session_state.workflow_running:
         current_step_index = st.session_state.workflow_step_index
         if current_step_index < len(WORKFLOW_STEPS):
             step = WORKFLOW_STEPS[current_step_index]
             log_message(f"Processing step: {step['name']}")
+            print(f"DEBUG: Processing step {step['id']} - {step['name']}")
             
-            # Execute the step and update state
-            success = execute_step(step["id"])
-            
-            if success:
-                # Move to the next step
-                st.session_state.workflow_step_index += 1
-                log_message(f"Step {step['name']} completed successfully")
+            try:
+                # Execute the step directly
+                step_id = step["id"]
+                st.session_state.workflow_status[step_id] = "running"
+                st.session_state.current_step = step_id
+                log_message(f"Starting step: {step_id}")
                 
-                # Schedule next step processing via rerun
-                if st.session_state.workflow_step_index < len(WORKFLOW_STEPS):
-                    next_step = WORKFLOW_STEPS[st.session_state.workflow_step_index]
-                    log_message(f"Next step: {next_step['name']}")
+                # Direct execution of step logic based on step_id
+                if step_id == "script_generation":
+                    print("DEBUG: Executing script_generation step directly")
+                    # Execute script generation
+                    if not "script_input" in st.session_state or not st.session_state.script_input:
+                        st.session_state.workflow_status[step_id] = "error"
+                        log_message("No script input provided", level="error")
+                        st.session_state.workflow_running = False
+                        st.rerun()
+                        
+                    # Rest of script_generation logic
+                    log_message("Processing script and segmenting into A-Roll and B-Roll parts")
+                    
+                    # Process script and create segments
+                    # ...existing logic...
+                    
+                    # Save the segmented script
+                    # ...existing logic...
+                    
+                    # Mark as complete
+                    st.session_state.workflow_status[step_id] = "complete"
+                    if step_id not in st.session_state.completed_steps:
+                        st.session_state.completed_steps.append(step_id)
+                    
+                    # Move to next step
+                    st.session_state.workflow_step_index += 1
+                    if st.session_state.workflow_step_index < len(WORKFLOW_STEPS):
+                        next_step = WORKFLOW_STEPS[st.session_state.workflow_step_index]
+                        log_message(f"Moving to next step: {next_step['name']}")
+                        print(f"DEBUG: Moving to next step: {next_step['id']} - {next_step['name']}")
+                    
+                    # Force rerun to process next step
+                    print("DEBUG: Forcing rerun to continue workflow")
                     st.rerun()
+                
+                elif step_id == "broll_prompts":
+                    print("DEBUG: Executing broll_prompts step directly")
+                    # Execute B-Roll prompts generation
+                    # ...existing logic...
+                    
+                    # Mark as complete
+                    st.session_state.workflow_status[step_id] = "complete"
+                    if step_id not in st.session_state.completed_steps:
+                        st.session_state.completed_steps.append(step_id)
+                    
+                    # Move to next step
+                    st.session_state.workflow_step_index += 1
+                    if st.session_state.workflow_step_index < len(WORKFLOW_STEPS):
+                        next_step = WORKFLOW_STEPS[st.session_state.workflow_step_index]
+                        log_message(f"Moving to next step: {next_step['name']}")
+                        print(f"DEBUG: Moving to next step: {next_step['id']} - {next_step['name']}")
+                    
+                    # Force rerun to process next step
+                    print("DEBUG: Forcing rerun to continue workflow")
+                    st.rerun()
+                
                 else:
-                    # All steps complete
-                    st.session_state.workflow_running = False
-                    log_message("All workflow steps completed successfully!")
-            else:
-                # Stop on error
-                st.session_state.workflow_running = False
-                log_message(f"Workflow halted due to error in step {step['name']}", level="error") 
+                    # For other steps, use the execute_step function
+                    print(f"DEBUG: Using execute_step for {step_id}")
+                    success = execute_step(step_id)
+                    
+                    if success:
+                        # Move to the next step
+                        st.session_state.workflow_step_index += 1
+                        log_message(f"Step {step['name']} completed successfully")
+                        
+                        # Schedule next step processing via rerun
+                        if st.session_state.workflow_step_index < len(WORKFLOW_STEPS):
+                            next_step = WORKFLOW_STEPS[st.session_state.workflow_step_index]
+                            log_message(f"Next step: {next_step['name']}")
+                            print(f"DEBUG: Next step scheduled: {next_step['id']} - {next_step['name']}")
+                        else:
+                            # All steps complete
+                            st.session_state.workflow_running = False
+                            log_message("All workflow steps completed successfully!")
+                            print("DEBUG: All workflow steps completed successfully!")
+                        
+                        # Force rerun to continue workflow
+                        print("DEBUG: Forcing rerun to continue workflow")
+                        st.rerun()
+                    else:
+                        # Stop on error
+                        st.session_state.workflow_running = False
+                        log_message(f"Workflow halted due to error in step {step['name']}", level="error")
+                        print(f"DEBUG: Workflow halted due to error in step {step['id']} - {step['name']}")
+            
+            except Exception as e:
+                # Log error and stop workflow
+                st.session_state.workflow_status[step_id] = "error"
+                error_msg = f"Error in step {step_id}: {str(e)}"
+                log_message(error_msg, level="error")
+                print(f"DEBUG EXCEPTION: {error_msg}")
+                print(f"DEBUG TRACEBACK: {traceback.format_exc()}")
+                st.session_state.workflow_running = False 

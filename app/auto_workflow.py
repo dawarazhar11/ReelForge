@@ -175,6 +175,8 @@ if "workflow_running" not in st.session_state:
     st.session_state.workflow_running = False
 if "completed_steps" not in st.session_state:
     st.session_state.completed_steps = []
+if "workflow_step_index" not in st.session_state:
+    st.session_state.workflow_step_index = 0
 
 # Function to log messages
 def log_message(message, level="info"):
@@ -532,7 +534,8 @@ def execute_step(step_id):
         
         # Mark step as complete
         st.session_state.workflow_status[step_id] = "complete"
-        st.session_state.completed_steps.append(step_id)
+        if step_id not in st.session_state.completed_steps:
+            st.session_state.completed_steps.append(step_id)
         
         return True
     
@@ -541,36 +544,49 @@ def execute_step(step_id):
         log_message(f"Error in step {step_id}: {str(e)}", level="error")
         return False
 
-# Run the entire workflow
-def run_workflow():
-    # Make sure session state variables are initialized
-    if "workflow_status" not in st.session_state:
-        st.session_state.workflow_status = {step["id"]: "waiting" for step in WORKFLOW_STEPS}
-    if "current_step" not in st.session_state:
-        st.session_state.current_step = None
-    if "completed_steps" not in st.session_state:
-        st.session_state.completed_steps = []
-        
-    st.session_state.workflow_running = True
+# Define a function to run a single workflow step
+def run_single_step():
+    # Check if we're still running the workflow
+    if not st.session_state.workflow_running:
+        return
     
-    # Execute each step in order
-    for step in WORKFLOW_STEPS:
-        step_id = step["id"]
+    # Get the current step index
+    current_step_index = st.session_state.workflow_step_index
+    
+    # Make sure we haven't completed all steps
+    if current_step_index >= len(WORKFLOW_STEPS):
+        st.session_state.workflow_running = False
+        log_message("Workflow completed successfully!")
+        return
+    
+    # Get the current step
+    step = WORKFLOW_STEPS[current_step_index]
+    step_id = step["id"]
+    
+    # Skip if already completed
+    if st.session_state.workflow_status[step_id] == "complete":
+        # Move to the next step
+        st.session_state.workflow_step_index += 1
+        st.rerun()
+        return
+    
+    # Execute the step
+    success = execute_step(step_id)
+    
+    # Move to the next step or stop on error
+    if success:
+        # Increment the step index
+        st.session_state.workflow_step_index += 1
         
-        # Skip completed steps
-        if st.session_state.workflow_status[step_id] == "complete":
-            continue
-        
-        # Execute the step
-        success = execute_step(step_id)
-        
-        # Stop on error
-        if not success:
+        # If there are more steps, trigger a rerun
+        if st.session_state.workflow_step_index < len(WORKFLOW_STEPS):
+            st.rerun()
+        else:
             st.session_state.workflow_running = False
-            return
-    
-    st.session_state.workflow_running = False
-    log_message("Workflow completed successfully!")
+            log_message("Workflow completed successfully!")
+    else:
+        # Stop on error
+        st.session_state.workflow_running = False
 
 # Main UI
 st.title("🤖 AI Money Printer Auto Workflow")
@@ -625,15 +641,17 @@ with col1:
         if not "script_input" in st.session_state or not st.session_state.script_input:
             st.error("Please enter a script or generate one from a topic first")
         else:
-            # Reset step statuses
+            # Reset step statuses for non-completed steps
             for step in WORKFLOW_STEPS:
                 if step["id"] not in st.session_state.completed_steps:
                     st.session_state.workflow_status[step["id"]] = "waiting"
             
-            # Start the workflow in a separate thread
-            thread = threading.Thread(target=run_workflow)
-            thread.daemon = True
-            thread.start()
+            # Initialize the workflow
+            st.session_state.workflow_running = True
+            st.session_state.workflow_step_index = 0
+            
+            # Start the workflow execution with the first step
+            run_single_step()
 
 with col2:
     if st.button("🔄 Reset Workflow", disabled=st.session_state.workflow_running, use_container_width=True):
@@ -646,6 +664,9 @@ with col2:
         
         # Clear log messages
         st.session_state.log_messages = []
+        
+        # Reset workflow step index
+        st.session_state.workflow_step_index = 0
         
         st.success("Workflow reset")
 
@@ -708,3 +729,7 @@ if "youtube_url" in st.session_state:
 # Footer
 st.markdown("---")
 st.markdown("AI Money Printer Auto Workflow | Made with ❤️ by AI") 
+
+# Check if we need to continue a workflow execution
+if st.session_state.get("workflow_running", False):
+    run_single_step() 

@@ -178,6 +178,21 @@ if "completed_steps" not in st.session_state:
 if "workflow_step_index" not in st.session_state:
     st.session_state.workflow_step_index = 0
 
+# Initialize settings with defaults if not already in session state
+if "auto_settings" not in st.session_state:
+    st.session_state.auto_settings = {
+        "project_name": "Auto Generated Short",
+        "video_duration": 30,
+        "broll_segments": 3,
+        "resolution": "1080x1920",
+        "max_broll_duration": 5,
+        "broll_type": "video",  # Options: "video", "image", "mixed"
+        "prompt_generation": "ai",  # Options: "ai", "template", "manual"
+        "broll_api": "comfyui",  # Options: "comfyui", "runwayml", "pika"
+        "use_negative_prompts": True,
+        "assembly_sequence": "alternating",  # Options: "alternating", "aroll_first", "custom"
+    }
+
 # Function to log messages
 def log_message(message, level="info"):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -217,47 +232,100 @@ def execute_step(step_id):
             # Process the script into roughly alternating A-Roll and B-Roll segments
             script_lines = st.session_state.script_input.strip().split('\n\n')
             
+            # Get desired number of B-Roll segments from settings
+            desired_broll_segments = st.session_state.auto_settings["broll_segments"]
+            
             # Make sure we have at least one segment for both A-Roll and B-Roll
             if len(script_lines) == 1:
-                # If there's only one paragraph, split it into two segments
+                # If there's only one paragraph, split it into segments based on desired B-Roll count
                 content = script_lines[0].strip()
                 if content:
-                    # Split the content approximately in half
                     words = content.split()
-                    mid_point = len(words) // 2
+                    total_segments = desired_broll_segments + desired_broll_segments  # Equal number of A-Roll and B-Roll
+                    words_per_segment = max(1, len(words) // total_segments)
                     
-                    # Create A-Roll segment from first half
-                    aroll_content = ' '.join(words[:mid_point])
-                    segments.append({
-                        "type": "A-Roll",
-                        "content": aroll_content
-                    })
-                    
-                    # Create B-Roll segment from second half
-                    broll_content = ' '.join(words[mid_point:])
-                    segments.append({
-                        "type": "B-Roll",
-                        "content": broll_content
-                    })
-                    
-                    log_message("Split single paragraph into A-Roll and B-Roll segments")
-            else:
-                # Process multiple paragraphs into alternating segments
-                for i, paragraph in enumerate(script_lines):
-                    if paragraph.strip():
-                        # Determine if this should be A-Roll or B-Roll
-                        # We'll alternate, starting with A-Roll
-                        segment_type = "A-Roll" if i % 2 == 0 else "B-Roll"
+                    # Create segments
+                    for i in range(total_segments):
+                        start_idx = i * words_per_segment
+                        end_idx = start_idx + words_per_segment if i < total_segments - 1 else len(words)
                         
-                        segments.append({
-                            "type": segment_type,
-                            "content": paragraph.strip()
-                        })
+                        if start_idx < len(words):
+                            segment_content = ' '.join(words[start_idx:end_idx])
+                            segment_type = "A-Roll" if i % 2 == 0 else "B-Roll"
+                            
+                            segments.append({
+                                "type": segment_type,
+                                "content": segment_content
+                            })
+                    
+                    log_message(f"Split single paragraph into {len(segments)} segments based on settings")
+            else:
+                # Process multiple paragraphs
+                # Determine segment distribution based on desired B-Roll count
+                if desired_broll_segments >= len(script_lines):
+                    # More desired B-Roll segments than paragraphs, so make every other segment B-Roll
+                    for i, paragraph in enumerate(script_lines):
+                        if paragraph.strip():
+                            segment_type = "A-Roll" if i % 2 == 0 else "B-Roll"
+                            segments.append({
+                                "type": segment_type,
+                                "content": paragraph.strip()
+                            })
+                else:
+                    # Fewer desired B-Roll segments than paragraphs
+                    # First create all segments as A-Roll
+                    for paragraph in script_lines:
+                        if paragraph.strip():
+                            segments.append({
+                                "type": "A-Roll",
+                                "content": paragraph.strip()
+                            })
+                    
+                    # Then convert some to B-Roll based on content length and distribution
+                    if segments:
+                        # Choose segments to convert based on content distribution
+                        segment_lengths = [len(s["content"]) for s in segments]
+                        total_length = sum(segment_lengths)
+                        
+                        # Convert segments that are neither too short nor too long
+                        candidates = []
+                        for i, length in enumerate(segment_lengths):
+                            ratio = length / total_length
+                            if 0.1 <= ratio <= 0.4:  # Not too short or too long
+                                candidates.append(i)
+                        
+                        # If we don't have enough candidates, use evenly spaced segments
+                        if len(candidates) < desired_broll_segments:
+                            candidates = list(range(1, len(segments), max(1, len(segments) // (desired_broll_segments + 1))))
+                        
+                        # Convert up to the desired number of segments to B-Roll
+                        for i in candidates[:desired_broll_segments]:
+                            if i < len(segments):
+                                segments[i]["type"] = "B-Roll"
             
-            # If we still don't have a B-Roll segment, convert the last segment to B-Roll
-            if not any(s["type"] == "B-Roll" for s in segments) and segments:
-                segments[-1]["type"] = "B-Roll"
-                log_message("Converted last segment to B-Roll to ensure at least one B-Roll segment")
+            # Ensure we have the right number of B-Roll segments
+            actual_broll_segments = len([s for s in segments if s["type"] == "B-Roll"])
+            
+            # If we have too few B-Roll segments, convert some A-Roll to B-Roll
+            if actual_broll_segments < desired_broll_segments:
+                aroll_indices = [i for i, s in enumerate(segments) if s["type"] == "A-Roll"]
+                
+                # Convert A-Roll segments to B-Roll, prioritizing every other segment
+                for i in range(min(desired_broll_segments - actual_broll_segments, len(aroll_indices))):
+                    idx = aroll_indices[i * 2 % len(aroll_indices)]
+                    segments[idx]["type"] = "B-Roll"
+                    log_message(f"Converted segment {idx+1} to B-Roll to meet target count")
+            
+            # If we have too many B-Roll segments, convert some to A-Roll
+            elif actual_broll_segments > desired_broll_segments:
+                broll_indices = [i for i, s in enumerate(segments) if s["type"] == "B-Roll"]
+                
+                # Convert excess B-Roll segments to A-Roll
+                for i in range(actual_broll_segments - desired_broll_segments):
+                    if i < len(broll_indices):
+                        idx = broll_indices[i]
+                        segments[idx]["type"] = "A-Roll"
+                        log_message(f"Converted segment {idx+1} to A-Roll to meet target count")
             
             # Save the segmented script
             script_data = {
@@ -298,26 +366,87 @@ def execute_step(step_id):
             broll_prompts_file = project_path / "broll_prompts.json"
             
             prompts = {}
+            prompt_generation_method = st.session_state.auto_settings["prompt_generation"]
+            use_negative_prompts = st.session_state.auto_settings["use_negative_prompts"]
+            
+            # Template prompts for different types of content
+            template_prompts = {
+                "cinematic": "Cinematic scene, {content}. Hyper-realistic, detailed, 4K, professional lighting, movie quality.",
+                "business": "Professional business setting, {content}. Clean, corporate environment, modern office, professional attire.",
+                "tech": "Technology visualization, {content}. Digital interface, futuristic design, glowing elements, tech innovation.",
+                "lifestyle": "Lifestyle scene, {content}. Vibrant colors, natural lighting, candid moment, everyday life.",
+                "nature": "Natural landscape, {content}. Scenic view, beautiful environment, organic elements, serene atmosphere."
+            }
+            
+            # Template negative prompts
+            template_negative_prompts = {
+                "general": "ugly, blurry, low quality, deformed, distorted, watermark, text, logo",
+                "business": "unprofessional, messy, cartoon, anime, illustration, painting, drawing, sketch",
+                "tech": "outdated technology, low resolution, blurry screens, pixelated, cartoon style",
+                "lifestyle": "poor lighting, oversaturated, distorted faces, deformed bodies, unnatural poses",
+                "nature": "pollution, garbage, urban elements, artificial structures, unnatural colors"
+            }
             
             for i, segment in enumerate(broll_segments):
                 segment_id = f"segment_{i}"
+                segment_content = segment['content'].strip()
                 
-                # Generate a creative prompt based on the segment content
-                prompt = f"Cinematic {segment['content']}. Hyper-realistic, detailed, 4K, professional lighting, movie quality."
-                negative_prompt = "ugly, blurry, low quality, deformed, distorted, watermark, text, logo"
+                # Generate prompt based on the selected method
+                if prompt_generation_method == "ai":
+                    # AI-based prompt generation (simulate advanced prompt engineering)
+                    # In a real implementation, you might use an LLM API call here
+                    
+                    # Analyze content for keywords to determine theme
+                    content_lower = segment_content.lower()
+                    if any(word in content_lower for word in ["business", "office", "professional", "company", "corporate"]):
+                        theme = "business"
+                    elif any(word in content_lower for word in ["technology", "digital", "computer", "online", "device", "tech"]):
+                        theme = "tech"
+                    elif any(word in content_lower for word in ["lifestyle", "living", "home", "family", "friend", "daily"]):
+                        theme = "lifestyle"
+                    elif any(word in content_lower for word in ["nature", "outdoor", "landscape", "mountain", "beach", "forest"]):
+                        theme = "nature"
+                    else:
+                        theme = "cinematic"
+                    
+                    # Generate prompt using the appropriate template
+                    prompt = template_prompts[theme].format(content=segment_content)
+                    
+                    # Add style modifiers based on content analysis
+                    if "explaining" in content_lower or "demonstration" in content_lower:
+                        prompt += " Instructional style, clear visualization."
+                    if "dramatic" in content_lower or "exciting" in content_lower:
+                        prompt += " Dynamic composition, dramatic lighting, intense mood."
+                    
+                    # Choose appropriate negative prompt
+                    negative_prompt = template_negative_prompts[theme] if use_negative_prompts else ""
+                    
+                elif prompt_generation_method == "template":
+                    # Simple template-based generation
+                    prompt = f"Cinematic {segment_content}. Hyper-realistic, detailed, 4K, professional lighting, movie quality."
+                    negative_prompt = template_negative_prompts["general"] if use_negative_prompts else ""
+                    
+                else:  # "manual" - would be set in a real app by the user
+                    # For simulation, use a basic prompt
+                    prompt = f"Visual representation of: {segment_content}"
+                    negative_prompt = "low quality, poor composition" if use_negative_prompts else ""
+                
+                # Determine if this should be a video or image based on settings
+                broll_type = st.session_state.auto_settings["broll_type"]
+                is_video = broll_type == "video" or (broll_type == "mixed" and i % 2 == 0)
                 
                 prompts[segment_id] = {
                     "prompt": prompt,
                     "negative_prompt": negative_prompt,
-                    "is_video": True  # Set to True for video, False for image
+                    "is_video": is_video
                 }
                 
-                log_message(f"Generated prompt for B-Roll segment {i+1}")
+                log_message(f"Generated prompt for B-Roll segment {i+1} using {prompt_generation_method} method")
             
             # Save prompts to file
             broll_prompts_data = {
                 "prompts": prompts,
-                "broll_type": "mixed"  # Can be "video", "image", or "mixed"
+                "broll_type": st.session_state.auto_settings["broll_type"]
             }
             
             os.makedirs(project_path, exist_ok=True)
@@ -327,7 +456,7 @@ def execute_step(step_id):
             # Update session state
             st.session_state.broll_prompts = broll_prompts_data
             
-            log_message(f"B-Roll prompts generated and saved for {len(prompts)} segments")
+            log_message(f"B-Roll prompts generated and saved for {len(prompts)} segments using {prompt_generation_method} method")
             
         elif step_id == "aroll_production":
             # Generate A-Roll videos
@@ -414,10 +543,11 @@ def execute_step(step_id):
                 log_message("No B-Roll prompts found", level="error")
                 return False
             
-            log_message(f"Submitting {len(prompts)} B-Roll segments for video/image generation")
+            # Get B-Roll API selection from settings
+            broll_api = st.session_state.auto_settings["broll_api"]
+            log_message(f"Using {broll_api} API for B-Roll generation")
             
-            # Here we would integrate with ComfyUI to generate videos/images
-            # For now, we'll simulate this process
+            log_message(f"Submitting {len(prompts)} B-Roll segments for video/image generation")
             
             # Create media directory if it doesn't exist
             project_path = get_project_path()
@@ -429,6 +559,18 @@ def execute_step(step_id):
                 # Determine if we're generating a video or image
                 is_video = prompt_data.get("is_video", True)
                 content_type = "video" if is_video else "image"
+                
+                # Log API-specific message
+                if broll_api == "comfyui":
+                    api_message = f"Generating {content_type} using ComfyUI Stable Diffusion"
+                elif broll_api == "runwayml":
+                    api_message = f"Generating {content_type} using RunwayML Gen-2"
+                elif broll_api == "pika":
+                    api_message = f"Generating {content_type} using Pika Labs"
+                else:
+                    api_message = f"Generating {content_type} using default API"
+                
+                log_message(f"{api_message} for segment {segment_id}")
                 
                 # Generate a mock file path
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -445,10 +587,11 @@ def execute_step(step_id):
                     "file_path": file_path,
                     "prompt_id": f"mock_prompt_id_{segment_id}",
                     "content_type": content_type,
+                    "api_used": broll_api,
                     "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 }
                 
-                log_message(f"B-Roll {content_type} for {segment_id} generated")
+                log_message(f"B-Roll {content_type} for {segment_id} generated using {broll_api}")
                 
                 # Simulate processing time
                 time.sleep(1)
@@ -459,7 +602,7 @@ def execute_step(step_id):
             with open(content_status_file, "w") as f:
                 json.dump(st.session_state.content_status, f, indent=2)
             
-            log_message("B-Roll video/image production completed")
+            log_message(f"B-Roll video/image production completed using {broll_api} API")
             
         elif step_id == "video_assembly":
             # Assemble videos
@@ -481,8 +624,65 @@ def execute_step(step_id):
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             output_file = str(output_dir / f"assembled_video_{timestamp}.mp4")
             
+            # Get assembly sequence from settings
+            assembly_sequence = st.session_state.auto_settings["assembly_sequence"]
+            log_message(f"Using {assembly_sequence} assembly sequence")
+            
+            # Get A-Roll and B-Roll segments
+            aroll_segments = []
+            for segment_id, status in st.session_state.aroll_status.items():
+                if status.get("status") == "completed" and status.get("downloaded", False):
+                    aroll_segments.append({
+                        "id": segment_id,
+                        "path": status.get("local_path", ""),
+                        "type": "A-Roll"
+                    })
+            
+            broll_segments = []
+            for segment_id, status in st.session_state.content_status["broll"].items():
+                if status.get("status") == "complete":
+                    broll_segments.append({
+                        "id": segment_id,
+                        "path": status.get("file_path", ""),
+                        "type": "B-Roll"
+                    })
+            
+            # Determine the assembly order based on the selected sequence
+            assembly_order = []
+            
+            if assembly_sequence == "alternating":
+                # Alternating A-Roll and B-Roll
+                max_segments = max(len(aroll_segments), len(broll_segments))
+                for i in range(max_segments):
+                    if i < len(aroll_segments):
+                        assembly_order.append(aroll_segments[i])
+                    if i < len(broll_segments):
+                        assembly_order.append(broll_segments[i])
+            
+            elif assembly_sequence == "aroll_first":
+                # All A-Roll followed by all B-Roll
+                assembly_order.extend(aroll_segments)
+                assembly_order.extend(broll_segments)
+            
+            else:  # custom or any other value
+                # Interleave with A-Roll segments having 2x the duration
+                combined = []
+                for i in range(max(len(aroll_segments), len(broll_segments))):
+                    if i < len(aroll_segments):
+                        combined.append(aroll_segments[i])
+                    if i < len(broll_segments):
+                        combined.append(broll_segments[i])
+                    if i < len(aroll_segments):
+                        # Add the same A-Roll segment again for longer duration
+                        combined.append(aroll_segments[i])
+                assembly_order = combined
+            
+            # Log the assembly order
+            segment_types = [s["type"] for s in assembly_order]
+            log_message(f"Assembly order: {' → '.join(segment_types)}")
+            
             # Simulate video assembly
-            log_message("Assembling A-Roll and B-Roll videos into complete video")
+            log_message(f"Assembling {len(assembly_order)} segments into complete video")
             
             # In a real implementation, we would:
             # 1. Get A-Roll and B-Roll file paths from status
@@ -496,7 +696,7 @@ def execute_step(step_id):
             # Save the output file path to session state
             st.session_state.assembled_video_path = output_file
             
-            log_message(f"Video assembly completed. Output saved to: {output_file}")
+            log_message(f"Video assembly completed using {assembly_sequence} sequence. Output saved to: {output_file}")
             
         elif step_id == "captioning":
             # Add captions to video
@@ -626,6 +826,78 @@ st.markdown("""
 This tool automatically runs the entire AI Money Printer Shorts workflow from script to YouTube upload.
 Simply enter your script or topic, and the system will handle the rest!
 """)
+
+# Settings section (add this before the Input section)
+st.subheader("Automation Settings")
+settings_tab1, settings_tab2 = st.tabs(["Basic Settings", "Advanced Settings"])
+
+with settings_tab1:
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.session_state.auto_settings["project_name"] = st.text_input(
+            "Project Name",
+            value=st.session_state.auto_settings["project_name"],
+            help="Give your project a descriptive name"
+        )
+        
+        st.session_state.auto_settings["video_duration"] = st.number_input(
+            "Video Duration (seconds)",
+            min_value=10,
+            max_value=180,
+            value=st.session_state.auto_settings["video_duration"],
+            step=5
+        )
+    
+    with col2:
+        st.session_state.auto_settings["broll_segments"] = st.number_input(
+            "Number of B-Roll Segments",
+            min_value=1,
+            max_value=10,
+            value=st.session_state.auto_settings["broll_segments"],
+            help="How many B-Roll segments to include"
+        )
+        
+        st.session_state.auto_settings["broll_type"] = st.selectbox(
+            "B-Roll Type",
+            options=["video", "image", "mixed"],
+            index=["video", "image", "mixed"].index(st.session_state.auto_settings["broll_type"]),
+            help="Type of B-Roll content to generate"
+        )
+
+with settings_tab2:
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.session_state.auto_settings["prompt_generation"] = st.selectbox(
+            "Prompt Generation",
+            options=["ai", "template", "manual"],
+            index=["ai", "template", "manual"].index(st.session_state.auto_settings["prompt_generation"]),
+            help="How to generate B-Roll prompts"
+        )
+        
+        st.session_state.auto_settings["broll_api"] = st.selectbox(
+            "B-Roll API",
+            options=["comfyui", "runwayml", "pika"],
+            index=["comfyui", "runwayml", "pika"].index(st.session_state.auto_settings["broll_api"]),
+            help="API to use for B-Roll generation"
+        )
+    
+    with col2:
+        st.session_state.auto_settings["use_negative_prompts"] = st.checkbox(
+            "Use Negative Prompts",
+            value=st.session_state.auto_settings["use_negative_prompts"],
+            help="Include negative prompts for better B-Roll quality"
+        )
+        
+        st.session_state.auto_settings["assembly_sequence"] = st.selectbox(
+            "Assembly Sequence",
+            options=["alternating", "aroll_first", "custom"],
+            index=["alternating", "aroll_first", "custom"].index(st.session_state.auto_settings["assembly_sequence"]),
+            help="How to sequence A-Roll and B-Roll segments"
+        )
+
+st.markdown("---")
 
 # Input section
 st.subheader("Input")

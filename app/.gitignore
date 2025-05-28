@@ -63,3 +63,11 @@ Thumbs.db
 # Config files with sensitive information (uncomment if needed)
 # config/secrets.json
 # .env 
+
+# OAuth and API credentials
+client_secret*.json
+*oauth*.json
+*credential*.json
+token*.json
+.credentials/
+config/credentials/ 

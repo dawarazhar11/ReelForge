@@ -217,16 +217,47 @@ def execute_step(step_id):
             # Process the script into roughly alternating A-Roll and B-Roll segments
             script_lines = st.session_state.script_input.strip().split('\n\n')
             
-            for i, paragraph in enumerate(script_lines):
-                if paragraph.strip():
-                    # Determine if this should be A-Roll or B-Roll
-                    # We'll alternate, starting with A-Roll
-                    segment_type = "A-Roll" if i % 2 == 0 else "B-Roll"
+            # Make sure we have at least one segment for both A-Roll and B-Roll
+            if len(script_lines) == 1:
+                # If there's only one paragraph, split it into two segments
+                content = script_lines[0].strip()
+                if content:
+                    # Split the content approximately in half
+                    words = content.split()
+                    mid_point = len(words) // 2
                     
+                    # Create A-Roll segment from first half
+                    aroll_content = ' '.join(words[:mid_point])
                     segments.append({
-                        "type": segment_type,
-                        "content": paragraph.strip()
+                        "type": "A-Roll",
+                        "content": aroll_content
                     })
+                    
+                    # Create B-Roll segment from second half
+                    broll_content = ' '.join(words[mid_point:])
+                    segments.append({
+                        "type": "B-Roll",
+                        "content": broll_content
+                    })
+                    
+                    log_message("Split single paragraph into A-Roll and B-Roll segments")
+            else:
+                # Process multiple paragraphs into alternating segments
+                for i, paragraph in enumerate(script_lines):
+                    if paragraph.strip():
+                        # Determine if this should be A-Roll or B-Roll
+                        # We'll alternate, starting with A-Roll
+                        segment_type = "A-Roll" if i % 2 == 0 else "B-Roll"
+                        
+                        segments.append({
+                            "type": segment_type,
+                            "content": paragraph.strip()
+                        })
+            
+            # If we still don't have a B-Roll segment, convert the last segment to B-Roll
+            if not any(s["type"] == "B-Roll" for s in segments) and segments:
+                segments[-1]["type"] = "B-Roll"
+                log_message("Converted last segment to B-Roll to ensure at least one B-Roll segment")
             
             # Save the segmented script
             script_data = {
@@ -567,7 +598,6 @@ def run_single_step():
     if st.session_state.workflow_status[step_id] == "complete":
         # Move to the next step
         st.session_state.workflow_step_index += 1
-        st.rerun()
         return
     
     # Execute the step
@@ -578,9 +608,11 @@ def run_single_step():
         # Increment the step index
         st.session_state.workflow_step_index += 1
         
-        # If there are more steps, trigger a rerun
+        # If there are more steps, continue to the next one
         if st.session_state.workflow_step_index < len(WORKFLOW_STEPS):
-            st.rerun()
+            # Process the next step immediately
+            next_step = WORKFLOW_STEPS[st.session_state.workflow_step_index]
+            log_message(f"Moving to next step: {next_step['name']}")
         else:
             st.session_state.workflow_running = False
             log_message("Workflow completed successfully!")
@@ -732,4 +764,8 @@ st.markdown("AI Money Printer Auto Workflow | Made with ❤️ by AI")
 
 # Check if we need to continue a workflow execution
 if st.session_state.get("workflow_running", False):
-    run_single_step() 
+    # Process all remaining steps
+    remaining_steps = len(WORKFLOW_STEPS) - st.session_state.workflow_step_index
+    for _ in range(remaining_steps):
+        if st.session_state.workflow_running:
+            run_single_step() 

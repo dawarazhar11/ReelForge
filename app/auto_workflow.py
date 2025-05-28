@@ -775,51 +775,6 @@ def execute_step(step_id):
         log_message(f"Error in step {step_id}: {str(e)}", level="error")
         return False
 
-# Define a function to run a single workflow step
-def run_single_step():
-    # Check if we're still running the workflow
-    if not st.session_state.workflow_running:
-        return
-    
-    # Get the current step index
-    current_step_index = st.session_state.workflow_step_index
-    
-    # Make sure we haven't completed all steps
-    if current_step_index >= len(WORKFLOW_STEPS):
-        st.session_state.workflow_running = False
-        log_message("Workflow completed successfully!")
-        return
-    
-    # Get the current step
-    step = WORKFLOW_STEPS[current_step_index]
-    step_id = step["id"]
-    
-    # Skip if already completed
-    if st.session_state.workflow_status[step_id] == "complete":
-        # Move to the next step
-        st.session_state.workflow_step_index += 1
-        return
-    
-    # Execute the step
-    success = execute_step(step_id)
-    
-    # Move to the next step or stop on error
-    if success:
-        # Increment the step index
-        st.session_state.workflow_step_index += 1
-        
-        # If there are more steps, continue to the next one
-        if st.session_state.workflow_step_index < len(WORKFLOW_STEPS):
-            # Process the next step immediately
-            next_step = WORKFLOW_STEPS[st.session_state.workflow_step_index]
-            log_message(f"Moving to next step: {next_step['name']}")
-        else:
-            st.session_state.workflow_running = False
-            log_message("Workflow completed successfully!")
-    else:
-        # Stop on error
-        st.session_state.workflow_running = False
-
 # Main UI
 st.title("🤖 AI Money Printer Auto Workflow")
 st.markdown("""
@@ -953,9 +908,10 @@ with col1:
             # Initialize the workflow
             st.session_state.workflow_running = True
             st.session_state.workflow_step_index = 0
+            log_message("Starting workflow execution")
             
-            # Start the workflow execution with the first step
-            run_single_step()
+            # Rerun to start workflow execution
+            st.rerun()
 
 with col2:
     if st.button("🔄 Reset Workflow", disabled=st.session_state.workflow_running, use_container_width=True):
@@ -1038,6 +994,34 @@ st.markdown("AI Money Printer Auto Workflow | Made with ❤️ by AI")
 if st.session_state.get("workflow_running", False):
     # Process all remaining steps
     remaining_steps = len(WORKFLOW_STEPS) - st.session_state.workflow_step_index
-    for _ in range(remaining_steps):
-        if st.session_state.workflow_running:
-            run_single_step() 
+    log_message(f"Continuing workflow execution - {remaining_steps} steps remaining")
+    
+    # Direct execution approach instead of recursion or nested loops
+    # Execute one step at a time
+    if remaining_steps > 0 and st.session_state.workflow_running:
+        current_step_index = st.session_state.workflow_step_index
+        if current_step_index < len(WORKFLOW_STEPS):
+            step = WORKFLOW_STEPS[current_step_index]
+            log_message(f"Processing step: {step['name']}")
+            
+            # Execute the step and update state
+            success = execute_step(step["id"])
+            
+            if success:
+                # Move to the next step
+                st.session_state.workflow_step_index += 1
+                log_message(f"Step {step['name']} completed successfully")
+                
+                # Schedule next step processing via rerun
+                if st.session_state.workflow_step_index < len(WORKFLOW_STEPS):
+                    next_step = WORKFLOW_STEPS[st.session_state.workflow_step_index]
+                    log_message(f"Next step: {next_step['name']}")
+                    st.rerun()
+                else:
+                    # All steps complete
+                    st.session_state.workflow_running = False
+                    log_message("All workflow steps completed successfully!")
+            else:
+                # Stop on error
+                st.session_state.workflow_running = False
+                log_message(f"Workflow halted due to error in step {step['name']}", level="error") 

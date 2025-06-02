@@ -97,6 +97,22 @@ st.markdown("""
         border-left: 4px solid #4CAF50;
     }
     
+    /* B-Roll specific styling */
+    .broll-segment-container {
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 15px;
+        background-color: #f0f8ff;  /* Light blue background */
+    }
+    
+    .broll-segment-content {
+        padding: 10px;
+        background-color: white;
+        border-radius: 5px;
+        border-left: 4px solid #2196F3;  /* Blue left border */
+    }
+    
     .timestamp {
         color: #666;
         font-size: 0.8em;
@@ -113,6 +129,15 @@ st.markdown("""
     
     .edit-button:hover {
         background-color: #45a049;
+    }
+    
+    /* Theme selection styling */
+    .theme-container {
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 15px;
+        background-color: #fff8e1;  /* Light yellow background */
     }
 </style>
 """, unsafe_allow_html=True)
@@ -161,6 +186,8 @@ if "transcription_data" not in st.session_state:
     st.session_state.transcription_data = None
 if "a_roll_segments" not in st.session_state:
     st.session_state.a_roll_segments = []
+if "b_roll_segments" not in st.session_state:
+    st.session_state.b_roll_segments = []
 if "uploaded_video" not in st.session_state:
     st.session_state.uploaded_video = None
 if "transcription_complete" not in st.session_state:
@@ -169,6 +196,10 @@ if "segmentation_complete" not in st.session_state:
     st.session_state.segmentation_complete = False
 if "segment_edit_index" not in st.session_state:
     st.session_state.segment_edit_index = -1
+if "script_theme" not in st.session_state:
+    st.session_state.script_theme = ""
+if "broll_generation_strategy" not in st.session_state:
+    st.session_state.broll_generation_strategy = "balanced"
 
 # Function to save the transcription data
 def save_transcription_data(data):
@@ -199,6 +230,15 @@ def load_transcription_data():
 
 # Function to save A-roll segments
 def save_a_roll_segments(segments):
+    """Save A-roll segments to script.json"""
+    # If we have B-Roll segments, use the new save_segments function
+    if "b_roll_segments" in st.session_state and st.session_state.b_roll_segments:
+        return save_segments(
+            segments,
+            st.session_state.b_roll_segments,
+            st.session_state.script_theme
+        )
+    
     script_file = project_path / "script.json"
     
     # Check if script.json already exists and load it
@@ -217,7 +257,7 @@ def save_a_roll_segments(segments):
     data = {
         "full_script": full_script,
         "segments": segments,
-        "theme": existing_data.get("theme", ""),
+        "theme": existing_data.get("theme", st.session_state.script_theme),
         "source": "transcription",
         "timestamp": time.time()
     }
@@ -249,8 +289,12 @@ def load_a_roll_segments():
                 if data.get("source") == "transcription":
                     segments = data.get("segments", [])
                     if segments:
+                        # Extract A-Roll and B-Roll segments
+                        a_roll_segments = [s for s in segments if s.get("type") == "A-Roll"]
+                        b_roll_segments = [s for s in segments if s.get("type") == "B-Roll"]
+                        
                         # Ensure all segments have timing information
-                        for i, segment in enumerate(segments):
+                        for i, segment in enumerate(a_roll_segments):
                             if "start_time" not in segment:
                                 segment["start_time"] = i * 10  # Default 10 seconds per segment
                             if "end_time" not in segment:
@@ -258,94 +302,110 @@ def load_a_roll_segments():
                             if "duration" not in segment:
                                 segment["duration"] = segment["end_time"] - segment["start_time"]
                         
-                        st.session_state.a_roll_segments = segments
+                        # Store in session state
+                        st.session_state.a_roll_segments = a_roll_segments
+                        st.session_state.b_roll_segments = b_roll_segments
                         st.session_state.segmentation_complete = True
+                        
+                        # Load theme
+                        if "theme" in data:
+                            st.session_state.script_theme = data["theme"]
+                        
                         return True
         except (json.JSONDecodeError, IOError) as e:
             print(f"Error loading A-roll segments: {str(e)}")
             return False
     return False
 
-# Function to segment the transcription into A-roll segments
+# Function to segment the transcription
 def segment_transcription(transcription, min_segment_duration=5, max_segment_duration=20):
-    segments = transcription.get("segments", [])
-    words = transcription.get("words", [])
+    """
+    Segment the transcription into A-Roll segments
     
-    if not segments:
-        return []
-    
-    # Calculate total duration
-    total_duration = segments[-1]["end"]
-    
-    # Determine optimal number of segments based on total duration
-    # Aim for segments between min_segment_duration and max_segment_duration seconds
-    target_segments = max(3, int(total_duration / ((min_segment_duration + max_segment_duration) / 2)))
-    
-    # Try to find natural breaks in speech (pauses)
-    pauses = []
-    for i in range(1, len(segments)):
-        pause_duration = segments[i]["start"] - segments[i-1]["end"]
-        if pause_duration > 0.5:  # Consider pauses longer than 0.5 seconds
-            pauses.append({
-                "time": segments[i-1]["end"],
-                "duration": pause_duration
-            })
-    
-    # Sort pauses by duration (longest first)
-    pauses.sort(key=lambda x: x["duration"], reverse=True)
-    
-    # Take the top N-1 pauses as segment boundaries (where N is target_segments)
-    boundaries = []
-    if len(pauses) >= target_segments - 1:
-        for i in range(target_segments - 1):
-            boundaries.append(pauses[i]["time"])
-    else:
-        # Not enough natural pauses, divide evenly
-        segment_length = total_duration / target_segments
-        for i in range(1, target_segments):
-            boundaries.append(i * segment_length)
-    
-    # Sort boundaries by time
-    boundaries.sort()
-    
-    # Create segments based on boundaries
-    a_roll_segments = []
-    start_time = 0
-    
-    for i, end_time in enumerate(boundaries):
-        # Find all words in this time range
-        segment_words = [w for w in words if w["start"] >= start_time and w["end"] <= end_time]
+    Args:
+        transcription: The transcription data
+        min_segment_duration: Minimum segment duration in seconds
+        max_segment_duration: Maximum segment duration in seconds
         
-        # Create segment text from words
-        segment_text = " ".join([w["word"] for w in segment_words])
+    Returns:
+        List of A-Roll segments
+    """
+    if not transcription or "segments" not in transcription:
+        # If no segments are available, create a single segment from the full text
+        text = transcription.get("text", "")
+        if not text:
+            return []
         
-        # Clean up the text
-        segment_text = re.sub(r'\s+', ' ', segment_text).strip()
-        
-        a_roll_segments.append({
+        return [{
             "type": "A-Roll",
-            "start_time": start_time,
-            "end_time": end_time,
-            "duration": end_time - start_time,
-            "content": segment_text
-        })
-        
-        start_time = end_time
+            "content": text,
+            "start_time": 0,
+            "end_time": 0,
+            "duration": 0
+        }]
     
-    # Add the final segment
-    final_words = [w for w in words if w["start"] >= start_time]
-    final_text = " ".join([w["word"] for w in final_words])
-    final_text = re.sub(r'\s+', ' ', final_text).strip()
-    
-    a_roll_segments.append({
+    # Extract segments from the transcription
+    segments = []
+    current_segment = {
         "type": "A-Roll",
-        "start_time": start_time,
-        "end_time": total_duration,
-        "duration": total_duration - start_time,
-        "content": final_text
-    })
+        "content": "",
+        "start_time": 0,
+        "end_time": 0,
+        "duration": 0
+    }
     
-    return a_roll_segments
+    for segment in transcription["segments"]:
+        text = segment.get("text", "").strip()
+        if not text:
+            continue
+        
+        start = segment.get("start", 0)
+        end = segment.get("end", 0)
+        duration = end - start
+        
+        # Check if we should start a new segment
+        if current_segment["duration"] + duration > max_segment_duration:
+            # Finalize the current segment
+            if current_segment["content"]:
+                segments.append(current_segment)
+            
+            # Start a new segment
+            current_segment = {
+                "type": "A-Roll",
+                "content": text,
+                "start_time": start,
+                "end_time": end,
+                "duration": duration
+            }
+        else:
+            # Add to the current segment
+            if current_segment["content"]:
+                current_segment["content"] += " "
+            current_segment["content"] += text
+            current_segment["end_time"] = end
+            current_segment["duration"] = end - current_segment["start_time"]
+    
+    # Add the last segment if it has content
+    if current_segment["content"]:
+        segments.append(current_segment)
+    
+    # Check if we have very short segments that should be combined
+    if len(segments) > 1:
+        i = 0
+        while i < len(segments) - 1:
+            if segments[i]["duration"] < min_segment_duration:
+                # Combine with the next segment
+                next_segment = segments[i + 1]
+                segments[i]["content"] += " " + next_segment["content"]
+                segments[i]["end_time"] = next_segment["end_time"]
+                segments[i]["duration"] = segments[i]["end_time"] - segments[i]["start_time"]
+                
+                # Remove the next segment
+                segments.pop(i + 1)
+            else:
+                i += 1
+    
+    return segments
 
 # Function to update segment content
 def update_segment_content(index, new_content):
@@ -376,6 +436,168 @@ def ensure_segments_have_timing(segments):
         if "duration" not in segment:
             segment["duration"] = segment["end_time"] - segment["start_time"]
     return segments
+
+# Function to generate B-Roll segments based on A-Roll segments
+def generate_broll_segments(a_roll_segments, theme, strategy="balanced"):
+    """
+    Generate B-Roll segments based on A-Roll segments and a theme
+    
+    Args:
+        a_roll_segments: List of A-Roll segments
+        theme: Theme for the B-Roll content
+        strategy: Strategy for B-Roll placement ('minimal', 'balanced', 'maximum')
+        
+    Returns:
+        List of B-Roll segments
+    """
+    if not a_roll_segments:
+        return []
+    
+    b_roll_segments = []
+    
+    # Determine number of B-Roll segments based on strategy
+    if strategy == "minimal":
+        # Minimal: Just intro and outro B-Roll
+        target_count = 2
+    elif strategy == "maximum":
+        # Maximum: B-Roll between every A-Roll segment
+        target_count = len(a_roll_segments) + 1
+    else:
+        # Balanced: Approximately 1 B-Roll for every 2 A-Roll segments
+        target_count = max(2, len(a_roll_segments) // 2 + 1)
+    
+    # Always add intro B-Roll
+    intro_broll = {
+        "type": "B-Roll",
+        "content": f"Introductory visual for {theme}",
+        "duration": 3.0  # Default duration in seconds
+    }
+    b_roll_segments.append(intro_broll)
+    
+    # Add B-Roll segments between A-Roll segments based on strategy
+    if strategy == "minimal":
+        # Just add outro B-Roll
+        outro_broll = {
+            "type": "B-Roll",
+            "content": f"Concluding visual for {theme}",
+            "duration": 3.0
+        }
+        b_roll_segments.append(outro_broll)
+    elif strategy == "maximum":
+        # Add B-Roll after each A-Roll segment
+        for i, segment in enumerate(a_roll_segments):
+            content = segment["content"]
+            summary = content[:50] + "..." if len(content) > 50 else content
+            
+            broll = {
+                "type": "B-Roll",
+                "content": f"Visual representation of: {summary}",
+                "duration": 3.0,
+                "related_aroll": i  # Index of related A-Roll segment
+            }
+            b_roll_segments.append(broll)
+            
+        # Add outro B-Roll
+        outro_broll = {
+            "type": "B-Roll",
+            "content": f"Concluding visual for {theme}",
+            "duration": 3.0
+        }
+        b_roll_segments.append(outro_broll)
+    else:
+        # Balanced approach: Add B-Roll at strategic points
+        segments_per_broll = max(1, len(a_roll_segments) // (target_count - 1))
+        
+        for i in range(len(a_roll_segments)):
+            if i > 0 and i % segments_per_broll == 0 and len(b_roll_segments) < target_count - 1:
+                # Get content from surrounding A-Roll segments for context
+                prev_content = a_roll_segments[i-1]["content"]
+                current_content = a_roll_segments[i]["content"]
+                
+                # Create a summary from both segments
+                combined = prev_content + " " + current_content
+                summary = combined[:50] + "..." if len(combined) > 50 else combined
+                
+                broll = {
+                    "type": "B-Roll",
+                    "content": f"Visual representation of: {summary}",
+                    "duration": 3.0,
+                    "related_aroll": i  # Index of related A-Roll segment
+                }
+                b_roll_segments.append(broll)
+        
+        # Add outro B-Roll if we haven't reached target count
+        if len(b_roll_segments) < target_count:
+            outro_broll = {
+                "type": "B-Roll",
+                "content": f"Concluding visual for {theme}",
+                "duration": 3.0
+            }
+            b_roll_segments.append(outro_broll)
+    
+    return b_roll_segments
+
+# Function to save both A-Roll and B-Roll segments
+def save_segments(a_roll_segments, b_roll_segments, theme):
+    """Save both A-Roll and B-Roll segments to script.json"""
+    script_file = project_path / "script.json"
+    
+    # Check if script.json already exists and load it
+    existing_data = {}
+    if script_file.exists():
+        try:
+            with open(script_file, "r") as f:
+                existing_data = json.load(f)
+        except (json.JSONDecodeError, IOError) as e:
+            print(f"Error loading existing script: {str(e)}")
+    
+    # Combine segments in the correct order
+    all_segments = []
+    
+    # Always start with intro B-Roll if available
+    if b_roll_segments and len(b_roll_segments) > 0:
+        all_segments.append(b_roll_segments[0])
+    
+    # Interleave A-Roll segments with remaining B-Roll segments
+    a_roll_idx = 0
+    b_roll_idx = 1  # Skip the intro B-Roll we already added
+    
+    while a_roll_idx < len(a_roll_segments):
+        # Add an A-Roll segment
+        all_segments.append(a_roll_segments[a_roll_idx])
+        a_roll_idx += 1
+        
+        # Add a B-Roll segment if available
+        if b_roll_idx < len(b_roll_segments):
+            all_segments.append(b_roll_segments[b_roll_idx])
+            b_roll_idx += 1
+    
+    # Create full script text from segments
+    full_script = " ".join([segment["content"] for segment in all_segments if "content" in segment])
+    
+    # Prepare data to save
+    data = {
+        "full_script": full_script,
+        "segments": all_segments,
+        "theme": theme,
+        "source": "transcription",
+        "timestamp": time.time()
+    }
+    
+    # Preserve any other fields from existing data
+    for key, value in existing_data.items():
+        if key not in data:
+            data[key] = value
+    
+    # Save to file
+    try:
+        with open(script_file, "w") as f:
+            json.dump(data, f, indent=2)
+        print(f"Saved segments to {script_file}")
+        return True
+    except IOError as e:
+        print(f"Error saving segments: {str(e)}")
+        return False
 
 # Main function
 def main():
@@ -558,16 +780,173 @@ def main():
                     st.session_state.segment_edit_index = -1
                     st.experimental_rerun()
         
+        # Step 6: Theme and B-Roll Generation
+        st.header("Step 6: Theme and B-Roll Generation")
+        
+        # Theme selection
+        st.subheader("Select Content Theme")
+        
+        # Get current theme or default to empty
+        current_theme = st.session_state.script_theme
+        
+        # Theme container with styling
+        st.markdown("""
+        <div class="theme-container">
+            <h3>Content Theme</h3>
+            <p>The theme will guide B-Roll generation and provide context for visuals.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Theme input
+        theme_col1, theme_col2 = st.columns([3, 1])
+        
+        with theme_col1:
+            # Provide some theme examples
+            theme_examples = ["Technology Explainer", "Product Review", "Educational Content", 
+                             "Travel Vlog", "Cooking Tutorial", "Fitness Guide", 
+                             "Business Tips", "Gaming Highlights", "Fashion Trends"]
+            
+            selected_example = st.selectbox(
+                "Choose a theme template or create your own below:",
+                ["Custom"] + theme_examples,
+                index=0
+            )
+            
+            if selected_example != "Custom":
+                st.session_state.script_theme = selected_example
+        
+        with theme_col2:
+            # Button to clear theme
+            if st.button("Clear Theme", key="clear_theme"):
+                st.session_state.script_theme = ""
+                st.experimental_rerun()
+        
+        # Custom theme input
+        custom_theme = st.text_input(
+            "Enter your content theme:",
+            value=current_theme,
+            help="This theme will guide B-Roll generation and provide context for visuals"
+        )
+        
+        if custom_theme != current_theme:
+            st.session_state.script_theme = custom_theme
+        
+        # B-Roll generation options
+        st.subheader("B-Roll Generation Options")
+        
+        # B-Roll generation strategy
+        strategy_options = {
+            "minimal": "Minimal (Intro/Outro only)",
+            "balanced": "Balanced (Strategic placement)",
+            "maximum": "Maximum (Between all A-Roll segments)"
+        }
+        
+        strategy = st.radio(
+            "B-Roll Generation Strategy:",
+            list(strategy_options.keys()),
+            format_func=lambda x: strategy_options[x],
+            index=list(strategy_options.keys()).index(st.session_state.broll_generation_strategy),
+            help="Choose how many B-Roll segments to generate and where to place them"
+        )
+        
+        if strategy != st.session_state.broll_generation_strategy:
+            st.session_state.broll_generation_strategy = strategy
+        
+        # Preview B-Roll generation
+        if st.button("Preview B-Roll Generation", key="preview_broll"):
+            if not st.session_state.script_theme:
+                st.warning("Please enter a content theme first.")
+            else:
+                # Generate B-Roll segments
+                b_roll_segments = generate_broll_segments(
+                    st.session_state.a_roll_segments,
+                    st.session_state.script_theme,
+                    st.session_state.broll_generation_strategy
+                )
+                
+                # Store in session state for later use
+                st.session_state.b_roll_segments = b_roll_segments
+                
+                # Show preview
+                st.subheader("B-Roll Preview")
+                st.success(f"Generated {len(b_roll_segments)} B-Roll segments")
+                
+                for i, segment in enumerate(b_roll_segments):
+                    with st.container():
+                        st.markdown(f"""
+                        <div class="broll-segment-container">
+                            <div class="segment-header">
+                                <h3>B-Roll Segment {i+1}</h3>
+                            </div>
+                            <div class="broll-segment-content">
+                                {segment['content']}
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+        
+        # Show B-Roll segments if they exist
+        if "b_roll_segments" in st.session_state and st.session_state.b_roll_segments:
+            st.subheader("Generated B-Roll Segments")
+            
+            # Show count of segments
+            st.info(f"Generated {len(st.session_state.b_roll_segments)} B-Roll segments based on theme: **{st.session_state.script_theme}**")
+            
+            # Display each B-Roll segment
+            for i, segment in enumerate(st.session_state.b_roll_segments):
+                with st.container():
+                    st.markdown(f"""
+                    <div class="broll-segment-container">
+                        <div class="segment-header">
+                            <h3>B-Roll Segment {i+1}</h3>
+                        </div>
+                        <div class="broll-segment-content">
+                            {segment['content']}
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            
+            # Save both A-Roll and B-Roll segments
+            if st.button("Save All Segments", type="primary", key="save_all_segments"):
+                with st.spinner("Saving segments..."):
+                    if save_segments(
+                        st.session_state.a_roll_segments,
+                        st.session_state.b_roll_segments,
+                        st.session_state.script_theme
+                    ):
+                        st.success("All segments saved successfully!")
+                    else:
+                        st.error("Failed to save segments.")
+        
         # Save and continue button
-        if st.button("Save and Continue to B-Roll Prompts"):
+        st.markdown("---")
+        if st.button("Save and Continue to B-Roll Prompts", type="primary"):
+            # Check if we have B-Roll segments
+            if "b_roll_segments" not in st.session_state or not st.session_state.b_roll_segments:
+                # Generate B-Roll segments if not already done
+                if not st.session_state.script_theme:
+                    st.warning("Please enter a content theme and generate B-Roll segments first.")
+                    st.stop()
+                
+                b_roll_segments = generate_broll_segments(
+                    st.session_state.a_roll_segments,
+                    st.session_state.script_theme,
+                    st.session_state.broll_generation_strategy
+                )
+                
+                st.session_state.b_roll_segments = b_roll_segments
+            
+            # Save all segments
+            save_segments(
+                st.session_state.a_roll_segments,
+                st.session_state.b_roll_segments,
+                st.session_state.script_theme
+            )
+            
             # Mark this step as complete
             mark_step_complete("a_roll_transcription")
             
-            # Save the segments one more time
-            save_a_roll_segments(st.session_state.a_roll_segments)
-            
             # Redirect to the B-Roll Prompts page
-            st.success("A-Roll segments saved! Redirecting to B-Roll Prompts...")
+            st.success("All segments saved! Redirecting to B-Roll Prompts...")
             time.sleep(2)
             st.switch_page("pages/4_BRoll_Prompts.py")
 

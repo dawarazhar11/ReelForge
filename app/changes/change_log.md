@@ -186,4 +186,35 @@
 4. Made the `format_time()` function more robust to handle potential type errors
 5. Updated the `update_segment_content()` function to preserve timing information when editing segments
 
-These changes ensure that the A-Roll Transcription page can handle segments that don't have timing information, preventing KeyErrors and providing a more robust user experience. 
+These changes ensure that the A-Roll Transcription page can handle segments that don't have timing information, preventing KeyErrors and providing a more robust user experience.
+
+## 2025-06-03 - Add Theme Selection and B-Roll Generation to A-Roll Transcription
+
+### User Prompt
+> in A-Roll Transcription & Segmentation a roll segments are being generated. I think similarly b roll segments should be generated too adhering to the a roll segements fully mappe and those segments will be instructions to generate the b roll prompts essentially b roll prompts page. 
+>
+> Also, to define a theme of what type of b roll prompts to be generated around. There should be a topic tab that will define the instructions for b roll segmeptns and those instructions as discussedabove will help develop the b roll prompts in b roll prompts page.
+
+### Changes Made
+1. Enhanced the A-Roll Transcription page (`pages/4.5_ARoll_Transcription.py`) with theme selection and B-Roll generation:
+   - Added a new "Step 6: Theme and B-Roll Generation" section after A-Roll segment editing
+   - Implemented theme selection with predefined templates and custom input
+   - Created B-Roll generation functionality with three strategies:
+     - Minimal: Just intro and outro B-Roll segments
+     - Balanced: Strategic placement of B-Roll segments
+     - Maximum: B-Roll segments between all A-Roll segments
+   - Added preview functionality to visualize generated B-Roll segments
+   - Enhanced the save functionality to store both A-Roll and B-Roll segments together
+   - Updated the navigation to ensure B-Roll segments are generated before proceeding
+
+2. Improved the segment data structure:
+   - Added proper type identification for A-Roll and B-Roll segments
+   - Ensured B-Roll segments reference related A-Roll content
+   - Created a more structured format for saving to script.json
+
+3. Enhanced the UI:
+   - Added distinct styling for B-Roll segments with blue accents
+   - Created a theme selection container with improved visual design
+   - Added informative help text and tooltips
+
+These changes create a more streamlined workflow where users can transcribe videos, edit the transcription segments, define a content theme, and automatically generate B-Roll segments that correspond to the A-Roll content. The generated B-Roll segments will serve as instructions for the B-Roll prompt generation in the next step. 

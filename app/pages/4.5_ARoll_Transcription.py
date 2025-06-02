@@ -318,7 +318,7 @@ def load_a_roll_segments():
     return False
 
 # Function to segment the transcription
-def segment_transcription(transcription, min_segment_duration=5, max_segment_duration=20):
+def segment_transcription(transcription, min_segment_duration=5, max_segment_duration=5):
     """
     Segment the transcription into A-Roll segments
     
@@ -714,7 +714,7 @@ def main():
             min_duration = st.slider("Minimum Segment Duration (seconds)", 3, 10, 5)
         
         with col2:
-            max_duration = st.slider("Maximum Segment Duration (seconds)", 10, 30, 20)
+            max_duration = st.slider("Maximum Segment Duration (seconds)", 5, 10, 5)
         
         if st.button("Generate A-Roll Segments"):
             with st.spinner("Generating segments..."):

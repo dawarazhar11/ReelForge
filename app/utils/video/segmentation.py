@@ -159,60 +159,65 @@ def cut_video_segments(
     try:
         video = VideoFileClip(video_path)
     except Exception as e:
-        logger.error(f"Failed to load video {video_path}: {str(e)}")
-        return segments
+        print(f"Error loading video: {str(e)}")
+        return []
     
-    result_segments = []
-    
+    # Process each segment
+    updated_segments = []
     for i, segment in enumerate(segments):
-        # Skip segments with invalid timestamps
-        if segment.get("start_time", 0) == 0 and segment.get("end_time", 0) == 0:
-            result_segments.append(segment)
-            continue
-            
-        start_time = segment["start_time"]
-        end_time = segment["end_time"]
-        
-        # Skip segments that are too short
-        if end_time - start_time < 0.5:
-            logger.warning(f"Segment {i} is too short: {end_time - start_time}s")
-            result_segments.append(segment)
-            continue
-        
-        # Cut the segment
         try:
+            # Extract start and end times
+            start_time = segment.get("start_time", 0)
+            end_time = segment.get("end_time", 0)
+            
+            # Skip if invalid timing
+            if end_time <= start_time:
+                print(f"Invalid timing for segment {i}: start={start_time}, end={end_time}")
+                updated_segments.append(segment)
+                continue
+            
+            # Cut the segment
             segment_clip = video.subclip(start_time, end_time)
             
-            # Generate output filename
+            # Generate the output filename
+            segment_id = f"segment_{i}"
+            # Ensure segment has an ID property
+            segment["segment_id"] = segment_id
+            
             output_filename = f"{base_name}_segment_{i}.mp4"
             output_path = os.path.join(output_dir, output_filename)
             
-            # Write the segment to file
+            # Use absolute path for file_path to ensure it can be found from anywhere
+            absolute_output_path = os.path.abspath(output_path)
+            
+            # Save the segment
+            print(f"Writing segment {i} to {output_path}")
             segment_clip.write_videofile(
                 output_path,
                 codec="libx264",
                 audio_codec="aac",
-                temp_audiofile=os.path.join(output_dir, f"temp_{i}.m4a"),
+                temp_audiofile="temp-audio.m4a",
                 remove_temp=True,
-                threads=4,
-                verbose=False,
-                logger=None
+                preset="ultrafast",
+                fps=video.fps
             )
             
-            # Add the file path to the segment data using absolute path
-            segment["file_path"] = os.path.abspath(output_path)
-            # Also store the segment ID in a consistent format
-            segment["segment_id"] = f"segment_{i}"
+            # Update the segment with the file path
+            segment["file_path"] = absolute_output_path
+            segment["segment_id"] = segment_id
+            updated_segments.append(segment)
+            
+            # Close the segment clip
+            segment_clip.close()
             
         except Exception as e:
-            logger.error(f"Error cutting segment {i}: {str(e)}")
-        
-        result_segments.append(segment)
+            print(f"Error processing segment {i}: {str(e)}")
+            updated_segments.append(segment)
     
-    # Close the video file
+    # Close the main video
     video.close()
     
-    return result_segments
+    return updated_segments
 
 def save_segment_metadata(segments: List[Dict[str, Any]], output_path: str) -> bool:
     """

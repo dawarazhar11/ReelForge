@@ -14,47 +14,42 @@ logger = logging.getLogger(__name__)
 
 # Default Ollama settings
 DEFAULT_MODEL = "mistral:7b-instruct-v0.3-q4_K_M"
-DEFAULT_HOST = "http://100.115.243.42:11434"
+DEFAULT_HOST = "http://100.115.243.42:11434"  # Custom Ollama server address
 DEFAULT_TEMPERATURE = 0.7
 DEFAULT_TIMEOUT = 120  # seconds
 
 class OllamaClient:
     """Client for interacting with Ollama API."""
     
-    def __init__(
-        self, 
-        model: str = DEFAULT_MODEL,
-        host: str = DEFAULT_HOST, 
-        temperature: float = DEFAULT_TEMPERATURE,
-        timeout: int = DEFAULT_TIMEOUT
-    ):
+    def __init__(self, model=DEFAULT_MODEL, host=DEFAULT_HOST, temperature=DEFAULT_TEMPERATURE):
         """
         Initialize the Ollama client.
         
         Args:
-            model: Name of the Ollama model to use
-            host: Host URL for Ollama API
-            temperature: Temperature for generation (0.0 to 1.0)
-            timeout: Request timeout in seconds
+            model: The model to use
+            host: The Ollama API host
+            temperature: Temperature for generation
         """
         self.model = model
         self.host = host
         self.temperature = temperature
-        self.timeout = timeout
-        self.api_generate_url = f"{host}/api/generate"
+        self.is_available = self._check_availability()
         
-        # Test connection on initialization
-        self.is_available = self._test_connection()
-        if not self.is_available:
-            logger.warning(f"Ollama is not available at {host}. Some features will be limited.")
+        if self.is_available:
+            logger.info(f"✅ Ollama is available at {self.host}")
+        else:
+            logger.warning(f"❌ Ollama is not available at {self.host}. Some features will be limited.")
     
-    def _test_connection(self) -> bool:
-        """Test if Ollama API is available."""
+    def _check_availability(self):
+        """Check if Ollama is available by trying to list models."""
         try:
-            response = requests.get(f"{self.host}/api/tags", timeout=5)
-            return response.status_code == 200
-        except requests.RequestException as e:
-            logger.error(f"Error connecting to Ollama: {str(e)}")
+            response = requests.get(f"{self.host}/api/tags", timeout=DEFAULT_TIMEOUT)
+            if response.status_code == 200:
+                return True
+            logger.error(f"Error connecting to Ollama: HTTP {response.status_code}")
+            return False
+        except Exception as e:
+            logger.error(f"Error connecting to Ollama at {self.host}: {str(e)}")
             return False
     
     def generate(self, prompt: str, system_prompt: Optional[str] = None) -> Tuple[bool, str]:
@@ -83,9 +78,9 @@ class OllamaClient:
         
         try:
             response = requests.post(
-                self.api_generate_url,
+                f"{self.host}/api/generate",
                 json=payload,
-                timeout=self.timeout
+                timeout=DEFAULT_TIMEOUT
             )
             
             if response.status_code == 200:

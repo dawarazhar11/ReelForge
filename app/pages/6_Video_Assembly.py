@@ -1297,13 +1297,13 @@ def assemble_video():
 # Replace the assembly options section with this improved version
 st.subheader("Assembly Options")
 
-# Add sequence selection
+# Add sequence selection with improved descriptions
 sequence_options = [
     "Standard (A-Roll start, B-Roll middle with A-Roll audio, A-Roll end)",
-    "A-Roll Bookends (A-Roll at start and end only, B-Roll middle)",
-    "A-Roll Sandwich (A-Roll at start, middle, and end)",
-    "B-Roll Heavy (Only first segment uses A-Roll visual)",
-    "B-Roll Full (All B-Roll visuals with A-Roll audio) - Prevents audio overlaps",
+    "A-Roll Bookends (A-Roll at start and end only, B-Roll middle with A-Roll audio)",
+    "A-Roll Sandwich (A-Roll at start, middle, and end; B-Roll with A-Roll audio between)",
+    "B-Roll Heavy (Only first segment uses A-Roll visual; rest use B-Roll with A-Roll audio)",
+    "B-Roll Full (All segments use B-Roll visuals with A-Roll audio) - Prevents audio overlaps",
     "Custom (Manual Arrangement)"
 ]
 st.session_state.selected_sequence = st.selectbox(
@@ -1430,10 +1430,22 @@ if content_status and segments:
     aroll_segments = [s for s in segments if isinstance(s, dict) and s.get("type") == "A-Roll"]
     broll_segments = [s for s in segments if isinstance(s, dict) and s.get("type") == "B-Roll"]
     
-    # Count completed segments
-    aroll_completed = sum(1 for i in range(len(aroll_segments)) 
-                         if f"segment_{i}" in content_status["aroll"] and 
-                         content_status["aroll"][f"segment_{i}"].get("status") == "complete")
+    # Count completed segments - a segment is complete if it has a file_path or local_path
+    aroll_completed = 0
+    for i, segment in enumerate(aroll_segments):
+        segment_id = f"segment_{i}"
+        
+        # Check multiple indicators that a segment is "complete"
+        segment_data = content_status["aroll"].get(segment_id, {})
+        
+        # A segment is complete if:
+        # 1. It has a status of "complete", OR
+        # 2. It has a local_path attribute that exists, OR
+        # 3. It has a file_path attribute in the segment data itself
+        if (segment_data.get("status") == "complete" or 
+            (segment_data.get("local_path") and os.path.exists(segment_data.get("local_path"))) or
+            ("file_path" in segment and os.path.exists(segment["file_path"]))):
+            aroll_completed += 1
     
     broll_completed = sum(1 for i in range(len(broll_segments)) 
                          if f"segment_{i}" in content_status["broll"] and 
@@ -1964,3 +1976,37 @@ render_step_navigation(
     prev_step_path="pages/5B_BRoll_Video_Production.py",
     next_step_path="pages/7_Caption_The_Dreams.py"
 )
+
+# After the content summary section
+# Add debugging information
+with st.expander("Debug Information", expanded=False):
+    st.subheader("A-Roll Segments Debug Info")
+    st.write("This information can help diagnose issues with segment paths and identification")
+    
+    # Debug A-Roll segments from script.json
+    st.markdown("### A-Roll Segments from Script")
+    for i, segment in enumerate(aroll_segments):
+        segment_id = f"segment_{i}"
+        file_path = segment.get("file_path", "Not found")
+        exists = "✅" if file_path != "Not found" and os.path.exists(file_path) else "❌"
+        st.markdown(f"**Segment {i}:** ID=`{segment.get('segment_id', segment_id)}`, Path=`{file_path}` {exists}")
+    
+    # Debug content status
+    st.markdown("### Content Status")
+    for segment_id, segment_data in content_status["aroll"].items():
+        local_path = segment_data.get("local_path", "Not found")
+        exists = "✅" if local_path != "Not found" and os.path.exists(local_path) else "❌"
+        st.markdown(f"**{segment_id}:** Local Path=`{local_path}` {exists}, Status=`{segment_data.get('status', 'Unknown')}`")
+    
+    # Debug file search results
+    st.markdown("### File Path Search Results")
+    for i, segment in enumerate(aroll_segments):
+        segment_id = f"segment_{i}"
+        
+        # Try to find the file using get_aroll_filepath
+        test_path, success, error = get_aroll_filepath(segment_id, segment)
+        
+        status = "✅ Found" if success else "❌ Not found"
+        st.markdown(f"**Search for Segment {i}:** {status}, Path=`{test_path}`")
+        if error:
+            st.write(f"Error: {error}")

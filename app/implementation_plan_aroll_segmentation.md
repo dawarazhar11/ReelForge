@@ -55,6 +55,12 @@ This plan outlines the implementation of automatic video segmentation for A-Roll
 - [ ] 8.3 Measure and optimize performance for longer videos
 - [ ] 8.4 Implement caching to avoid reprocessing
 
+### Phase 9: Bug Fixes and Documentation
+- [x] 9.1 Fix `render_step_header` parameter issue in A-Roll Transcription page
+- [x] 9.2 Create Ollama setup guide for users
+- [x] 9.3 Implement graceful fallback when Ollama is not available
+- [ ] 9.4 Add comprehensive documentation for the new features
+
 ## Technical Components
 
 ### Ollama Integration

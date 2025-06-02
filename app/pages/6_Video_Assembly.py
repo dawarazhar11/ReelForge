@@ -1394,19 +1394,54 @@ if content_status and segments:
         # Then try to find the file using our path resolution function
         found_file = False
         resolved_path, success, _ = get_aroll_filepath(segment_id, segment)
-        if success and resolved_path:
+        if success and resolved_path and os.path.exists(resolved_path):
             found_file = True
             print(f"Segment {segment_id} found via path resolution: {resolved_path}")
+        
+        # Also check the directory for any files matching this segment pattern
+        segment_pattern_found = False
+        segment_num = segment_id.split('_')[-1] if '_' in segment_id else segment_id
+        
+        # Check for files with segment ID in different formats
+        segment_patterns = [
+            f"*segment_{segment_num}.mp4",
+            f"*_segment_{segment_num}.mp4",
+            f"*segment{segment_num}.mp4",
+            f"*_segment{segment_num}.mp4",
+            f"*seg_{segment_num}.mp4",
+            f"*_{segment_num}.mp4",
+            f"*{segment_num}.mp4"
+        ]
+        
+        # Look for files matching patterns in a-roll directories
+        potential_dirs = [
+            project_path / "media" / "a-roll",
+            project_path / "media" / "a-roll" / "segments",
+            project_path / "media" / "aroll",
+            project_path / "media" / "aroll" / "segments"
+        ]
+        
+        import glob
+        for directory in potential_dirs:
+            if directory.exists():
+                for pattern in segment_patterns:
+                    matches = glob.glob(str(directory / pattern))
+                    if matches:
+                        segment_pattern_found = True
+                        print(f"Segment {segment_id} found matching pattern: {matches[0]}")
+                        break
+                if segment_pattern_found:
+                    break
         
         # Finally check for segment status being explicitly marked as complete
         has_complete_status = segment_data.get("status") == "complete"
         
         # Count as completed if any of the above checks passed
-        if has_file_path or has_local_path or found_file or has_complete_status:
+        if has_file_path or has_local_path or found_file or has_complete_status or segment_pattern_found:
             aroll_completed += 1
             print(f"Marking segment {segment_id} as completed")
         else:
-            print(f"Segment {segment_id} is not completed: file_path={has_file_path}, local_path={has_local_path}, resolved_path={found_file}, status={has_complete_status}")
+            print(f"Segment {segment_id} is not completed: file_path={has_file_path}, local_path={has_local_path}, resolved_path={found_file}, pattern={segment_pattern_found}, status={has_complete_status}")
     
     broll_completed = sum(1 for i in range(len(broll_segments)) 
                          if f"segment_{i}" in content_status["broll"] and 
@@ -1946,37 +1981,93 @@ with st.expander("Debug Information", expanded=False):
     
     # Debug A-Roll segments from script.json
     st.markdown("### A-Roll Segments from Script")
+    segment_count = len(aroll_segments)
+    st.info(f"Total A-Roll segments in script: {segment_count}")
+    
     for i, segment in enumerate(aroll_segments):
         segment_id = segment.get("segment_id", f"segment_{i}")
         file_path = segment.get("file_path", "Not found")
         exists = "✅" if file_path != "Not found" and os.path.exists(file_path) else "❌"
-        st.markdown(f"**Segment {i}:** ID=`{segment_id}`, Path=`{file_path}` {exists}")
+        start_time = segment.get("start_time", "Not set")
+        end_time = segment.get("end_time", "Not set")
+        
+        # Show detailed information
+        st.markdown(f"**Segment {i}:** ID=`{segment_id}`")
+        st.markdown(f"&nbsp;&nbsp;Path=`{file_path}` {exists}")
+        st.markdown(f"&nbsp;&nbsp;Timing: {start_time}s to {end_time}s")
+        
+        # Try to find the file using get_aroll_filepath
+        resolved_path, success, error = get_aroll_filepath(segment_id, segment)
+        resolution_status = "✅ Found" if success else "❌ Not found"
+        st.markdown(f"&nbsp;&nbsp;Path Resolution: {resolution_status}")
+        st.markdown(f"&nbsp;&nbsp;Resolved Path: `{resolved_path}`")
+        if error:
+            st.error(f"&nbsp;&nbsp;Error: {error}")
     
     # Debug content status
     st.markdown("### Content Status")
+    st.info(f"Total A-Roll segments in content_status: {len(content_status['aroll'])}")
+    
     for segment_id, segment_data in content_status["aroll"].items():
         local_path = segment_data.get("local_path", "Not found")
         exists = "✅" if local_path != "Not found" and os.path.exists(local_path) else "❌"
-        st.markdown(f"**{segment_id}:** Local Path=`{local_path}` {exists}, Status=`{segment_data.get('status', 'Unknown')}`")
+        st.markdown(f"**{segment_id}:** Local Path=`{local_path}` {exists}")
+        st.markdown(f"&nbsp;&nbsp;Status=`{segment_data.get('status', 'Unknown')}`")
+        
+        # Check if any video_url exists
+        if "video_url" in segment_data:
+            st.markdown(f"&nbsp;&nbsp;Video URL: `{segment_data['video_url']}`")
     
     # Debug file search results
     st.markdown("### File Path Search Results")
     for i, segment in enumerate(aroll_segments):
-        segment_id = f"segment_{i}"
+        segment_id = segment.get("segment_id", f"segment_{i}")
         
         # Try to find the file using get_aroll_filepath
         test_path, success, error = get_aroll_filepath(segment_id, segment)
         
         status = "✅ Found" if success else "❌ Not found"
-        st.markdown(f"**Search for Segment {i}:** {status}, Path=`{test_path}`")
+        file_exists = os.path.exists(test_path) if test_path else False
+        file_status = "✅ File exists" if file_exists else "❌ File missing"
+        
+        st.markdown(f"**Search for {segment_id}:** {status}, {file_status}")
+        st.markdown(f"&nbsp;&nbsp;Path=`{test_path}`")
         if error:
-            st.write(f"Error: {error}")
+            st.error(f"&nbsp;&nbsp;Error: {error}")
             
     # List available files in media directory
     media_dir = os.path.join(project_path, "media", "a-roll")
-    if os.path.exists(media_dir):
-        st.markdown("### Available Files in A-Roll Directory")
-        files = os.listdir(media_dir)
-        for file in files:
-            if file.endswith('.mp4'):
-                st.markdown(f"- `{file}`")
+    segments_dir = os.path.join(project_path, "media", "a-roll", "segments")
+    
+    st.markdown("### Available Files in A-Roll Directory")
+    
+    # Function to list files in directory
+    def list_files_in_dir(directory, prefix=""):
+        if os.path.exists(directory):
+            files = os.listdir(directory)
+            for file in files:
+                if file.endswith('.mp4'):
+                    full_path = os.path.join(directory, file)
+                    exists = "✅" if os.path.exists(full_path) else "❌"
+                    st.markdown(f"- {prefix}`{file}` {exists}")
+        else:
+            st.warning(f"Directory not found: {directory}")
+    
+    # List files in main directory
+    list_files_in_dir(media_dir, "Main: ")
+    
+    # List files in segments directory
+    if os.path.exists(segments_dir):
+        list_files_in_dir(segments_dir, "Segments: ")
+    
+    # Show the complete segment count information
+    st.markdown("### Segment Count Summary")
+    st.markdown(f"- Script segments: {len(aroll_segments)}")
+    st.markdown(f"- Content status entries: {len(content_status['aroll'])}")
+    st.markdown(f"- Completed segments: {aroll_completed}/{len(aroll_segments)}")
+    
+    # Show paths being checked
+    st.markdown("### Path Information")
+    st.markdown(f"- Project path: `{project_path}`")
+    st.markdown(f"- Media path: `{media_dir}`")
+    st.markdown(f"- Segments path: `{segments_dir}`")

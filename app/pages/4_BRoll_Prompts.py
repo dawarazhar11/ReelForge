@@ -138,7 +138,18 @@ def load_script_data():
     if script_file.exists():
         with open(script_file, "r") as f:
             data = json.load(f)
-            st.session_state.segments = data.get("segments", [])
+            segments = data.get("segments", [])
+            
+            # Check if this is from transcription
+            source = data.get("source", "")
+            if source == "transcription":
+                print("Loading script segments from A-Roll transcription")
+                # These are already A-Roll segments, so use them directly
+                st.session_state.segments = segments
+            else:
+                # Regular script segments
+                st.session_state.segments = segments
+                
             st.session_state.script_theme = data.get("theme", "")
             return True
     return False
@@ -347,9 +358,120 @@ has_prompts = load_broll_prompts()
 
 # Get B-Roll segments
 broll_segments = [segment for segment in st.session_state.segments if segment["type"] == "B-Roll"]
-if not broll_segments:
-    st.warning("No B-Roll segments found in your script. Please go back and add B-Roll segments.")
+
+# Function to automatically generate B-Roll segments from A-Roll segments
+def generate_broll_segments_from_aroll():
+    """
+    Generate B-Roll segments from A-Roll segments when none are found.
+    This is especially useful when using transcribed A-Roll content.
+    """
+    aroll_segments = [segment for segment in st.session_state.segments if segment["type"] == "A-Roll"]
     
+    if not aroll_segments:
+        st.error("No A-Roll segments found. Cannot generate B-Roll segments.")
+        return False
+    
+    # Calculate ideal number of B-Roll segments based on A-Roll count
+    # For short videos, we want approximately 1 B-Roll for every 2 A-Roll segments
+    ideal_broll_count = max(1, len(aroll_segments) // 2)
+    
+    # Create B-Roll segments at strategic positions
+    new_segments = []
+    broll_inserted = 0
+    
+    # First add an intro B-Roll
+    intro_broll = {
+        "type": "B-Roll",
+        "content": f"Introductory visual for {st.session_state.script_theme}",
+        "duration": 3.0  # Default duration in seconds
+    }
+    new_segments.append(intro_broll)
+    broll_inserted += 1
+    
+    # Add A-Roll segments with B-Roll segments interspersed
+    for i, segment in enumerate(aroll_segments):
+        new_segments.append(segment)
+        
+        # Add B-Roll after some A-Roll segments
+        # For even distribution, use modulo based on ideal count
+        if broll_inserted < ideal_broll_count and (i + 1) % 2 == 0 and i < len(aroll_segments) - 1:
+            # Extract key phrases from surrounding A-Roll segments for context
+            current_content = segment["content"]
+            next_content = aroll_segments[i+1]["content"] if i+1 < len(aroll_segments) else ""
+            
+            # Create a B-Roll segment with content derived from surrounding A-Roll
+            broll_content = f"Visual representation of: {current_content[:50]}..." 
+            
+            broll_segment = {
+                "type": "B-Roll",
+                "content": broll_content,
+                "duration": 3.0  # Default duration in seconds
+            }
+            new_segments.append(broll_segment)
+            broll_inserted += 1
+    
+    # Add a concluding B-Roll if needed
+    if broll_inserted < ideal_broll_count:
+        outro_broll = {
+            "type": "B-Roll",
+            "content": f"Concluding visual for {st.session_state.script_theme}",
+            "duration": 3.0  # Default duration in seconds
+        }
+        new_segments.append(outro_broll)
+    
+    # Update the session state
+    st.session_state.segments = new_segments
+    
+    # Save the updated segments to script.json
+    script_file = project_path / "script.json"
+    if script_file.exists():
+        try:
+            with open(script_file, "r") as f:
+                script_data = json.load(f)
+                
+            script_data["segments"] = new_segments
+            
+            with open(script_file, "w") as f:
+                json.dump(script_data, f, indent=2)
+                
+            return True
+        except Exception as e:
+            st.error(f"Error saving generated B-Roll segments: {str(e)}")
+            return False
+    else:
+        st.error("Script file not found. Cannot save generated B-Roll segments.")
+        return False
+
+# Check if we need to generate B-Roll segments
+if not broll_segments:
+    # Check if this is from transcription
+    script_file = project_path / "script.json"
+    is_transcription = False
+    if script_file.exists():
+        try:
+            with open(script_file, "r") as f:
+                data = json.load(f)
+                if data.get("source") == "transcription":
+                    is_transcription = True
+        except:
+            pass
+    
+    if is_transcription:
+        st.warning("No B-Roll segments found, but A-Roll segments from transcription detected.")
+        
+        # Add option to automatically generate B-Roll segments
+        if st.button("🎬 Generate B-Roll Segments Automatically", type="primary"):
+            with st.spinner("Generating B-Roll segments from A-Roll content..."):
+                if generate_broll_segments_from_aroll():
+                    st.success("B-Roll segments generated successfully!")
+                    # Reload the segments
+                    broll_segments = [segment for segment in st.session_state.segments if segment["type"] == "B-Roll"]
+                    st.rerun()
+                else:
+                    st.error("Failed to generate B-Roll segments.")
+    else:
+        st.warning("No B-Roll segments found in your script. Please go back and add B-Roll segments.")
+
 # Display script theme
 st.subheader("Script Theme")
 st.info(f"Current theme: **{st.session_state.script_theme}**")
@@ -868,7 +990,7 @@ if st.button("Generate Simple Prompts Offline", use_container_width=True):
 # Navigation buttons
 st.markdown("---")
 render_step_navigation(
-    current_step=4,
-    prev_step_path="pages/3_Script_Segmentation.py",
-    next_step_path="pages/5A_ARoll_Video_Production.py"
+    current_step=5,
+    prev_step_path="pages/4.5_ARoll_Transcription.py",
+    next_step_path="pages/5B_BRoll_Video_Production.py"
 ) 

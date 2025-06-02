@@ -1,3 +1,3 @@
 [ui]
 hideTopBar = true
-hideSidebarNav = true 
+showSidebarNavigation = false 

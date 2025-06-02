@@ -51,15 +51,15 @@ def render_custom_sidebar():
             "step": 3
         },
         {
-            "name": "B-Roll Prompts",
-            "icon": "🔍",
-            "path": "pages/4_BRoll_Prompts.py",
+            "name": "A-Roll Transcription",
+            "icon": "🎤",
+            "path": "pages/4.5_ARoll_Transcription.py",
             "step": 4
         },
         {
-            "name": "A-Roll Video Production",
-            "icon": "🎥",
-            "path": "pages/5A_ARoll_Video_Production.py",
+            "name": "B-Roll Prompts",
+            "icon": "🔍",
+            "path": "pages/4_BRoll_Prompts.py",
             "step": 5
         },
         {
@@ -137,15 +137,15 @@ def render_horizontal_navigation():
                 "step": 3
             },
             {
-                "name": "B-Roll Prompts",
-                "icon": "🔍",
-                "path": "pages/4_BRoll_Prompts.py",
+                "name": "A-Roll Transcription",
+                "icon": "🎤",
+                "path": "pages/4.5_ARoll_Transcription.py",
                 "step": 4
             },
             {
-                "name": "A-Roll Video Production",
-                "icon": "🎥",
-                "path": "pages/5A_ARoll_Video_Production.py",
+                "name": "B-Roll Prompts",
+                "icon": "🔍",
+                "path": "pages/4_BRoll_Prompts.py",
                 "step": 5
             },
             {
@@ -218,8 +218,8 @@ def render_step_navigation(current_step, prev_step_path=None, next_step_path=Non
             "Settings",
             "Blueprint",
             "Script Segmentation",
+            "A-Roll Transcription",
             "B-Roll Prompts",
-            "A-Roll Video Production",
             "B-Roll Video Production",
             "Video Assembly",
             "Captioning",

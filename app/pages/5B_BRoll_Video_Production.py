@@ -33,7 +33,7 @@ except ImportError as e:
     st.stop()
 # Set page configuration
 st.set_page_config(
-    page_title="5B B-Roll Video Production | AI Money Printer",
+    page_title="B-Roll Video Production | AI Money Printer",
     page_icon="🎬",
     layout="centered",
     initial_sidebar_state="expanded"
@@ -1940,8 +1940,8 @@ if (not st.session_state.parallel_tasks["running"] and
 # Navigation buttons
 st.markdown("---")
 render_step_navigation(
-    current_step=5,
-    prev_step_path="pages/5A_ARoll_Video_Production.py",
+    current_step=6,
+    prev_step_path="pages/4_BRoll_Prompts.py",
     next_step_path="pages/6_Video_Assembly.py"
 )
 

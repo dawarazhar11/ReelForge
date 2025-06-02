@@ -442,15 +442,58 @@ def update_segment_content(index, new_content):
     return False
 
 # Function to ensure all segments have timing information
-def ensure_segments_have_timing(segments):
-    """Add default timing information to segments that don't have it"""
-    for i, segment in enumerate(segments):
-        if "start_time" not in segment:
-            segment["start_time"] = i * 10  # Default 10 seconds per segment
-        if "end_time" not in segment:
-            segment["end_time"] = (i + 1) * 10
-        if "duration" not in segment:
+def ensure_segments_have_timing(segments, video_duration=None):
+    """
+    Add default timing information to segments that don't have it.
+    Scales segments to fit within the video duration if provided.
+    
+    Args:
+        segments: List of segments to process
+        video_duration: Optional actual duration of the video in seconds
+        
+    Returns:
+        Segments with timing information added
+    """
+    # Skip if no segments
+    if not segments:
+        return segments
+    
+    # If video duration is not provided, use 10 seconds per segment as default
+    if not video_duration:
+        for i, segment in enumerate(segments):
+            if "start_time" not in segment:
+                segment["start_time"] = i * 10  # Default 10 seconds per segment
+            if "end_time" not in segment:
+                segment["end_time"] = (i + 1) * 10
+            if "duration" not in segment:
+                segment["duration"] = segment["end_time"] - segment["start_time"]
+    else:
+        # Calculate segment durations proportionally to fit within video_duration
+        segment_count = len(segments)
+        average_duration = video_duration / segment_count if segment_count > 0 else 0
+        
+        # Assign timestamps proportionally
+        current_time = 0
+        for segment in segments:
+            if "start_time" not in segment:
+                segment["start_time"] = current_time
+            
+            # Determine the segment duration (use existing if available)
+            if "duration" in segment and segment["duration"] > 0:
+                duration = segment["duration"]
+            else:
+                duration = average_duration
+                
+            # Set end time based on start time + duration
+            if "end_time" not in segment:
+                segment["end_time"] = segment["start_time"] + duration
+                
+            # Update duration field for consistency
             segment["duration"] = segment["end_time"] - segment["start_time"]
+            
+            # Update current_time for next segment
+            current_time = segment["end_time"]
+    
     return segments
 
 # Function to generate B-Roll segments based on A-Roll segments
@@ -616,12 +659,13 @@ def save_segments(a_roll_segments, b_roll_segments, theme):
         return False
 
 # Function to automatically segment the transcription using Ollama
-def automatic_segment_transcription(transcription_data):
+def automatic_segment_transcription(transcription_data, video_path=None):
     """
     Automatically segment the transcription using Ollama for logical analysis.
     
     Args:
         transcription_data: The full transcription data with word timestamps
+        video_path: Optional path to the video file to get duration
         
     Returns:
         List of segments with content, start_time, and end_time
@@ -631,6 +675,18 @@ def automatic_segment_transcription(transcription_data):
         return []
     
     full_text = transcription_data["text"]
+    
+    # Get video duration if possible
+    video_duration = None
+    if video_path:
+        try:
+            from moviepy.editor import VideoFileClip
+            video = VideoFileClip(video_path)
+            video_duration = video.duration
+            video.close()
+            st.info(f"Video duration for segmentation: {format_time(video_duration)}")
+        except Exception as e:
+            st.warning(f"Could not determine video duration: {str(e)}")
     
     # Check if Ollama is available
     if not st.session_state.ollama_client.is_available:
@@ -648,7 +704,8 @@ def automatic_segment_transcription(transcription_data):
         # Map segments to timestamps
         segments_with_timestamps = get_segment_timestamps(
             transcription_data,
-            segments
+            segments,
+            video_duration
         )
         
         # Add type field to each segment
@@ -873,9 +930,24 @@ def main():
                 if st.button("Analyze and Segment Automatically"):
                     with st.spinner("Analyzing transcript..."):
                         # Use Ollama to segment the transcript
-                        segments = automatic_segment_transcription(st.session_state.transcription_data)
+                        segments = automatic_segment_transcription(st.session_state.transcription_data, video_path)
                         
                         if segments:
+                            # Get the video duration if video_path is available
+                            video_duration = None
+                            if video_path:
+                                try:
+                                    from moviepy.editor import VideoFileClip
+                                    video = VideoFileClip(video_path)
+                                    video_duration = video.duration
+                                    video.close()
+                                    st.info(f"Video duration: {format_time(video_duration)}")
+                                except Exception as e:
+                                    st.warning(f"Could not determine video duration: {str(e)}")
+                            
+                            # Ensure segments have proper timing
+                            segments = ensure_segments_have_timing(segments, video_duration)
+                            
                             st.session_state.a_roll_segments = segments
                             st.session_state.segmentation_complete = True
                             st.session_state.auto_segmentation_complete = True
@@ -926,8 +998,20 @@ def main():
                                 max_segment_duration=max_duration
                             )
                             
+                            # Get the video duration if video_path is available
+                            video_duration = None
+                            if video_path:
+                                try:
+                                    from moviepy.editor import VideoFileClip
+                                    video = VideoFileClip(video_path)
+                                    video_duration = video.duration
+                                    video.close()
+                                    st.info(f"Video duration: {format_time(video_duration)}")
+                                except Exception as e:
+                                    st.warning(f"Could not determine video duration: {str(e)}")
+                            
                             # Ensure segments have timing information
-                            segments = ensure_segments_have_timing(segments)
+                            segments = ensure_segments_have_timing(segments, video_duration)
                             
                             # Store the segments
                             st.session_state.a_roll_segments = segments

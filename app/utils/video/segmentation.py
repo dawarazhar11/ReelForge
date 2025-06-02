@@ -16,7 +16,8 @@ logger = logging.getLogger(__name__)
 
 def get_segment_timestamps(
     transcript_data: Dict[str, Any],
-    segments: List[Dict[str, Any]]
+    segments: List[Dict[str, Any]],
+    video_duration: Optional[float] = None
 ) -> List[Dict[str, Any]]:
     """
     Map logical segments to actual timestamps in the transcript.
@@ -24,12 +25,28 @@ def get_segment_timestamps(
     Args:
         transcript_data: Complete transcript with word-level timestamps
         segments: Logical segments without timestamps
+        video_duration: Optional total duration of the video in seconds
         
     Returns:
         Segments with start and end timestamps added
     """
     if not transcript_data or "segments" not in transcript_data:
         logger.error("Invalid transcript data format")
+        # If we have video_duration, we can still assign proportional timestamps
+        if video_duration and segments:
+            logger.info(f"Using proportional timestamps based on video duration: {video_duration}s")
+            segment_count = len(segments)
+            average_duration = video_duration / segment_count
+            
+            # Assign timestamps proportionally
+            current_time = 0
+            for segment in segments:
+                segment["start_time"] = current_time
+                segment["end_time"] = current_time + average_duration
+                segment["duration"] = average_duration
+                current_time += average_duration
+                
+            return segments
         return segments
     
     # Extract all words with their timestamps
@@ -48,13 +65,39 @@ def get_segment_timestamps(
     
     if not all_words:
         logger.error("No word timestamps found in transcript")
+        # Fall back to proportional timestamps if we have video_duration
+        if video_duration and segments:
+            logger.info(f"Using proportional timestamps based on video duration: {video_duration}s")
+            segment_count = len(segments)
+            average_duration = video_duration / segment_count
+            
+            # Assign timestamps proportionally
+            current_time = 0
+            for segment in segments:
+                segment["start_time"] = current_time
+                segment["end_time"] = current_time + average_duration
+                segment["duration"] = average_duration
+                current_time += average_duration
+                
+            return segments
         return segments
+    
+    # Get transcript duration from the last word's end time
+    transcript_duration = all_words[-1]["end"] if all_words else (video_duration or 0)
+    
+    # If we have video_duration and it's significantly different from transcript_duration,
+    # we need to scale the timestamps
+    scale_factor = 1.0
+    if video_duration and abs(video_duration - transcript_duration) > 1.0:  # More than 1 second difference
+        logger.info(f"Scaling timestamps: transcript duration={transcript_duration}s, video duration={video_duration}s")
+        scale_factor = video_duration / transcript_duration if transcript_duration > 0 else 1.0
     
     # Reassemble the full text with indices for each word
     full_text = " ".join([w["word"] for w in all_words])
     
     # Map each segment to timestamps
     result_segments = []
+    match_count = 0
     
     for segment in segments:
         content = segment["content"]
@@ -80,11 +123,13 @@ def get_segment_timestamps(
         start_word_idx = words_before
         end_word_idx = min(start_word_idx + segment_word_count, len(all_words) - 1)
         
-        # Get the timestamps
-        segment["start_time"] = all_words[start_word_idx]["start"]
-        segment["end_time"] = all_words[end_word_idx]["end"]
+        # Get the timestamps and apply scaling if needed
+        segment["start_time"] = all_words[start_word_idx]["start"] * scale_factor
+        segment["end_time"] = all_words[end_word_idx]["end"] * scale_factor
+        segment["duration"] = segment["end_time"] - segment["start_time"]
         
         result_segments.append(segment)
+        match_count += 1
     
     # Ensure segments don't overlap
     for i in range(1, len(result_segments)):
@@ -93,6 +138,23 @@ def get_segment_timestamps(
             midpoint = (result_segments[i-1]["end_time"] + result_segments[i]["start_time"]) / 2
             result_segments[i-1]["end_time"] = midpoint
             result_segments[i]["start_time"] = midpoint
+            # Update durations
+            result_segments[i-1]["duration"] = result_segments[i-1]["end_time"] - result_segments[i-1]["start_time"]
+            result_segments[i]["duration"] = result_segments[i]["end_time"] - result_segments[i]["start_time"]
+    
+    # If we couldn't match any segments but have video_duration, use proportional timestamps
+    if match_count == 0 and video_duration and segments:
+        logger.warning("No segment matches found. Using proportional timestamps instead.")
+        segment_count = len(segments)
+        average_duration = video_duration / segment_count
+        
+        # Assign timestamps proportionally
+        current_time = 0
+        for segment in result_segments:
+            segment["start_time"] = current_time
+            segment["end_time"] = current_time + average_duration
+            segment["duration"] = average_duration
+            current_time += average_duration
     
     return result_segments
 

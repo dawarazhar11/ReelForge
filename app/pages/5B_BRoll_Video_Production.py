@@ -1654,7 +1654,7 @@ else:
     
     # Still provide an option for parallel generation
     st.markdown("### Generate All B-Roll Content")
-    st.info("⚠️ Note: For A-Roll (talking head) generation, please use the '5A A-Roll Video Production' page.")
+    st.info("⚠️ Note: For A-Roll (talking head) generation, please use the 'A-Roll Transcription' page.")
     if st.button("🚀 Generate All B-Roll Content", key="parallel_generation", help="Generate B-Roll content for all segments"):
         # Capture all required data before starting the thread
         temp_segments = st.session_state.segments.copy() if hasattr(st.session_state, 'segments') and st.session_state.segments else []

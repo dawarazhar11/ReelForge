@@ -575,7 +575,7 @@ def get_aroll_filepath(segment_id, segment_data):
     print(f"Status data: {aroll_status}")
     
     # Not found anywhere, return error
-    return None, False, f"A-Roll file for {segment_id} not found. Please make sure you've generated A-Roll videos in the 5A A-Roll Video Production step."
+    return None, False, f"A-Roll file for {segment_id} not found. Please make sure you've generated A-Roll videos in the A-Roll Transcription step."
 
 def get_broll_filepath(segment_id, segment_data):
     """
@@ -675,7 +675,7 @@ def create_assembly_sequence():
     total_broll_segments = len(broll_segments)
     
     if total_aroll_segments == 0:
-        return {"status": "error", "message": "No A-Roll segments found. Please go to the 5A A-Roll Video Production page to create A-Roll videos first."}
+        return {"status": "error", "message": "No A-Roll segments found. Please go to the A-Roll Transcription page to create A-Roll videos first."}
     
     # B-Roll Full (all visuals are B-Roll with A-Roll audio)
     if "B-Roll Full" in selected_sequence:
@@ -1480,7 +1480,7 @@ if content_status and segments:
             broll_items.sort(key=lambda x: x["segment_num"])
             
             if not aroll_items:
-                st.error("No valid A-Roll files found. Please check 5A A-Roll Video Production status.")
+                st.error("No valid A-Roll files found. Please check A-Roll Transcription status.")
                 st.stop()
                 
             st.session_state.available_segments = {

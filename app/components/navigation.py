@@ -27,9 +27,9 @@ def get_workflow_steps():
             "path": "pages/4_BRoll_Prompts.py"
         },
         {
-            "name": "A-Roll Video Production",
-            "icon": "🎥",
-            "path": "pages/5A_ARoll_Video_Production.py"
+            "name": "A-Roll Transcription",
+            "icon": "🎤",
+            "path": "pages/4.5_ARoll_Transcription.py"
         },
         {
             "name": "B-Roll Video Production",

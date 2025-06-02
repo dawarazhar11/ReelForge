@@ -70,4 +70,13 @@ client_secret*.json
 *credential*.json
 token*.json
 .credentials/
-config/credentials/ 
+config/credentials/
+
+# User data files
+config/user_data/*/script.json
+config/user_data/*/transcription.json
+config/user_data/*/broll_prompts.json
+config/user_data/progress.json
+
+# Cache files
+components/__pycache__/ 

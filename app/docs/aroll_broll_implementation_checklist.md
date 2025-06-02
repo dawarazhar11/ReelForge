@@ -40,13 +40,28 @@ This document tracks implementation progress for the new A-Roll/B-Roll functiona
   - [ ] Handling transitions between segments
 - [ ] Update progress tracking and error handling for new assembly process
 
-## 5. Ollama Integration for B-Roll Prompts
+## 5. Video Assembly Page Redesign
+
+- [ ] Completely revise the video assembly page UI to reflect the new approach
+- [ ] Create visual timeline showing the full A-Roll video with timestamp markers
+- [ ] Add B-Roll overlay visualization showing which B-Roll appears during which A-Roll segments
+- [ ] Implement sequence visualization showing A1 → (B1+A2) → (B2+A3) → (B3+A4) pattern
+- [ ] Add controls for adjusting:
+  - [ ] B-Roll placement timing
+  - [ ] Transition types between segments
+  - [ ] Audio levels during transitions
+- [ ] Create B-Roll preview functionality within the assembly page
+- [ ] Add export options with quality/format settings
+- [ ] Implement progress monitoring for the new assembly process
+- [ ] Create error handling and recovery options for failed assemblies
+
+## 6. Ollama Integration for B-Roll Prompts
 
 - [ ] Ensure Ollama-generated prompts align with timestamp-specific content
 - [ ] Modify prompt generation to reference specific A-Roll content at timestamps
 - [ ] Update storage format for B-Roll prompts to include timestamp references
 
-## 6. UI/UX Improvements
+## 7. UI/UX Improvements
 
 - [ ] Create visual sequence preview showing the full assembly flow
 - [ ] Add clear visual differentiation between A-Roll and B-Roll sections
@@ -54,7 +69,7 @@ This document tracks implementation progress for the new A-Roll/B-Roll functiona
 - [ ] Add visual indicators showing the 60/40 split between A-Roll and B-Roll when applicable
 - [ ] Create comprehensive help system explaining the new workflow
 
-## 7. Testing and Validation
+## 8. Testing and Validation
 
 - [ ] Test with various A-Roll lengths and B-Roll configurations
 - [ ] Validate correct audio mapping between segments
@@ -62,8 +77,9 @@ This document tracks implementation progress for the new A-Roll/B-Roll functiona
 - [ ] Verify smooth transitions between segments
 - [ ] Test with different visual types (images, videos)
 - [ ] Validate Ollama integration functionality
+- [ ] Test assembly performance with large files and complex sequences
 
-## 8. Documentation and Refinement
+## 9. Documentation and Refinement
 
 - [ ] Update user documentation to explain new workflow
 - [ ] Create visual guides for timeline and segment mapping
@@ -71,7 +87,7 @@ This document tracks implementation progress for the new A-Roll/B-Roll functiona
 - [ ] Add tooltips and in-app guidance for new features
 - [ ] Implement any refinements based on initial testing
 
-## 9. Final Deployment
+## 10. Final Deployment
 
 - [ ] Package all changes into a cohesive update
 - [ ] Ensure backward compatibility with existing projects where possible
@@ -86,6 +102,7 @@ This document tracks implementation progress for the new A-Roll/B-Roll functiona
 | A-Roll Transcription Updates | ❌ | ❌ | |
 | B-Roll Management | ❌ | ❌ | |
 | Video Assembly Logic | ❌ | ❌ | |
+| Video Assembly Page Redesign | ❌ | ❌ | |
 | Ollama Integration | ✅ | ❌ | Basic implementation complete |
 | UI/UX Improvements | ❌ | ❌ | |
 | Testing | ❌ | ❌ | |
@@ -103,8 +120,10 @@ This document tracks implementation progress for the new A-Roll/B-Roll functiona
 1. Update the data structures to support timestamp-based mapping
 2. Implement the timeline visualization in the A-Roll transcription page
 3. Revise the assembly logic to follow the new sequence pattern
+4. Redesign the video assembly page for the new workflow
 
 ### Questions/Decisions Needed
 - Decision on how to handle transitions between segments
 - Format for storing multiple B-Roll visuals per segment
-- UI approach for timeline visualization 
+- UI approach for timeline visualization
+- Performance considerations for handling large video files during assembly 

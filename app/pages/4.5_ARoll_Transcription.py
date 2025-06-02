@@ -1110,7 +1110,7 @@ def main():
                                     st.session_state.script_theme = theme
                                     
                                     # Mark step as complete
-                                    mark_step_complete(4.5)
+                                    mark_step_complete("aroll_transcription")
                                     
                                     st.success("B-Roll prompts generated successfully!")
                                     st.info("Proceed to the next step to generate B-Roll visuals.")
@@ -1148,7 +1148,7 @@ def main():
                                 st.session_state.script_theme = theme
                                 
                                 # Mark step as complete
-                                mark_step_complete(4.5)
+                                mark_step_complete("aroll_transcription")
                                 
                                 st.success("B-Roll segments generated successfully!")
                                 st.info("Proceed to the next step to generate B-Roll visuals.")
@@ -1176,7 +1176,7 @@ def main():
                             """, unsafe_allow_html=True)
                     
                     # Navigation buttons
-                    st.button("Proceed to B-Roll Generation", on_click=lambda: mark_step_complete(4.5))
+                    st.button("Proceed to B-Roll Generation", on_click=lambda: mark_step_complete("aroll_transcription"))
 
 # Helper function to format time in MM:SS format
 def format_time(seconds):

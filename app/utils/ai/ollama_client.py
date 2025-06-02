@@ -43,10 +43,11 @@ class OllamaClient:
     def _check_availability(self):
         """Check if Ollama is available by trying to list models."""
         try:
+            logger.info(f"Checking Ollama availability at {self.host}/api/tags")
             response = requests.get(f"{self.host}/api/tags", timeout=DEFAULT_TIMEOUT)
             if response.status_code == 200:
                 return True
-            logger.error(f"Error connecting to Ollama: HTTP {response.status_code}")
+            logger.error(f"Error connecting to Ollama at {self.host}: HTTP {response.status_code}")
             return False
         except Exception as e:
             logger.error(f"Error connecting to Ollama at {self.host}: {str(e)}")

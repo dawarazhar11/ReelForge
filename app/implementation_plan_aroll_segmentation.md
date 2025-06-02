@@ -59,7 +59,8 @@ This plan outlines the implementation of automatic video segmentation for A-Roll
 - [x] 9.1 Fix `render_step_header` parameter issue in A-Roll Transcription page
 - [x] 9.2 Create Ollama setup guide for users
 - [x] 9.3 Implement graceful fallback when Ollama is not available
-- [ ] 9.4 Add comprehensive documentation for the new features
+- [x] 9.5 Fix AttributeError bug in loading transcription data
+- [ ] 9.6 Add comprehensive documentation for the new features
 
 ## Technical Components
 

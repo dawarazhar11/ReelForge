@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 # Default Ollama settings
 DEFAULT_MODEL = "mistral:7b-instruct-v0.3-q4_K_M"
-DEFAULT_HOST = "http://localhost:11434"
+DEFAULT_HOST = "http://100.115.243.42:11434"
 DEFAULT_TEMPERATURE = 0.7
 DEFAULT_TIMEOUT = 120  # seconds
 

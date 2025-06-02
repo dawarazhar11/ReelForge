@@ -30,6 +30,15 @@ try:
         get_available_engines,
         check_module_availability
     )
+    # Import new utilities for Ollama integration and segmentation
+    from utils.ai.ollama_client import OllamaClient
+    from utils.video.segmentation import (
+        get_segment_timestamps,
+        cut_video_segments,
+        save_segment_metadata,
+        load_segment_metadata,
+        preview_segment
+    )
     print("Successfully imported local modules")
 except ImportError as e:
     st.error(f"Failed to import local modules: {str(e)}")
@@ -200,6 +209,13 @@ if "script_theme" not in st.session_state:
     st.session_state.script_theme = ""
 if "broll_generation_strategy" not in st.session_state:
     st.session_state.broll_generation_strategy = "balanced"
+# Add new session state variables for Ollama and automatic segmentation
+if "ollama_client" not in st.session_state:
+    st.session_state.ollama_client = OllamaClient()
+if "auto_segmentation_complete" not in st.session_state:
+    st.session_state.auto_segmentation_complete = False
+if "segment_files" not in st.session_state:
+    st.session_state.segment_files = []
 
 # Function to save the transcription data
 def save_transcription_data(data):
@@ -320,15 +336,15 @@ def load_a_roll_segments():
 # Function to segment the transcription
 def segment_transcription(transcription, min_segment_duration=5, max_segment_duration=20):
     """
-    Segment the transcription into A-Roll segments
+    Segment the transcription into smaller parts.
     
     Args:
-        transcription: The transcription data
+        transcription: The full transcription text
         min_segment_duration: Minimum segment duration in seconds
         max_segment_duration: Maximum segment duration in seconds
         
     Returns:
-        List of A-Roll segments
+        List of segments with start and end times
     """
     if not transcription or "segments" not in transcription:
         # If no segments are available, create a single segment from the full text
@@ -599,356 +615,568 @@ def save_segments(a_roll_segments, b_roll_segments, theme):
         print(f"Error saving segments: {str(e)}")
         return False
 
+# Function to automatically segment the transcription using Ollama
+def automatic_segment_transcription(transcription_data):
+    """
+    Automatically segment the transcription using Ollama for logical analysis.
+    
+    Args:
+        transcription_data: The full transcription data with word timestamps
+        
+    Returns:
+        List of segments with content, start_time, and end_time
+    """
+    if not transcription_data or "text" not in transcription_data:
+        st.error("Transcription data is missing or invalid")
+        return []
+    
+    full_text = transcription_data["text"]
+    
+    # Check if Ollama is available
+    if not st.session_state.ollama_client.is_available:
+        st.warning("Ollama is not available. Falling back to basic segmentation.")
+        return segment_transcription(full_text)
+    
+    with st.spinner("Analyzing transcript for logical segments using Ollama..."):
+        # Get logical segments from Ollama
+        segments = st.session_state.ollama_client.segment_text_logically(
+            full_text,
+            min_segment_length=5,  # Minimum words per segment
+            max_segment_length=30  # Maximum words per segment
+        )
+        
+        # Map segments to timestamps
+        segments_with_timestamps = get_segment_timestamps(
+            transcription_data,
+            segments
+        )
+        
+        # Add type field to each segment
+        for segment in segments_with_timestamps:
+            segment["type"] = "A-Roll"
+            
+        return segments_with_timestamps
+
+def cut_video_into_segments(video_path, segments):
+    """
+    Cut the video into segments based on timestamps.
+    
+    Args:
+        video_path: Path to the A-Roll video
+        segments: List of segments with start_time and end_time
+        
+    Returns:
+        Updated segments with file paths
+    """
+    if not os.path.exists(video_path):
+        st.error(f"Video file not found: {video_path}")
+        return segments
+    
+    # Create output directory for segments
+    project_path = get_project_path()
+    output_dir = os.path.join(project_path, "media", "a-roll", "segments")
+    os.makedirs(output_dir, exist_ok=True)
+    
+    with st.spinner("Cutting video into segments..."):
+        try:
+            # Process the segments
+            updated_segments = cut_video_segments(
+                video_path,
+                segments,
+                output_dir
+            )
+            
+            # Save the segment files for future reference
+            st.session_state.segment_files = [
+                segment.get("file_path", "") for segment in updated_segments
+                if "file_path" in segment
+            ]
+            
+            # Save segment metadata
+            metadata_path = os.path.join(project_path, "segments_metadata.json")
+            save_segment_metadata(updated_segments, metadata_path)
+            
+            return updated_segments
+            
+        except Exception as e:
+            st.error(f"Error cutting video segments: {str(e)}")
+            return segments
+
+def generate_broll_prompts_with_ollama(a_roll_segments, theme):
+    """
+    Generate B-Roll prompts for each A-Roll segment using Ollama.
+    
+    Args:
+        a_roll_segments: List of A-Roll segments
+        theme: Theme for the B-Roll content
+        
+    Returns:
+        List of B-Roll segments with prompts
+    """
+    if not st.session_state.ollama_client.is_available:
+        st.warning("Ollama is not available. Falling back to basic B-Roll prompt generation.")
+        return generate_broll_segments(a_roll_segments, theme)
+    
+    b_roll_segments = []
+    
+    with st.spinner("Generating B-Roll prompts with Ollama..."):
+        progress_bar = st.progress(0)
+        
+        for i, segment in enumerate(a_roll_segments):
+            # Update progress
+            progress = (i + 1) / len(a_roll_segments)
+            progress_bar.progress(progress)
+            
+            content = segment.get("content", "")
+            
+            # Skip empty segments
+            if not content:
+                continue
+                
+            # Generate B-Roll prompt with Ollama
+            success, prompt = st.session_state.ollama_client.generate_broll_prompt(
+                content,
+                theme=theme,
+                style="photorealistic"  # Default style
+            )
+            
+            if not success:
+                st.warning(f"Failed to generate B-Roll prompt for segment {i+1}. Using default.")
+                prompt = f"Visual representation of: {content[:50]}..."
+            
+            # Create B-Roll segment
+            b_roll_segment = {
+                "type": "B-Roll",
+                "content": prompt,
+                "a_roll_reference": i,
+                "start_time": segment.get("start_time", 0),
+                "end_time": segment.get("end_time", 0)
+            }
+            
+            b_roll_segments.append(b_roll_segment)
+        
+        progress_bar.empty()
+    
+    return b_roll_segments
+
 # Main function
 def main():
-    st.title("A-Roll Transcription & Segmentation")
+    # Header and instructions
+    st.title("A-Roll Transcription")
+    render_step_header(current_step=4.5)
     
-    # Check if transcription data already exists
-    if not st.session_state.transcription_complete:
-        load_transcription_data()
+    st.write("Upload your A-Roll video to generate a transcript and split it into segments.")
     
-    # Check if A-roll segments already exist
-    if not st.session_state.segmentation_complete:
-        load_a_roll_segments()
+    # Check for video from the previous step
+    aroll_video_path = None
+    project_path = get_project_path()
+    if project_path:
+        potential_path = os.path.join(project_path, "media", "a-roll", "main_aroll.mp4")
+        if os.path.exists(potential_path):
+            aroll_video_path = potential_path
+            st.success("Found existing A-Roll video from previous step.")
     
-    # Step 1: Upload video
-    st.header("Step 1: Upload A-Roll Video")
+    # Upload widget for A-Roll video
+    uploaded_file = st.file_uploader("Upload A-Roll Video", type=["mp4", "mov", "avi", "mkv"])
     
-    uploaded_file = st.file_uploader("Upload your A-Roll video", type=["mp4", "mov", "avi", "mkv"])
-    
-    if uploaded_file is not None:
-        # Save the uploaded file to a temporary location
-        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{uploaded_file.name.split('.')[-1]}") as tmp_file:
-            tmp_file.write(uploaded_file.getvalue())
-            video_path = tmp_file.name
+    if uploaded_file or aroll_video_path:
+        video_path = aroll_video_path
+        
+        # Process uploaded file if present
+        if uploaded_file:
+            # Save the uploaded file
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp_file:
+                tmp_file.write(uploaded_file.read())
+                video_path = tmp_file.name
+            
+            # Store in session state
             st.session_state.uploaded_video = video_path
         
-        st.success(f"Video uploaded successfully: {uploaded_file.name}")
+        # Display the video
+        st.video(video_path)
         
-        # Display the uploaded video
-        st.video(uploaded_file)
-    
-    # Step 2: Transcribe video
-    st.header("Step 2: Transcribe Video")
-    
-    # Check available transcription engines
-    available_engines = get_available_engines()
-    
-    if not available_engines:
-        st.warning("No transcription engines available. Please install Whisper or Faster-Whisper.")
+        # Transcription section
+        st.header("Video Transcription")
         
-        if st.button("Install Whisper"):
-            with st.spinner("Installing Whisper..."):
-                os.system(f"{sys.executable} -m pip install openai-whisper")
-                st.success("Whisper installed successfully. Please refresh the page.")
-                st.experimental_rerun()
-    else:
-        # Transcription options
-        col1, col2 = st.columns(2)
+        # Check if transcription already exists
+        transcription_data = load_transcription_data()
         
-        with col1:
-            engine = st.selectbox(
-                "Transcription Engine",
-                options=["auto"] + available_engines,
-                index=0,
-                help="Select the transcription engine to use"
-            )
+        if transcription_data:
+            st.session_state.transcription_data = transcription_data
+            st.session_state.transcription_complete = True
+            st.success("Transcription loaded from previous session.")
         
-        with col2:
-            model_size = st.selectbox(
-                "Model Size",
-                options=["tiny", "base", "small", "medium", "large"],
-                index=1,  # Default to "base"
-                help="Larger models are more accurate but require more processing time and resources"
-            )
-        
-        # Transcription button
-        if st.button("Transcribe Video", disabled=not st.session_state.uploaded_video and not st.session_state.transcription_complete):
-            if st.session_state.uploaded_video:
-                with st.spinner("Transcribing video..."):
-                    # Transcribe the video
-                    result = transcribe_video(
-                        st.session_state.uploaded_video,
-                        engine=engine,
-                        model_size=model_size
-                    )
+        if not st.session_state.transcription_complete:
+            # Transcription engine options
+            engine_options = get_available_engines()
+            
+            if not engine_options:
+                st.error("No transcription engines available. Please install whisper or vosk.")
+                st.stop()
+            
+            selected_engine = st.selectbox("Select Transcription Engine", engine_options)
+            
+            if st.button("Generate Transcript"):
+                with st.spinner("Generating transcript... This may take a while for longer videos."):
+                    # Extract audio from video
+                    audio_path = extract_audio(video_path)
                     
-                    if result["status"] == "success":
-                        st.session_state.transcription_data = result
-                        st.session_state.transcription_complete = True
+                    if audio_path:
+                        # Transcribe the audio
+                        transcription_data = transcribe_video(audio_path, engine=selected_engine)
                         
-                        # Save the transcription data
-                        save_transcription_data(result)
-                        
-                        st.success("Transcription complete!")
-                        st.experimental_rerun()
+                        if transcription_data:
+                            # Save and display the transcription
+                            save_transcription_data(transcription_data)
+                            st.session_state.transcription_data = transcription_data
+                            st.session_state.transcription_complete = True
+                            
+                            # Display success message
+                            st.success("Transcription complete!")
+                        else:
+                            st.error("Transcription failed.")
                     else:
-                        st.error(f"Transcription failed: {result.get('message', 'Unknown error')}")
-            else:
-                st.warning("Please upload a video first")
-    
-    # Step 3: Review and edit transcription
-    if st.session_state.transcription_complete and st.session_state.transcription_data:
-        st.header("Step 3: Review Transcription")
+                        st.error("Failed to extract audio from video.")
         
-        transcription = st.session_state.transcription_data
-        full_text = transcription.get("text", "")
-        
-        st.subheader("Full Transcription")
-        edited_text = st.text_area("Edit if needed", full_text, height=200)
-        
-        if edited_text != full_text:
-            # Update the transcription text
-            st.session_state.transcription_data["text"] = edited_text
+        # If transcription is complete, show the text and segmentation options
+        if st.session_state.transcription_complete and st.session_state.transcription_data:
+            transcription_text = st.session_state.transcription_data.get("text", "")
             
-            if st.button("Save Edited Transcription"):
-                save_transcription_data(st.session_state.transcription_data)
-                st.success("Transcription updated!")
-        
-        # Step 4: Segment the transcription
-        st.header("Step 4: Create A-Roll Segments")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            min_duration = st.slider("Minimum Segment Duration (seconds)", 3, 10, 5)
-        
-        with col2:
-            max_duration = st.slider("Maximum Segment Duration (seconds)", 10, 30, 20)
-        
-        if st.button("Generate A-Roll Segments"):
-            with st.spinner("Generating segments..."):
-                a_roll_segments = segment_transcription(
-                    st.session_state.transcription_data,
-                    min_segment_duration=min_duration,
-                    max_segment_duration=max_duration
-                )
-                
-                st.session_state.a_roll_segments = a_roll_segments
+            # Display the transcription
+            with st.expander("Full Transcription", expanded=False):
+                st.write(transcription_text)
+            
+            # Load existing segments if available
+            existing_segments = load_a_roll_segments()
+            if existing_segments and not st.session_state.a_roll_segments:
+                st.session_state.a_roll_segments = existing_segments
                 st.session_state.segmentation_complete = True
-                
-                # Save the segments
-                save_a_roll_segments(a_roll_segments)
-                
-                st.success(f"Created {len(a_roll_segments)} A-Roll segments!")
-                st.experimental_rerun()
-    
-    # Step 5: Review and edit segments
-    if st.session_state.segmentation_complete and st.session_state.a_roll_segments:
-        st.header("Step 5: Review and Edit A-Roll Segments")
-        
-        # Ensure all segments have timing information
-        st.session_state.a_roll_segments = ensure_segments_have_timing(st.session_state.a_roll_segments)
-        
-        # Display each segment with edit options
-        for i, segment in enumerate(st.session_state.a_roll_segments):
-            with st.container():
-                st.markdown(f"""
-                <div class="segment-container">
-                    <div class="segment-header">
-                        <h3>Segment {i+1}</h3>
-                        <span class="timestamp">{format_time(segment.get('start_time', 0))} - {format_time(segment.get('end_time', 0))} ({segment.get('duration', 0):.1f}s)</span>
-                    </div>
-                    <div class="segment-content">
-                        {segment['content']}
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                # Edit button for this segment
-                if st.button(f"Edit Segment {i+1}", key=f"edit_btn_{i}"):
-                    st.session_state.segment_edit_index = i
-        
-        # Edit dialog
-        if st.session_state.segment_edit_index >= 0:
-            segment = st.session_state.a_roll_segments[st.session_state.segment_edit_index]
-            st.subheader(f"Editing Segment {st.session_state.segment_edit_index + 1}")
+                st.success("Segments loaded from previous session.")
             
-            new_content = st.text_area("Edit segment content", segment["content"], height=150, key=f"edit_area_{st.session_state.segment_edit_index}")
+            # New section for automatic vs manual segmentation
+            st.header("Segmentation Options")
             
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("Save Changes"):
-                    update_segment_content(st.session_state.segment_edit_index, new_content)
-                    save_a_roll_segments(st.session_state.a_roll_segments)
-                    st.session_state.segment_edit_index = -1
-                    st.success("Segment updated!")
-                    st.experimental_rerun()
+            segmentation_tabs = st.tabs(["Automatic Segmentation", "Manual Segmentation"])
             
-            with col2:
-                if st.button("Cancel"):
-                    st.session_state.segment_edit_index = -1
-                    st.experimental_rerun()
-        
-        # Step 6: Theme and B-Roll Generation
-        st.header("Step 6: Theme and B-Roll Generation")
-        
-        # Theme selection
-        st.subheader("Select Content Theme")
-        
-        # Get current theme or default to empty
-        current_theme = st.session_state.script_theme
-        
-        # Theme container with styling
-        st.markdown("""
-        <div class="theme-container">
-            <h3>Content Theme</h3>
-            <p>The theme will guide B-Roll generation and provide context for visuals.</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Theme input
-        theme_col1, theme_col2 = st.columns([3, 1])
-        
-        with theme_col1:
-            # Provide some theme examples
-            theme_examples = ["Technology Explainer", "Product Review", "Educational Content", 
-                             "Travel Vlog", "Cooking Tutorial", "Fitness Guide", 
-                             "Business Tips", "Gaming Highlights", "Fashion Trends"]
-            
-            selected_example = st.selectbox(
-                "Choose a theme template or create your own below:",
-                ["Custom"] + theme_examples,
-                index=0
-            )
-            
-            if selected_example != "Custom":
-                st.session_state.script_theme = selected_example
-        
-        with theme_col2:
-            # Button to clear theme
-            if st.button("Clear Theme", key="clear_theme"):
-                st.session_state.script_theme = ""
-                st.experimental_rerun()
-        
-        # Custom theme input
-        custom_theme = st.text_input(
-            "Enter your content theme:",
-            value=current_theme,
-            help="This theme will guide B-Roll generation and provide context for visuals"
-        )
-        
-        if custom_theme != current_theme:
-            st.session_state.script_theme = custom_theme
-        
-        # B-Roll generation options
-        st.subheader("B-Roll Generation Options")
-        
-        # B-Roll generation strategy
-        strategy_options = {
-            "minimal": "Minimal (Intro/Outro only)",
-            "balanced": "Balanced (Strategic placement)",
-            "maximum": "Maximum (Between all A-Roll segments)"
-        }
-        
-        strategy = st.radio(
-            "B-Roll Generation Strategy:",
-            list(strategy_options.keys()),
-            format_func=lambda x: strategy_options[x],
-            index=list(strategy_options.keys()).index(st.session_state.broll_generation_strategy),
-            help="Choose how many B-Roll segments to generate and where to place them"
-        )
-        
-        if strategy != st.session_state.broll_generation_strategy:
-            st.session_state.broll_generation_strategy = strategy
-        
-        # Preview B-Roll generation
-        if st.button("Preview B-Roll Generation", key="preview_broll"):
-            if not st.session_state.script_theme:
-                st.warning("Please enter a content theme first.")
-            else:
-                # Generate B-Roll segments
-                b_roll_segments = generate_broll_segments(
-                    st.session_state.a_roll_segments,
-                    st.session_state.script_theme,
-                    st.session_state.broll_generation_strategy
-                )
+            # Automatic segmentation tab
+            with segmentation_tabs[0]:
+                st.write("Automatically segment the transcript into logical chunks using AI.")
                 
-                # Store in session state for later use
-                st.session_state.b_roll_segments = b_roll_segments
+                # Check if Ollama is available
+                ollama_status = "✅ Available" if st.session_state.ollama_client.is_available else "❌ Not Available"
+                st.info(f"Ollama Status: {ollama_status}")
                 
-                # Show preview
-                st.subheader("B-Roll Preview")
-                st.success(f"Generated {len(b_roll_segments)} B-Roll segments")
+                if not st.session_state.ollama_client.is_available:
+                    st.warning("Ollama is not running. We'll use basic segmentation instead. To use Ollama, please install and run it locally.")
                 
-                for i, segment in enumerate(b_roll_segments):
-                    with st.container():
-                        st.markdown(f"""
-                        <div class="broll-segment-container">
-                            <div class="segment-header">
-                                <h3>B-Roll Segment {i+1}</h3>
+                # Automatic segmentation button
+                if st.button("Analyze and Segment Automatically"):
+                    with st.spinner("Analyzing transcript..."):
+                        # Use Ollama to segment the transcript
+                        segments = automatic_segment_transcription(st.session_state.transcription_data)
+                        
+                        if segments:
+                            st.session_state.a_roll_segments = segments
+                            st.session_state.segmentation_complete = True
+                            st.session_state.auto_segmentation_complete = True
+                            
+                            # Save the segments
+                            save_a_roll_segments(segments)
+                            
+                            st.success(f"Successfully created {len(segments)} logical segments!")
+                        else:
+                            st.error("Automatic segmentation failed.")
+                
+                # Option to cut video after segmentation
+                if st.session_state.auto_segmentation_complete and video_path:
+                    if st.button("Cut Video into Segments"):
+                        # Cut the video based on segments
+                        updated_segments = cut_video_into_segments(
+                            video_path, 
+                            st.session_state.a_roll_segments
+                        )
+                        
+                        if updated_segments:
+                            st.session_state.a_roll_segments = updated_segments
+                            save_a_roll_segments(updated_segments)
+                            st.success("Video has been cut into segments!")
+                        else:
+                            st.error("Failed to cut video into segments.")
+            
+            # Manual segmentation tab
+            with segmentation_tabs[1]:
+                st.write("Manually segment the transcript by adjusting parameters.")
+                
+                # Only show manual segmentation controls if automatic segmentation hasn't been done
+                if not st.session_state.segmentation_complete:
+                    # Segmentation parameters
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        min_duration = st.slider("Minimum Segment Duration (seconds)", 1, 15, 5)
+                    with col2:
+                        max_duration = st.slider("Maximum Segment Duration (seconds)", 10, 60, 20)
+                    
+                    # Button to segment the transcript
+                    if st.button("Segment Transcript"):
+                        with st.spinner("Segmenting transcript..."):
+                            # Use the existing manual segmentation function
+                            segments = segment_transcription(
+                                transcription_text,
+                                min_segment_duration=min_duration,
+                                max_segment_duration=max_duration
+                            )
+                            
+                            # Ensure segments have timing information
+                            segments = ensure_segments_have_timing(segments)
+                            
+                            # Store the segments
+                            st.session_state.a_roll_segments = segments
+                            st.session_state.segmentation_complete = True
+                            
+                            # Save the segments
+                            save_a_roll_segments(segments)
+                            
+                            st.success(f"Successfully created {len(segments)} segments!")
+                else:
+                    st.info("Segmentation has already been completed. You can edit segments below.")
+            
+            # If segmentation is complete, show the segments and allow editing
+            if st.session_state.segmentation_complete and st.session_state.a_roll_segments:
+                st.header("A-Roll Segments")
+                
+                # Generate timeline visualization
+                segments = st.session_state.a_roll_segments
+                
+                # Get the total duration from the last segment's end time
+                if segments:
+                    total_duration = max([segment.get("end_time", 0) for segment in segments])
+                else:
+                    total_duration = 0
+                
+                # Display timeline
+                st.subheader("Timeline Visualization")
+                
+                timeline_height = 80
+                timeline_width = 800
+                padding = 20
+                
+                # Create a placeholder for the timeline
+                timeline_placeholder = st.empty()
+                
+                # Generate the timeline visualization
+                from matplotlib import pyplot as plt
+                import io
+                import base64
+                
+                fig, ax = plt.subplots(figsize=(10, 2))
+                
+                # Draw timeline
+                ax.plot([0, total_duration], [0, 0], 'k-', linewidth=2)
+                
+                # Add ruler marks
+                for i in range(0, int(total_duration) + 1, 5):
+                    ax.plot([i, i], [-0.1, 0.1], 'k-', linewidth=1)
+                    ax.text(i, -0.3, f"{i}s", ha='center', fontsize=8)
+                
+                # Plot segments
+                for i, segment in enumerate(segments):
+                    start_time = segment.get("start_time", 0)
+                    end_time = segment.get("end_time", 0)
+                    
+                    # Draw segment as a colored rectangle
+                    rect = plt.Rectangle((start_time, -0.5), end_time - start_time, 1, 
+                                       facecolor='blue', alpha=0.3)
+                    ax.add_patch(rect)
+                    
+                    # Add segment number
+                    ax.text((start_time + end_time) / 2, 0, str(i+1), 
+                          ha='center', va='center', fontsize=8, fontweight='bold')
+                
+                # Set plot properties
+                ax.set_ylim(-1, 1)
+                ax.set_xlim(0, total_duration)
+                ax.axis('off')
+                ax.set_title('A-Roll Segments Timeline')
+                
+                # Save the figure to a bytes buffer
+                buf = io.BytesIO()
+                plt.savefig(buf, format='png', bbox_inches='tight')
+                buf.seek(0)
+                
+                # Display the timeline
+                timeline_placeholder.image(buf, width=timeline_width)
+                
+                # Display and edit each segment
+                for i, segment in enumerate(segments):
+                    with st.expander(f"Segment {i+1}: {format_time(segment.get('start_time', 0))} - {format_time(segment.get('end_time', 0))}", expanded=False):
+                        # Display the segment content
+                        if st.session_state.segment_edit_index == i:
+                            # Edit mode
+                            new_content = st.text_area(f"Edit Segment {i+1}", segment.get("content", ""), height=100)
+                            
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                if st.button(f"Save Segment {i+1}"):
+                                    update_segment_content(i, new_content)
+                                    st.session_state.segment_edit_index = -1
+                                    st.experimental_rerun()
+                            with col2:
+                                if st.button(f"Cancel Editing {i+1}"):
+                                    st.session_state.segment_edit_index = -1
+                                    st.experimental_rerun()
+                        else:
+                            # Display mode
+                            st.markdown(f"""
+                            <div class="segment-content">
+                                {segment.get("content", "")}
+                                <div class="timestamp">
+                                    Duration: {format_time(segment.get("end_time", 0) - segment.get("start_time", 0))}
+                                </div>
                             </div>
-                            <div class="broll-segment-content">
-                                {segment['content']}
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
-        
-        # Show B-Roll segments if they exist
-        if "b_roll_segments" in st.session_state and st.session_state.b_roll_segments:
-            st.subheader("Generated B-Roll Segments")
-            
-            # Show count of segments
-            st.info(f"Generated {len(st.session_state.b_roll_segments)} B-Roll segments based on theme: **{st.session_state.script_theme}**")
-            
-            # Display each B-Roll segment
-            for i, segment in enumerate(st.session_state.b_roll_segments):
+                            """, unsafe_allow_html=True)
+                            
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                if st.button(f"Edit Segment {i+1}"):
+                                    st.session_state.segment_edit_index = i
+                                    st.experimental_rerun()
+                            
+                            # If we have the video file, add a preview button
+                            if video_path and "file_path" not in segment:
+                                with col2:
+                                    if st.button(f"Preview Segment {i+1}"):
+                                        start_time = segment.get("start_time", 0)
+                                        end_time = segment.get("end_time", 0)
+                                        
+                                        # Create preview directory if it doesn't exist
+                                        preview_dir = os.path.join(project_path, "preview")
+                                        os.makedirs(preview_dir, exist_ok=True)
+                                        
+                                        # Generate preview
+                                        preview_path = os.path.join(preview_dir, f"segment_{i}_preview.mp4")
+                                        success = preview_segment(video_path, start_time, end_time, preview_path)
+                                        
+                                        if success:
+                                            st.video(preview_path)
+                                        else:
+                                            st.error("Failed to generate preview.")
+                            
+                            # If the segment has a file path, display the video
+                            if "file_path" in segment:
+                                file_path = segment["file_path"]
+                                if os.path.exists(file_path):
+                                    st.video(file_path)
+                
+                # Theme selection for B-Roll generation
+                st.header("B-Roll Theme Selection")
+                
                 with st.container():
-                    st.markdown(f"""
-                    <div class="broll-segment-container">
-                        <div class="segment-header">
-                            <h3>B-Roll Segment {i+1}</h3>
-                        </div>
-                        <div class="broll-segment-content">
-                            {segment['content']}
-                        </div>
+                    st.markdown("""
+                    <div class="theme-container">
+                        <h3>Choose a theme for your B-Roll content</h3>
+                        <p>The theme will guide the visual style and content of your B-Roll segments.</p>
                     </div>
                     """, unsafe_allow_html=True)
-            
-            # Save both A-Roll and B-Roll segments
-            if st.button("Save All Segments", type="primary", key="save_all_segments"):
-                with st.spinner("Saving segments..."):
-                    if save_segments(
-                        st.session_state.a_roll_segments,
-                        st.session_state.b_roll_segments,
-                        st.session_state.script_theme
-                    ):
-                        st.success("All segments saved successfully!")
-                    else:
-                        st.error("Failed to save segments.")
-        
-        # Save and continue button
-        st.markdown("---")
-        if st.button("Save and Continue to B-Roll Prompts", type="primary"):
-            # Check if we have B-Roll segments
-            if "b_roll_segments" not in st.session_state or not st.session_state.b_roll_segments:
-                # Generate B-Roll segments if not already done
-                if not st.session_state.script_theme:
-                    st.warning("Please enter a content theme and generate B-Roll segments first.")
-                    st.stop()
+                    
+                    theme = st.text_input("Enter a theme (e.g., 'business', 'technology', 'nature')", 
+                                         value=st.session_state.script_theme)
+                    
+                    # B-Roll generation strategy
+                    st.subheader("B-Roll Generation")
+                    
+                    generation_tabs = st.tabs(["Automatic Generation", "Manual Configuration"])
+                    
+                    with generation_tabs[0]:
+                        st.write("Automatically generate B-Roll prompts for each segment using AI.")
+                        
+                        if st.button("Generate B-Roll Prompts with AI"):
+                            with st.spinner("Generating B-Roll prompts..."):
+                                # Use Ollama to generate B-Roll prompts
+                                b_roll_segments = generate_broll_prompts_with_ollama(
+                                    st.session_state.a_roll_segments,
+                                    theme
+                                )
+                                
+                                if b_roll_segments:
+                                    st.session_state.b_roll_segments = b_roll_segments
+                                    
+                                    # Save the segments and theme
+                                    save_segments(
+                                        st.session_state.a_roll_segments,
+                                        b_roll_segments,
+                                        theme
+                                    )
+                                    
+                                    st.session_state.script_theme = theme
+                                    
+                                    # Mark step as complete
+                                    mark_step_complete(4.5)
+                                    
+                                    st.success("B-Roll prompts generated successfully!")
+                                    st.info("Proceed to the next step to generate B-Roll visuals.")
+                                else:
+                                    st.error("Failed to generate B-Roll prompts.")
+                    
+                    with generation_tabs[1]:
+                        st.write("Configure B-Roll generation strategy manually.")
+                        
+                        strategy = st.radio(
+                            "B-Roll Generation Strategy",
+                            ["balanced", "full-coverage", "minimal"],
+                            index=0,
+                            help="Balanced: Generate B-Roll for key points. Full-coverage: Generate B-Roll for every segment. Minimal: Generate B-Roll sparingly."
+                        )
+                        
+                        if st.button("Generate B-Roll Segments"):
+                            with st.spinner("Generating B-Roll segments..."):
+                                # Use the existing function for manual configuration
+                                b_roll_segments = generate_broll_segments(
+                                    st.session_state.a_roll_segments,
+                                    theme,
+                                    strategy=strategy
+                                )
+                                
+                                st.session_state.b_roll_segments = b_roll_segments
+                                
+                                # Save the segments and theme
+                                save_segments(
+                                    st.session_state.a_roll_segments,
+                                    b_roll_segments,
+                                    theme
+                                )
+                                
+                                st.session_state.script_theme = theme
+                                
+                                # Mark step as complete
+                                mark_step_complete(4.5)
+                                
+                                st.success("B-Roll segments generated successfully!")
+                                st.info("Proceed to the next step to generate B-Roll visuals.")
                 
-                b_roll_segments = generate_broll_segments(
-                    st.session_state.a_roll_segments,
-                    st.session_state.script_theme,
-                    st.session_state.broll_generation_strategy
-                )
-                
-                st.session_state.b_roll_segments = b_roll_segments
-            
-            # Save all segments
-            save_segments(
-                st.session_state.a_roll_segments,
-                st.session_state.b_roll_segments,
-                st.session_state.script_theme
-            )
-            
-            # Mark this step as complete
-            mark_step_complete("a_roll_transcription")
-            
-            # Redirect to the B-Roll Prompts page
-            st.success("All segments saved! Redirecting to B-Roll Prompts...")
-            time.sleep(2)
-            st.switch_page("pages/4_BRoll_Prompts.py")
+                # If B-Roll segments have been generated, display them
+                if st.session_state.b_roll_segments:
+                    st.header("B-Roll Segments Preview")
+                    
+                    b_roll_segments = st.session_state.b_roll_segments
+                    
+                    for i, segment in enumerate(b_roll_segments):
+                        with st.expander(f"B-Roll {i+1}", expanded=False):
+                            a_roll_ref = segment.get("a_roll_reference", 0)
+                            a_roll_segment = st.session_state.a_roll_segments[a_roll_ref] if a_roll_ref < len(st.session_state.a_roll_segments) else None
+                            
+                            st.markdown("**A-Roll Context:**")
+                            if a_roll_segment:
+                                st.write(a_roll_segment.get("content", ""))
+                            
+                            st.markdown("**B-Roll Prompt:**")
+                            st.markdown(f"""
+                            <div class="broll-segment-content">
+                                {segment.get("content", "")}
+                            </div>
+                            """, unsafe_allow_html=True)
+                    
+                    # Navigation buttons
+                    st.button("Proceed to B-Roll Generation", on_click=lambda: mark_step_complete(4.5))
 
 # Helper function to format time in MM:SS format
 def format_time(seconds):

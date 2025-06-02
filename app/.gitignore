@@ -76,7 +76,16 @@ config/credentials/
 config/user_data/*/script.json
 config/user_data/*/transcription.json
 config/user_data/*/broll_prompts.json
+config/user_data/*/content_status.json
+config/user_data/*/aroll_status.json
 config/user_data/progress.json
+
+# Generated B-Roll images and media files
+config/user_data/*/media/broll/*.png
+config/user_data/*/media/broll/*.jpg
+config/user_data/*/media/broll/*.jpeg
+config/user_data/*/media/broll/*.mp4
+config/user_data/*/media/a-roll/*.mp4
 
 # Cache files
 components/__pycache__/ 

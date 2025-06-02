@@ -485,7 +485,12 @@ def get_aroll_filepath(segment_id, segment_data):
     Returns:
         tuple: (filepath, success, error_message)
     """
-    # First, check the status file for this segment
+    # First, check if the segment data has a file_path property (from segmentation)
+    if "file_path" in segment_data and os.path.exists(segment_data["file_path"]):
+        print(f"Found A-Roll file in segment data: {segment_data['file_path']}")
+        return segment_data["file_path"], True, None
+    
+    # Next, check the status file for this segment
     aroll_status = st.session_state.content_status.get("aroll", {}).get(segment_id, {})
     
     print(f"Looking for A-Roll file for {segment_id}")
@@ -501,9 +506,52 @@ def get_aroll_filepath(segment_id, segment_data):
     if aroll_file.exists():
         print(f"Found A-Roll file at: {aroll_file}")
         return str(aroll_file), True, None
+    
+    # Check for files with segment ID in different formats
+    segment_num = segment_id.split('_')[-1] if '_' in segment_id else segment_id
+    
+    # Check for segment number in filename
+    segment_patterns = [
+        f"*segment_{segment_num}.mp4",
+        f"*_segment_{segment_num}.mp4",
+        f"*segment{segment_num}.mp4",
+        f"*_segment{segment_num}.mp4",
+        f"*seg_{segment_num}.mp4",
+        f"*_{segment_num}.mp4",
+        f"*{segment_num}.mp4"
+    ]
+    
+    # Look for files matching patterns in a-roll directories
+    potential_dirs = [
+        project_path / "media" / "a-roll",
+        project_path / "media" / "a-roll" / "segments",
+        project_path / "media" / "aroll",
+        project_path / "media" / "aroll" / "segments",
+        Path("media") / "a-roll",
+        Path("media") / "a-roll" / "segments",
+        Path("media") / "aroll",
+        Path("media") / "aroll" / "segments",
+        app_root / "media" / "a-roll",
+        app_root / "media" / "a-roll" / "segments",
+        app_root / "media" / "aroll",
+        app_root / "media" / "aroll" / "segments",
+    ]
+    
+    import glob
+    for directory in potential_dirs:
+        if directory.exists():
+            for pattern in segment_patterns:
+                matches = glob.glob(str(directory / pattern))
+                if matches:
+                    print(f"Found A-Roll file matching pattern: {matches[0]}")
+                    # Update the status to use this path in the future
+                    aroll_status["local_path"] = matches[0]
+                    st.session_state.content_status["aroll"][segment_id] = aroll_status
+                    return matches[0], True, None
         
     # Try alternative paths
     alt_paths = [
+        project_path / "media" / "a-roll" / f"{segment_id}.mp4",
         project_path / "media" / "aroll" / f"{segment_id}.mp4",
         Path("media") / "a-roll" / f"{segment_id}.mp4",
         Path("media") / "aroll" / f"{segment_id}.mp4",

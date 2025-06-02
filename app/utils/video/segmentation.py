@@ -199,8 +199,10 @@ def cut_video_segments(
                 logger=None
             )
             
-            # Add the file path to the segment data
-            segment["file_path"] = output_path
+            # Add the file path to the segment data using absolute path
+            segment["file_path"] = os.path.abspath(output_path)
+            # Also store the segment ID in a consistent format
+            segment["segment_id"] = f"segment_{i}"
             
         except Exception as e:
             logger.error(f"Error cutting segment {i}: {str(e)}")

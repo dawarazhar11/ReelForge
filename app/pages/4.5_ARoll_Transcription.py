@@ -534,7 +534,7 @@ def main():
             # Redirect to the B-Roll Prompts page
             st.success("A-Roll segments saved! Redirecting to B-Roll Prompts...")
             time.sleep(2)
-            st.switch_page("4_BRoll_Prompts")
+            st.switch_page("pages/4_BRoll_Prompts.py")
 
 # Helper function to format time in MM:SS format
 def format_time(seconds):

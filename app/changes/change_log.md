@@ -91,4 +91,27 @@
 1. Updated the Streamlit configuration file `.streamlit/config.toml`
    - Replaced the deprecated `hideSidebarNav = true` option with the new `showSidebarNavigation = false`
    - This resolves the deprecation warning that appeared when running the Streamlit application
-   - The warning indicated that `ui.hideSidebarNav` is no longer supported and will be removed in a future version 
+   - The warning indicated that `ui.hideSidebarNav` is no longer supported and will be removed in a future version
+
+## 2025-06-02 - Fix Page Navigation Path (Third Attempt)
+
+### User Prompt
+> StreamlitAPIException: Could not find page: '4_BRoll_Prompts'. Must be the file path relative to the main script, from the directory: pages.
+>
+> Traceback:
+> File "/Users/dawarazhar/Desktop/AI-Money-Printer-Shorts/app/pages/4.5_ARoll_Transcription.py", line 546, in <module>
+>     main()
+>     ~~~~^^
+> File "/Users/dawarazhar/Desktop/AI-Money-Printer-Shorts/app/pages/4.5_ARoll_Transcription.py", line 537, in main
+>     st.switch_page("4_BRoll_Prompts")
+>     ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+>
+> still this, pleae create planed steps then execute
+
+### Changes Made
+1. Created a plan to systematically fix the navigation issue
+2. Researched the correct format for Streamlit's `st.switch_page()` function
+3. Updated the page navigation in `pages/4.5_ARoll_Transcription.py`
+   - Changed from `st.switch_page("4_BRoll_Prompts")` to `st.switch_page("pages/4_BRoll_Prompts.py")`
+   - According to Streamlit documentation, the path should be relative to the main app directory and include both the directory and file extension
+   - This should resolve the StreamlitAPIException that occurred when trying to navigate between pages 

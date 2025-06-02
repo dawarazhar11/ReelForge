@@ -211,7 +211,7 @@ if "broll_generation_strategy" not in st.session_state:
     st.session_state.broll_generation_strategy = "balanced"
 # Add new session state variables for Ollama and automatic segmentation
 if "ollama_client" not in st.session_state:
-    st.session_state.ollama_client = OllamaClient()
+    st.session_state.ollama_client = OllamaClient(host="http://100.115.243.42:11434")
 if "auto_segmentation_complete" not in st.session_state:
     st.session_state.auto_segmentation_complete = False
 if "segment_files" not in st.session_state:
@@ -626,7 +626,7 @@ def automatic_segment_transcription(transcription_data):
     Returns:
         List of segments with content, start_time, and end_time
     """
-    if not transcription_data or "text" not in transcription_data:
+    if not isinstance(transcription_data, dict) or "text" not in transcription_data:
         st.error("Transcription data is missing or invalid")
         return []
     
@@ -635,7 +635,7 @@ def automatic_segment_transcription(transcription_data):
     # Check if Ollama is available
     if not st.session_state.ollama_client.is_available:
         st.warning("Ollama is not available. Falling back to basic segmentation.")
-        return segment_transcription(full_text)
+        return segment_transcription(transcription_data)
     
     with st.spinner("Analyzing transcript for logical segments using Ollama..."):
         # Get logical segments from Ollama
@@ -763,7 +763,7 @@ def generate_broll_prompts_with_ollama(a_roll_segments, theme):
 def main():
     # Header and instructions
     st.title("A-Roll Transcription")
-    render_step_header("A-Roll Transcription", "Generate transcript and segment A-Roll video")
+    render_step_header(step_number=4.5, title="A-Roll Transcription", total_steps=8)
     
     st.write("Upload your A-Roll video to generate a transcript and split it into segments.")
     
@@ -839,7 +839,7 @@ def main():
                         st.error("Failed to extract audio from video.")
         
         # If transcription is complete, show the text and segmentation options
-        if st.session_state.transcription_complete and st.session_state.transcription_data:
+        if st.session_state.transcription_complete and isinstance(st.session_state.transcription_data, dict):
             transcription_text = st.session_state.transcription_data.get("text", "")
             
             # Display the transcription

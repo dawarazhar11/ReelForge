@@ -713,6 +713,9 @@ def create_assembly_sequence():
     aroll_segments = content_status.get("aroll", {})
     broll_segments = content_status.get("broll", {})
     
+    # Initialize the used_aroll_segments tracking set
+    used_aroll_segments = set()
+    
     print(f"Found {len(aroll_segments)} A-Roll segments and {len(broll_segments)} B-Roll segments")
     print(f"A-Roll keys: {list(aroll_segments.keys())}")
     print(f"B-Roll keys: {list(broll_segments.keys())}")

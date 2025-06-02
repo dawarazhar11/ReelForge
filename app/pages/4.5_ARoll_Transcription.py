@@ -238,11 +238,11 @@ def load_transcription_data():
                 data = json.load(f)
                 st.session_state.transcription_data = data
                 st.session_state.transcription_complete = True
-                return True
+                return data
         except (json.JSONDecodeError, IOError) as e:
             print(f"Error loading transcription: {str(e)}")
-            return False
-    return False
+            return None
+    return None
 
 # Function to save A-roll segments
 def save_a_roll_segments(segments):
@@ -327,11 +327,11 @@ def load_a_roll_segments():
                         if "theme" in data:
                             st.session_state.script_theme = data["theme"]
                         
-                        return True
+                        return a_roll_segments
         except (json.JSONDecodeError, IOError) as e:
             print(f"Error loading A-roll segments: {str(e)}")
-            return False
-    return False
+            return None
+    return None
 
 # Function to segment the transcription
 def segment_transcription(transcription, min_segment_duration=5, max_segment_duration=20):
@@ -801,7 +801,7 @@ def main():
         # Check if transcription already exists
         transcription_data = load_transcription_data()
         
-        if transcription_data:
+        if transcription_data is not None:
             st.session_state.transcription_data = transcription_data
             st.session_state.transcription_complete = True
             st.success("Transcription loaded from previous session.")
@@ -848,7 +848,7 @@ def main():
             
             # Load existing segments if available
             existing_segments = load_a_roll_segments()
-            if existing_segments and not st.session_state.a_roll_segments:
+            if existing_segments is not None and len(existing_segments) > 0 and not st.session_state.a_roll_segments:
                 st.session_state.a_roll_segments = existing_segments
                 st.session_state.segmentation_complete = True
                 st.success("Segments loaded from previous session.")

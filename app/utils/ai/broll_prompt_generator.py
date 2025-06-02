@@ -4,6 +4,7 @@ import json
 import requests
 import time
 import traceback
+from pathlib import Path
 
 # Constants
 OLLAMA_API_URL = "http://100.115.243.42:11434/api"
@@ -220,104 +221,147 @@ def generate_all_broll_prompts(segments, theme, model=DEFAULT_MODEL, is_video=Tr
     Generate B-Roll prompts for all segments
     
     Args:
-        segments: List of segments (A-Roll and B-Roll)
+        segments: List of segments
         theme: Theme of the video
         model: Ollama model to use
         is_video: Whether to generate video or image prompts
         
     Returns:
-        dict: Dictionary of segment IDs and their B-Roll prompts
+        dict: Dictionary of prompts
     """
-    if not check_ollama_availability():
-        print("Ollama is not available. Cannot generate B-Roll prompts.")
-        return {}
-    
     prompts = {}
     
-    # Process all B-Roll segments
+    # Track B-Roll segment IDs
+    broll_counter = 0
+    
+    print(f"Generating B-Roll prompts using model: {model}")
+    
     for i, segment in enumerate(segments):
         if segment["type"] == "B-Roll":
-            segment_id = segment.get("id", f"segment_{i}")
-            segment_text = segment.get("content", "")
+            # Create a segment identifier
+            segment_id = f"segment_{broll_counter}"
             
-            # Skip if segment text is empty or just refers to intro/outro
-            if not segment_text or "introductory visual" in segment_text.lower() or "concluding visual" in segment_text.lower():
-                # For intro/outro, create a simpler theme-based prompt
-                if "introductory visual" in segment_text.lower():
-                    prompts[segment_id] = {
-                        "prompt": f"Cinematic establishing shot introducing the theme of {theme}. The camera slowly pans across a visually rich scene with atmospheric lighting and dynamic composition.",
-                        "negative_prompt": "poor quality, blurry, distorted faces, bad anatomy, ugly, unrealistic, deformed, low resolution, amateur, poorly composed, out of frame, pixelated, watermark, signature, text"
+            # Check if this segment has multiple visuals
+            visuals = segment.get("visuals", [])
+            
+            if visuals:
+                # Create a prompt for each visual with its own ID
+                for j, visual in enumerate(visuals):
+                    visual_id = f"{segment_id}_visual_{j}"
+                    visual_text = visual.get("content", segment.get("content", ""))
+                    
+                    # Generate the prompt
+                    print(f"Generating prompt for {visual_id}: {visual_text[:50]}...")
+                    
+                    # Get timestamp information if available
+                    timestamp_info = ""
+                    if "timestamp" in segment and "duration" in visual:
+                        visual_timestamp = segment["timestamp"] + (visual.get("position", 0) * segment.get("duration", 0))
+                        timestamp_info = f" at timestamp {visual_timestamp:.2f}s"
+                    
+                    # Generate the prompt with timestamp context
+                    prompt = generate_broll_prompt(
+                        f"{visual_text}{timestamp_info}",
+                        theme,
+                        model,
+                        is_video
+                    )
+                    
+                    # Generate negative prompt if needed
+                    negative_prompt = generate_negative_prompt(visual_text, model)
+                    
+                    prompts[visual_id] = {
+                        "prompt": prompt,
+                        "negative_prompt": negative_prompt,
+                        "is_video": is_video,
+                        "segment_text": visual_text,
+                        "timestamp": visual_timestamp if "timestamp" in segment else None,
+                        "duration": visual.get("duration")
                     }
-                elif "concluding visual" in segment_text.lower():
-                    prompts[segment_id] = {
-                        "prompt": f"Closing cinematic scene wrapping up the theme of {theme}. The camera gracefully pulls back to reveal the complete picture with soft, atmospheric lighting creating a sense of conclusion.",
-                        "negative_prompt": "poor quality, blurry, distorted faces, bad anatomy, ugly, unrealistic, deformed, low resolution, amateur, poorly composed, out of frame, pixelated, watermark, signature, text"
-                    }
-                continue
-            
-            # Look for related A-Roll content if this B-Roll references an A-Roll segment
-            related_aroll_idx = segment.get("related_aroll")
-            if related_aroll_idx is not None and 0 <= related_aroll_idx < len(segments):
-                related_aroll = segments[related_aroll_idx]
-                if related_aroll["type"] == "A-Roll":
-                    # Use the A-Roll content for better context
-                    segment_text = related_aroll.get("content", segment_text)
-            
-            # Clean up "Visual representation of:" prefix if present
-            if segment_text.startswith("Visual representation of:"):
-                segment_text = segment_text[len("Visual representation of:"):].strip()
-            
-            # Generate prompt and negative prompt
-            prompt = generate_broll_prompt(segment_text, theme, model, is_video)
-            negative_prompt = generate_negative_prompt(segment_text, model)
-            
-            prompts[segment_id] = {
-                "prompt": prompt,
-                "negative_prompt": negative_prompt
-            }
+            else:
+                # No visuals specified, create a single prompt for the whole segment
+                segment_text = segment.get("content", "")
+                
+                # Generate the prompt
+                print(f"Generating prompt for {segment_id}: {segment_text[:50]}...")
+                
+                # Include timestamp information if available
+                timestamp_info = ""
+                if "timestamp" in segment:
+                    timestamp_info = f" at timestamp {segment['timestamp']:.2f}s"
+                
+                prompt = generate_broll_prompt(
+                    f"{segment_text}{timestamp_info}",
+                    theme,
+                    model,
+                    is_video
+                )
+                
+                # Generate negative prompt if needed
+                negative_prompt = generate_negative_prompt(segment_text, model)
+                
+                prompts[segment_id] = {
+                    "prompt": prompt,
+                    "negative_prompt": negative_prompt,
+                    "is_video": is_video,
+                    "segment_text": segment_text,
+                    "timestamp": segment.get("timestamp"),
+                    "duration": segment.get("duration", 3.0)
+                }
+                
+            # Increment the counter for B-Roll segments
+            broll_counter += 1
     
-    return prompts
+    return {"prompts": prompts}
 
 def save_broll_prompts(prompts, project_path, broll_type="video"):
     """
-    Save B-Roll prompts to a file
+    Save B-Roll prompts to a JSON file
     
     Args:
-        prompts: Dictionary of segment IDs and their B-Roll prompts
+        prompts: Dictionary of prompts
         project_path: Path to the project directory
-        broll_type: Type of B-Roll (video or image)
+        broll_type: Type of B-Roll (image, video)
         
     Returns:
-        bool: True if saved successfully, False otherwise
+        bool: True if saved successfully
     """
     try:
-        prompts_file = os.path.join(project_path, "broll_prompts.json")
+        # Create the path to broll_prompts.json
+        if isinstance(project_path, str):
+            project_path = Path(project_path)
+            
+        prompts_file = project_path / "broll_prompts.json"
         
-        # Check if file already exists and load it
+        # Load existing file if it exists
         existing_data = {}
-        if os.path.exists(prompts_file):
+        if prompts_file.exists():
             try:
                 with open(prompts_file, "r") as f:
                     existing_data = json.load(f)
             except (json.JSONDecodeError, IOError) as e:
                 print(f"Error loading existing prompts: {str(e)}")
         
-        # Combine existing data with new prompts
+        # Update with new prompts
         data = {
-            "prompts": prompts,
+            "prompts": prompts.get("prompts", {}),
             "broll_type": broll_type,
-            "timestamp": time.time()
+            "exclude_negative_prompts": False,
+            "image_template": "flux_schnell",  # Default template
+            "map_broll_to_aroll": True,
+            "broll_aroll_mapping": existing_data.get("broll_aroll_mapping", {})
         }
         
-        # Preserve any other fields from existing data
+        # Preserve any additional fields from existing data
         for key, value in existing_data.items():
-            if key not in data:
+            if key not in data and key != "prompts":
                 data[key] = value
         
         # Save to file
         with open(prompts_file, "w") as f:
             json.dump(data, f, indent=4)
-        print(f"Saved B-Roll prompts to {prompts_file}")
+            
+        print(f"Saved {len(data['prompts'])} B-Roll prompts to {prompts_file}")
         return True
     except Exception as e:
         print(f"Error saving B-Roll prompts: {str(e)}")

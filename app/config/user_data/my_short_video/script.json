@@ -1,5 +1,5 @@
 {
-  "full_script": "Introductory visual for A cat talking about its eyes and ears. You think you have privacy in this house? That's cute. I know when you wake up when you go to bed and how often you pee. Visual representation of: I know you eat snacks at midnight and pretend it d... I know you eat snacks at midnight and pretend it didn't happen. I see the way you talk to your plants. Concluding visual for A cat talking about its eyes and ears. I hear your cringe-voice memos before you delete them. I am always watching silently from a shelf, or a doorway, or the top of the fridge like a judgemental gargoyle. I don't judge out loud, but I do absorb everything. So when I stare at you with dead pan eyes, just know I have seen things.",
+  "full_script": "Introductory visual for A cat talking about its eyes and ears. You think you have privacy in this house? That's cute. I know when you wake up when you go to bed and how often you pee. Concluding visual for A cat talking about its eyes and ears. I know you eat snacks at midnight and pretend it didn't happen. I see the way you talk to your plants. I hear your cringe-voice memos before you delete them. I am always watching silently from a shelf, or a doorway, or the top of the fridge like a judgemental gargoyle. I don't judge out loud, but I do absorb everything. So when I stare at you with dead pan eyes, just know I have seen things.",
   "segments": [
     {
       "type": "B-Roll",
@@ -15,9 +15,8 @@
     },
     {
       "type": "B-Roll",
-      "content": "Visual representation of: I know you eat snacks at midnight and pretend it d...",
-      "duration": 3.0,
-      "related_aroll": 2
+      "content": "Concluding visual for A cat talking about its eyes and ears.",
+      "duration": 3.0
     },
     {
       "type": "A-Roll",
@@ -25,11 +24,6 @@
       "start_time": 7.24,
       "end_time": 12.48,
       "duration": 5.24
-    },
-    {
-      "type": "B-Roll",
-      "content": "Concluding visual for A cat talking about its eyes and ears.",
-      "duration": 3.0
     },
     {
       "type": "A-Roll",
@@ -48,5 +42,5 @@
   ],
   "theme": "A cat talking about its eyes and ears.",
   "source": "transcription",
-  "timestamp": 1748894765.7204962
+  "timestamp": 1748897856.611263
 }

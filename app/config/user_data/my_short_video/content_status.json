@@ -28,31 +28,31 @@
     "broll": {
         "segment_0": {
             "status": "complete",
-            "file_path": "config/user_data/my_short_video/media/broll/broll_segment_0_20250603_012704.png",
-            "prompt_id": "5d69c445-85ef-4c07-aa34-d28197c206ff",
+            "file_path": "config/user_data/my_short_video/media/broll/broll_segment_0_20250603_020659.png",
+            "prompt_id": "e410d19e-d1a0-48eb-aa99-a15cf06ca894",
             "content_type": "output",
-            "timestamp": "2025-06-03 01:27:04"
+            "timestamp": "2025-06-03 02:06:59"
         },
         "segment_1": {
             "status": "complete",
-            "file_path": "config/user_data/my_short_video/media/broll/broll_segment_1_20250603_012705.png",
-            "prompt_id": "56dd5377-c4e8-4dda-9f94-285f7ad1f586",
+            "file_path": "config/user_data/my_short_video/media/broll/broll_segment_1_20250603_020659.png",
+            "prompt_id": "4f9c3aad-2ded-4cb3-82af-3476f2833918",
             "content_type": "output",
-            "timestamp": "2025-06-03 01:27:05"
+            "timestamp": "2025-06-03 02:06:59"
         },
         "segment_2": {
             "status": "complete",
-            "file_path": "config/user_data/my_short_video/media/broll/broll_segment_2_20250603_012705.png",
+            "file_path": "config/user_data/my_short_video/media/broll/broll_segment_2_20250603_020700.png",
             "prompt_id": "b14741ba-3847-4eb4-bfa2-3f3474683777",
             "content_type": "output",
-            "timestamp": "2025-06-03 01:27:05"
+            "timestamp": "2025-06-03 02:07:00"
         },
         "segment_3": {
             "status": "complete",
-            "file_path": "config/user_data/my_short_video/media/broll/broll_segment_3_20250603_012705.png",
+            "file_path": "config/user_data/my_short_video/media/broll/broll_segment_3_20250603_020700.png",
             "prompt_id": "eac3f484-2244-41b7-9912-650a7d9bcb74",
             "content_type": "output",
-            "timestamp": "2025-06-03 01:27:05"
+            "timestamp": "2025-06-03 02:07:00"
         }
     }
 }

@@ -213,6 +213,8 @@ if "ollama_models" not in st.session_state:
     st.session_state.ollama_models = []
 if "selected_ollama_model" not in st.session_state:
     st.session_state.selected_ollama_model = DEFAULT_MODEL
+if "broll_generation_strategy" not in st.session_state:
+    st.session_state.broll_generation_strategy = "balanced"
 
 # Function to save the transcription data
 def save_transcription_data(data):
@@ -461,7 +463,7 @@ def generate_broll_segments(a_roll_segments, theme, strategy="balanced"):
         strategy: Strategy for B-Roll placement ('minimal', 'balanced', 'maximum')
         
     Returns:
-        List of B-Roll segments
+        List of B-Roll segments with timestamp mapping
     """
     if not a_roll_segments:
         return []
@@ -473,86 +475,207 @@ def generate_broll_segments(a_roll_segments, theme, strategy="balanced"):
         # Minimal: Just intro and outro B-Roll
         target_count = 2
     elif strategy == "maximum":
-        # Maximum: B-Roll between every A-Roll segment
-        target_count = len(a_roll_segments) + 1
+        # Maximum: B-Roll for every A-Roll segment
+        target_count = len(a_roll_segments)
     else:
         # Balanced: Approximately 1 B-Roll for every 2 A-Roll segments
         target_count = max(2, len(a_roll_segments) // 2 + 1)
     
-    # Always add intro B-Roll
+    # Always add intro B-Roll (not mapped to any A-Roll)
     intro_broll = {
         "type": "B-Roll",
         "content": f"Introductory visual for {theme}",
-        "duration": 3.0  # Default duration in seconds
+        "duration": 3.0,  # Default duration in seconds
+        "timestamp": 0.0,  # Start at the beginning
+        "is_intro": True,
+        "visuals": [
+            {
+                "content": f"Opening shot for {theme}",
+                "duration": 3.0
+            }
+        ]
     }
     b_roll_segments.append(intro_broll)
     
-    # Add B-Roll segments between A-Roll segments based on strategy
+    # Create B-Roll segments for A-Roll segments based on strategy
     if strategy == "minimal":
         # Just add outro B-Roll
-        outro_broll = {
-            "type": "B-Roll",
-            "content": f"Concluding visual for {theme}",
-            "duration": 3.0
-        }
-        b_roll_segments.append(outro_broll)
+        if len(a_roll_segments) > 0:
+            last_segment = a_roll_segments[-1]
+            end_time = last_segment.get("end_time", 0)
+            
+            outro_broll = {
+                "type": "B-Roll",
+                "content": f"Concluding visual for {theme}",
+                "duration": 3.0,
+                "timestamp": end_time,  # Start at the end of the last A-Roll
+                "is_outro": True,
+                "visuals": [
+                    {
+                        "content": f"Closing shot for {theme}",
+                        "duration": 3.0
+                    }
+                ]
+            }
+            b_roll_segments.append(outro_broll)
     elif strategy == "maximum":
-        # Add B-Roll after each A-Roll segment
+        # Add B-Roll for each A-Roll segment
         for i, segment in enumerate(a_roll_segments):
+            if "start_time" not in segment or "end_time" not in segment:
+                print(f"Warning: A-Roll segment {i} missing timing information")
+                continue
+                
             content = segment["content"]
             summary = content[:50] + "..." if len(content) > 50 else content
+            start_time = segment["start_time"]
+            end_time = segment["end_time"]
+            duration = end_time - start_time
+            
+            # If segment is too short, adjust duration
+            if duration < 1.0:
+                duration = 1.0
+            
+            # For longer segments, we can have multiple visuals
+            visuals = []
+            if duration > 8.0:
+                # Create 2-3 visuals for longer segments
+                num_visuals = min(3, int(duration / 3))
+                sub_duration = duration / num_visuals
+                
+                for j in range(num_visuals):
+                    visual_summary = f"Part {j+1} of: {summary}"
+                    visuals.append({
+                        "content": visual_summary,
+                        "duration": sub_duration,
+                        "position": j / num_visuals  # Relative position (0-1) within the segment
+                    })
+            else:
+                # Just one visual for shorter segments
+                visuals.append({
+                    "content": summary,
+                    "duration": duration,
+                    "position": 0.0
+                })
             
             broll = {
                 "type": "B-Roll",
                 "content": f"Visual representation of: {summary}",
-                "duration": 3.0,
-                "related_aroll": i  # Index of related A-Roll segment
+                "timestamp": start_time,
+                "duration": duration,
+                "mapped_aroll_index": i,  # Index of related A-Roll segment
+                "visuals": visuals
             }
             b_roll_segments.append(broll)
             
-        # Add outro B-Roll
-        outro_broll = {
-            "type": "B-Roll",
-            "content": f"Concluding visual for {theme}",
-            "duration": 3.0
-        }
-        b_roll_segments.append(outro_broll)
+        # Add outro B-Roll if there are A-Roll segments
+        if len(a_roll_segments) > 0:
+            last_segment = a_roll_segments[-1]
+            end_time = last_segment.get("end_time", 0)
+            
+            outro_broll = {
+                "type": "B-Roll",
+                "content": f"Concluding visual for {theme}",
+                "duration": 3.0,
+                "timestamp": end_time,  # Start at the end of the last A-Roll
+                "is_outro": True,
+                "visuals": [
+                    {
+                        "content": f"Closing shot for {theme}",
+                        "duration": 3.0
+                    }
+                ]
+            }
+            b_roll_segments.append(outro_broll)
     else:
         # Balanced approach: Add B-Roll at strategic points
         segments_per_broll = max(1, len(a_roll_segments) // (target_count - 1))
         
-        for i in range(len(a_roll_segments)):
-            if i > 0 and i % segments_per_broll == 0 and len(b_roll_segments) < target_count - 1:
-                # Get content from surrounding A-Roll segments for context
-                prev_content = a_roll_segments[i-1]["content"]
-                current_content = a_roll_segments[i]["content"]
-                
-                # Create a summary from both segments
-                combined = prev_content + " " + current_content
-                summary = combined[:50] + "..." if len(combined) > 50 else combined
-                
-                broll = {
-                    "type": "B-Roll",
-                    "content": f"Visual representation of: {summary}",
-                    "duration": 3.0,
-                    "related_aroll": i  # Index of related A-Roll segment
-                }
-                b_roll_segments.append(broll)
+        for i in range(0, len(a_roll_segments), segments_per_broll):
+            if i > 0 and len(b_roll_segments) < target_count - 1:
+                # Get the current A-Roll segment
+                if i < len(a_roll_segments):
+                    segment = a_roll_segments[i]
+                    
+                    if "start_time" not in segment or "end_time" not in segment:
+                        print(f"Warning: A-Roll segment {i} missing timing information")
+                        continue
+                        
+                    content = segment["content"]
+                    summary = content[:50] + "..." if len(content) > 50 else content
+                    start_time = segment["start_time"]
+                    end_time = segment["end_time"]
+                    duration = end_time - start_time
+                    
+                    # If segment is too short, adjust duration
+                    if duration < 1.0:
+                        duration = 1.0
+                    
+                    # Create visuals similar to the maximum strategy
+                    visuals = []
+                    if duration > 8.0:
+                        num_visuals = min(3, int(duration / 3))
+                        sub_duration = duration / num_visuals
+                        
+                        for j in range(num_visuals):
+                            visual_summary = f"Part {j+1} of: {summary}"
+                            visuals.append({
+                                "content": visual_summary,
+                                "duration": sub_duration,
+                                "position": j / num_visuals
+                            })
+                    else:
+                        visuals.append({
+                            "content": summary,
+                            "duration": duration,
+                            "position": 0.0
+                        })
+                    
+                    broll = {
+                        "type": "B-Roll",
+                        "content": f"Visual representation of: {summary}",
+                        "timestamp": start_time,
+                        "duration": duration,
+                        "mapped_aroll_index": i,
+                        "visuals": visuals
+                    }
+                    b_roll_segments.append(broll)
         
-        # Add outro B-Roll if we haven't reached target count
-        if len(b_roll_segments) < target_count:
+        # Add outro B-Roll if there are A-Roll segments and we haven't reached the target count
+        if len(a_roll_segments) > 0 and len(b_roll_segments) < target_count:
+            last_segment = a_roll_segments[-1]
+            end_time = last_segment.get("end_time", 0)
+            
             outro_broll = {
                 "type": "B-Roll",
                 "content": f"Concluding visual for {theme}",
-                "duration": 3.0
+                "duration": 3.0,
+                "timestamp": end_time,
+                "is_outro": True,
+                "visuals": [
+                    {
+                        "content": f"Closing shot for {theme}",
+                        "duration": 3.0
+                    }
+                ]
             }
             b_roll_segments.append(outro_broll)
     
     return b_roll_segments
 
 # Function to save both A-Roll and B-Roll segments
-def save_segments(a_roll_segments, b_roll_segments, theme):
-    """Save both A-Roll and B-Roll segments to script.json"""
+def save_segments(a_roll_segments, b_roll_segments, theme, aroll_percentage=0.6):
+    """
+    Save both A-Roll and B-Roll segments to script.json with timestamp mapping
+    
+    Args:
+        a_roll_segments: List of A-Roll segments
+        b_roll_segments: List of B-Roll segments
+        theme: Theme for the video
+        aroll_percentage: Percentage of time to show only A-Roll (0.6 = 60%)
+    
+    Returns:
+        bool: True if saved successfully, False otherwise
+    """
     script_file = project_path / "script.json"
     
     # Check if script.json already exists and load it
@@ -564,37 +687,67 @@ def save_segments(a_roll_segments, b_roll_segments, theme):
         except (json.JSONDecodeError, IOError) as e:
             print(f"Error loading existing script: {str(e)}")
     
-    # Combine segments in the correct order
-    all_segments = []
+    # Create mapping between B-Roll and A-Roll segments based on timestamps
+    broll_aroll_mapping = {}
+    timeline_segments = []
     
-    # Always start with intro B-Roll if available
-    if b_roll_segments and len(b_roll_segments) > 0:
-        all_segments.append(b_roll_segments[0])
+    # First, sort the B-Roll segments by timestamp
+    sorted_broll = sorted(b_roll_segments, key=lambda x: x.get("timestamp", 0))
     
-    # Interleave A-Roll segments with remaining B-Roll segments
-    a_roll_idx = 0
-    b_roll_idx = 1  # Skip the intro B-Roll we already added
+    # Process intro B-Roll first (if exists)
+    intro_broll = next((b for b in sorted_broll if b.get("is_intro", False)), None)
+    if intro_broll:
+        timeline_segments.append(intro_broll)
+        # Remove from the list so we don't process it again
+        sorted_broll.remove(intro_broll)
     
-    while a_roll_idx < len(a_roll_segments):
-        # Add an A-Roll segment
-        all_segments.append(a_roll_segments[a_roll_idx])
-        a_roll_idx += 1
+    # Process A-Roll segments with their associated B-Roll segments
+    for i, a_segment in enumerate(a_roll_segments):
+        # Add the A-Roll segment
+        timeline_segments.append(a_segment)
         
-        # Add a B-Roll segment if available
-        if b_roll_idx < len(b_roll_segments):
-            all_segments.append(b_roll_segments[b_roll_idx])
-            b_roll_idx += 1
+        # Find any B-Roll segments that map to this A-Roll segment
+        matching_broll = [b for b in sorted_broll if b.get("mapped_aroll_index") == i]
+        
+        # If we found matching B-Roll segments, add them to the timeline and mapping
+        for broll in matching_broll:
+            # Add to timeline in timestamp order
+            timeline_segments.append(broll)
+            
+            # Add to mapping
+            broll_id = f"broll_{len(broll_aroll_mapping)}"
+            aroll_id = f"aroll_{i}"
+            
+            broll_aroll_mapping[broll_id] = {
+                "aroll_segment": aroll_id,
+                "timestamp": broll.get("timestamp", 0),
+                "duration": broll.get("duration", 3.0),
+                "visuals": broll.get("visuals", [])
+            }
+            
+            # Remove from the list so we don't process it again
+            sorted_broll.remove(broll)
+    
+    # Process outro B-Roll last (if exists and not already processed)
+    outro_broll = next((b for b in sorted_broll if b.get("is_outro", False)), None)
+    if outro_broll:
+        timeline_segments.append(outro_broll)
     
     # Create full script text from segments
-    full_script = " ".join([segment["content"] for segment in all_segments if "content" in segment])
+    full_script = " ".join([segment["content"] for segment in timeline_segments if "content" in segment])
     
     # Prepare data to save
     data = {
         "full_script": full_script,
-        "segments": all_segments,
+        "segments": timeline_segments,
         "theme": theme,
         "source": "transcription",
-        "timestamp": time.time()
+        "timestamp": time.time(),
+        "broll_type": "video",  # Default to video B-Roll
+        "exclude_negative_prompts": False,
+        "map_broll_to_aroll": True,  # Enable B-Roll to A-Roll mapping
+        "broll_aroll_mapping": broll_aroll_mapping,
+        "aroll_percentage": aroll_percentage  # Save the A-Roll percentage setting
     }
     
     # Preserve any other fields from existing data
@@ -613,7 +766,7 @@ def save_segments(a_roll_segments, b_roll_segments, theme):
             try:
                 # Use selected model or default
                 model = st.session_state.selected_ollama_model or DEFAULT_MODEL
-                prompts = generate_all_broll_prompts(all_segments, theme, model, is_video=True)
+                prompts = generate_all_broll_prompts(timeline_segments, theme, model, is_video=True)
                 if prompts:
                     save_broll_prompts(prompts, project_path, broll_type="video")
                     print(f"Generated and saved B-Roll prompts using Ollama model: {model}")
@@ -624,6 +777,257 @@ def save_segments(a_roll_segments, b_roll_segments, theme):
     except IOError as e:
         print(f"Error saving segments: {str(e)}")
         return False
+
+def display_timeline_visualization(a_roll_segments, b_roll_segments=None):
+    """
+    Display a visual timeline of A-Roll segments with B-Roll overlays
+    
+    Args:
+        a_roll_segments: List of A-Roll segments
+        b_roll_segments: List of B-Roll segments
+    """
+    if not a_roll_segments:
+        st.warning("No A-Roll segments to display")
+        return
+        
+    # Add CSS for the timeline
+    st.markdown("""
+    <style>
+        .timeline-container {
+            position: relative;
+            width: 100%;
+            height: 200px;
+            margin: 20px 0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        .timeline-ruler {
+            position: relative;
+            width: 100%;
+            height: 30px;
+            background-color: #f7f7f7;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            align-items: center;
+        }
+        .timeline-ruler-mark {
+            position: absolute;
+            width: 1px;
+            height: 10px;
+            background-color: #777;
+            bottom: 0;
+        }
+        .timeline-ruler-text {
+            position: absolute;
+            font-size: 10px;
+            color: #777;
+            bottom: 12px;
+            transform: translateX(-50%);
+        }
+        .timeline-segments {
+            position: relative;
+            width: 100%;
+            height: 170px;
+            background-color: #fff;
+        }
+        .timeline-aroll {
+            position: absolute;
+            height: 40px;
+            background-color: #64B5F6;
+            border-radius: 4px;
+            top: 30px;
+            color: white;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 10px;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            z-index: 1;
+        }
+        .timeline-broll {
+            position: absolute;
+            height: 40px;
+            background-color: #FF9800;
+            border-radius: 4px;
+            top: 80px;
+            color: white;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 10px;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            z-index: 2;
+            border: 1px dashed #fff;
+        }
+        .timeline-sequence {
+            position: absolute;
+            height: 30px;
+            background-color: #4CAF50;
+            border-radius: 4px;
+            top: 130px;
+            color: white;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 10px;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            z-index: 3;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # Calculate total duration
+    total_duration = 0
+    for segment in a_roll_segments:
+        if "end_time" in segment:
+            total_duration = max(total_duration, segment["end_time"])
+    
+    if total_duration == 0:
+        st.warning("No valid timing information in A-Roll segments")
+        return
+    
+    # Create the timeline container
+    st.markdown('<div class="timeline-container">', unsafe_allow_html=True)
+    
+    # Create the ruler
+    st.markdown('<div class="timeline-ruler">', unsafe_allow_html=True)
+    
+    # Add ruler marks every second
+    for i in range(int(total_duration) + 1):
+        left_percent = (i / total_duration) * 100
+        if i % 5 == 0 or i == int(total_duration):  # Label every 5 seconds and the end
+            st.markdown(f'<div class="timeline-ruler-mark" style="left: {left_percent}%;"></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="timeline-ruler-text" style="left: {left_percent}%;">{i}s</div>', unsafe_allow_html=True)
+        else:
+            st.markdown(f'<div class="timeline-ruler-mark" style="left: {left_percent}%; height: 5px;"></div>', unsafe_allow_html=True)
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Create the segments container
+    st.markdown('<div class="timeline-segments">', unsafe_allow_html=True)
+    
+    # Add A-Roll segments
+    for i, segment in enumerate(a_roll_segments):
+        if "start_time" in segment and "end_time" in segment:
+            start_time = segment["start_time"]
+            end_time = segment["end_time"]
+            duration = end_time - start_time
+            
+            left_percent = (start_time / total_duration) * 100
+            width_percent = (duration / total_duration) * 100
+            
+            # Limit text length for display
+            content = segment.get("content", "")
+            if len(content) > 30:
+                content = content[:27] + "..."
+            
+            st.markdown(
+                f'<div class="timeline-aroll" style="left: {left_percent}%; width: {width_percent}%;" title="{segment.get("content", "")}">A{i}: {content}</div>',
+                unsafe_allow_html=True
+            )
+    
+    # Add B-Roll segments if provided
+    if b_roll_segments:
+        for i, segment in enumerate(b_roll_segments):
+            if "timestamp" in segment and "duration" in segment:
+                start_time = segment["timestamp"]
+                duration = segment["duration"]
+                
+                left_percent = (start_time / total_duration) * 100
+                width_percent = (duration / total_duration) * 100
+                
+                # Limit text length for display
+                content = segment.get("content", "")
+                if len(content) > 30:
+                    content = content[:27] + "..."
+                
+                # Different styling for intro/outro B-Rolls
+                extra_style = ""
+                if segment.get("is_intro", False):
+                    extra_style = "border: 2px solid #fff; background-color: #E65100;"
+                elif segment.get("is_outro", False):
+                    extra_style = "border: 2px solid #fff; background-color: #E65100;"
+                
+                st.markdown(
+                    f'<div class="timeline-broll" style="left: {left_percent}%; width: {width_percent}%; {extra_style}" title="{segment.get("content", "")}">B{i}: {content}</div>',
+                    unsafe_allow_html=True
+                )
+    
+    # Show sequence visualization
+    # This will visualize A1 → (B1+A2) → (B2+A3) → (B3+A4) pattern
+    if b_roll_segments:
+        # Sort by timestamp
+        segments = sorted(a_roll_segments + b_roll_segments, key=lambda x: x.get("start_time", 0) if "start_time" in x else x.get("timestamp", 0))
+        
+        # Create sequence blocks
+        current_pos = 0
+        for i, segment in enumerate(segments):
+            if segment["type"] == "A-Roll" and i == 0:
+                # First A-Roll segment
+                start_time = segment.get("start_time", 0)
+                end_time = segment.get("end_time", 0)
+                duration = end_time - start_time
+                
+                left_percent = (start_time / total_duration) * 100
+                width_percent = (duration / total_duration) * 100
+                
+                st.markdown(
+                    f'<div class="timeline-sequence" style="left: {left_percent}%; width: {width_percent}%;">A{current_pos}</div>',
+                    unsafe_allow_html=True
+                )
+                current_pos += 1
+            elif segment["type"] == "B-Roll" and i < len(segments) - 1 and segments[i+1]["type"] == "A-Roll":
+                # B-Roll followed by A-Roll
+                b_start = segment.get("timestamp", 0)
+                a_start = segments[i+1].get("start_time", 0)
+                a_end = segments[i+1].get("end_time", 0)
+                
+                # Use the longer of the two segments
+                end_time = max(b_start + segment.get("duration", 0), a_end)
+                duration = end_time - b_start
+                
+                left_percent = (b_start / total_duration) * 100
+                width_percent = (duration / total_duration) * 100
+                
+                # Get the current B-Roll and A-Roll indices
+                b_index = [j for j, s in enumerate(b_roll_segments) if s is segment][0]
+                a_index = [j for j, s in enumerate(a_roll_segments) if s is segments[i+1]][0]
+                
+                st.markdown(
+                    f'<div class="timeline-sequence" style="left: {left_percent}%; width: {width_percent}%;">B{b_index}+A{a_index}</div>',
+                    unsafe_allow_html=True
+                )
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Add legend
+    st.markdown("""
+    <div style="display: flex; gap: 20px; margin-top: 10px;">
+        <div style="display: flex; align-items: center;">
+            <div style="width: 20px; height: 20px; background-color: #64B5F6; border-radius: 3px; margin-right: 5px;"></div>
+            <span style="font-size: 14px;">A-Roll Segments</span>
+        </div>
+        <div style="display: flex; align-items: center;">
+            <div style="width: 20px; height: 20px; background-color: #FF9800; border-radius: 3px; margin-right: 5px;"></div>
+            <span style="font-size: 14px;">B-Roll Segments</span>
+        </div>
+        <div style="display: flex; align-items: center;">
+            <div style="width: 20px; height: 20px; background-color: #4CAF50; border-radius: 3px; margin-right: 5px;"></div>
+            <span style="font-size: 14px;">Sequence Flow</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 # Main function
 def main():
@@ -650,6 +1054,10 @@ def main():
     except Exception as e:
         print(f"Error checking Ollama availability: {str(e)}")
         st.session_state.ollama_available = False
+    
+    # Initialize session state variables for B-Roll generation strategy if not already set
+    if "broll_generation_strategy" not in st.session_state:
+        st.session_state.broll_generation_strategy = "balanced"
     
     # Step 1: Upload video
     st.header("Step 1: Upload A-Roll Video")
@@ -745,24 +1153,138 @@ def main():
                 save_transcription_data(st.session_state.transcription_data)
                 st.success("Transcription updated!")
         
-        # Step 4: Adjust segmentation and B-Roll generation
+        # Step 4: Segment transcription
+        st.header("Step 4: Segment Transcription")
+        
+        # Segmentation options
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            min_segment_duration = st.slider(
+                "Minimum Segment Duration (seconds)",
+                min_value=3.0,
+                max_value=10.0,
+                value=5.0,
+                step=0.5,
+                help="Minimum duration for each segment"
+            )
+        
+        with col2:
+            max_segment_duration = st.slider(
+                "Maximum Segment Duration (seconds)",
+                min_value=min_segment_duration,
+                max_value=10.0,
+                value=min_segment_duration,
+                step=0.5,
+                help="Maximum duration for each segment"
+            )
+        
+        # Segmentation button
+        if st.button("Segment Transcription"):
+            with st.spinner("Segmenting transcription..."):
+                # Segment the transcription
+                segments = segment_transcription(
+                    st.session_state.transcription_data,
+                    min_segment_duration=min_segment_duration,
+                    max_segment_duration=max_segment_duration
+                )
+                
+                if segments:
+                    st.session_state.a_roll_segments = segments
+                    st.session_state.segmentation_complete = True
+                    
+                    # Save the A-Roll segments
+                    save_a_roll_segments(segments)
+                    
+                    st.success("Segmentation complete!")
+                    st.experimental_rerun()
+                else:
+                    st.error("Segmentation failed!")
+        
+        # Step 5: Adjust segmentation and B-Roll generation
         if st.session_state.segmentation_complete:
-            st.header("Step 4: Finalize A-Roll Segments and Generate B-Roll")
+            st.header("Step 5: Review and Adjust Segments")
+            
+            # Display the timeline visualization
+            st.subheader("A-Roll Timeline")
+            display_timeline_visualization(st.session_state.a_roll_segments)
+            
+            # Display segments for review/editing
+            st.subheader("A-Roll Segments")
+            
+            segments = st.session_state.a_roll_segments
+            
+            for i, segment in enumerate(segments):
+                with st.expander(f"Segment {i+1}: {format_time(segment.get('start_time', 0))} - {format_time(segment.get('end_time', 0))}"):
+                    # Display segment content
+                    new_content = st.text_area(
+                        f"Segment {i+1} Content",
+                        value=segment.get("content", ""),
+                        key=f"segment_{i}"
+                    )
+                    
+                    # Update the segment if content has changed
+                    if new_content != segment.get("content", ""):
+                        if st.button(f"Update Segment {i+1}", key=f"update_{i}"):
+                            update_segment_content(i, new_content)
+                            st.success(f"Segment {i+1} updated!")
+                            st.experimental_rerun()
+            
+            # Step 6: B-Roll generation
+            st.header("Step 6: Generate B-Roll")
             
             with st.expander("B-Roll Generation Options", expanded=True):
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    b_roll_strategy = st.selectbox(
+                    strategy_options = {
+                        "balanced": "Balanced (recommended)",
+                        "minimal": "Minimal (intro/outro only)",
+                        "maximum": "Maximum (every segment)"
+                    }
+                    
+                    selected_strategy = st.selectbox(
                         "B-Roll Placement Strategy",
-                        ["balanced", "minimal", "maximum"],
-                        index=0,
-                        help="Choose how B-Roll segments are placed: 'minimal' (intro/outro only), 'balanced' (approx. 1 B-Roll per 2 A-Roll), or 'maximum' (B-Roll between every A-Roll)"
+                        options=list(strategy_options.keys()),
+                        index=list(strategy_options.keys()).index(st.session_state.broll_generation_strategy),
+                        format_func=lambda x: strategy_options[x],
+                        help="Choose how B-Roll segments are placed: 'minimal' (intro/outro only), 'balanced' (approx. 1 B-Roll per 2 A-Roll), or 'maximum' (B-Roll for every A-Roll)"
                     )
+                    
+                    st.session_state.broll_generation_strategy = selected_strategy
                 
                 with col2:
                     theme = st.text_input("Video Theme", st.session_state.script_theme or "educational video")
-            
+                
+                # Add A-Roll/B-Roll split ratio control
+                if "aroll_percentage" not in st.session_state:
+                    st.session_state.aroll_percentage = 0.6  # Default to 60/40 split
+                
+                st.markdown("### A-Roll/B-Roll Split Ratio")
+                col1, col2 = st.columns([3, 1])
+                
+                with col1:
+                    aroll_percentage = st.slider(
+                        "A-Roll Percentage",
+                        min_value=0.0,
+                        max_value=1.0,
+                        value=st.session_state.aroll_percentage,
+                        step=0.1,
+                        format="%d%%",
+                        help="For B-Roll segments, what percentage of time should show only A-Roll before switching to B-Roll overlay (0.6 = 60% A-Roll, 40% B-Roll)"
+                    )
+                    st.session_state.aroll_percentage = aroll_percentage
+                
+                with col2:
+                    st.markdown(f"<div style='margin-top: 30px;'><b>Split: {int(aroll_percentage*100)}% / {int((1-aroll_percentage)*100)}%</b></div>", unsafe_allow_html=True)
+                
+                st.markdown(f"""
+                <div style='background-color: #f0f2f6; padding: 10px; border-radius: 5px; margin-bottom: 15px;'>
+                    <b>Visual Transition:</b> Each B-Roll segment will start with {int(aroll_percentage*100)}% A-Roll only, 
+                    then transition to B-Roll visuals with A-Roll audio for the remaining {int((1-aroll_percentage)*100)}% of the segment duration.
+                </div>
+                """, unsafe_allow_html=True)
+                
                 # Add Ollama integration UI if available
                 if st.session_state.ollama_available:
                     st.success("✅ Ollama AI is available for enhanced B-Roll prompts")
@@ -795,244 +1317,93 @@ def main():
                         st.info("The selected Ollama model will be used to generate detailed B-Roll prompts that accurately represent what's being spoken in each A-Roll segment.")
                 else:
                     st.warning("⚠️ Ollama AI is not available. Simple B-Roll prompts will be used.")
-                    st.session_state.use_ollama_prompts = False
             
-            # Button to generate B-Roll segments
+            # Generate B-Roll button
             if st.button("Generate B-Roll Segments"):
                 with st.spinner("Generating B-Roll segments..."):
                     # Generate B-Roll segments
-                    b_roll_segments = generate_broll_segments(st.session_state.a_roll_segments, theme, b_roll_strategy)
-                    st.session_state.b_roll_segments = b_roll_segments
-                    
-                    # Save segments to file
-                    if save_segments(st.session_state.a_roll_segments, b_roll_segments, theme):
-                        st.success(f"Successfully generated {len(b_roll_segments)} B-Roll segments")
-                        st.session_state.script_theme = theme
-                        
-                        # Mark step as complete
-                        mark_step_complete("aroll_transcription")
-                        
-                        # Show success message with next steps
-                        st.success("A-Roll transcription and B-Roll generation complete! You can now proceed to B-Roll prompt customization or Video Assembly.")
-                    else:
-                        st.error("Failed to save segments. Please try again.")
-    
-    # Step 5: Review and edit segments
-    if st.session_state.segmentation_complete and st.session_state.a_roll_segments:
-        st.header("Step 5: Review and Edit A-Roll Segments")
-        
-        # Ensure all segments have timing information
-        st.session_state.a_roll_segments = ensure_segments_have_timing(st.session_state.a_roll_segments)
-        
-        # Display each segment with edit options
-        for i, segment in enumerate(st.session_state.a_roll_segments):
-            with st.container():
-                st.markdown(f"""
-                <div class="segment-container">
-                    <div class="segment-header">
-                        <h3>Segment {i+1}</h3>
-                        <span class="timestamp">{format_time(segment.get('start_time', 0))} - {format_time(segment.get('end_time', 0))} ({segment.get('duration', 0):.1f}s)</span>
-                    </div>
-                    <div class="segment-content">
-                        {segment['content']}
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                # Edit button for this segment
-                if st.button(f"Edit Segment {i+1}", key=f"edit_btn_{i}"):
-                    st.session_state.segment_edit_index = i
-        
-        # Edit dialog
-        if st.session_state.segment_edit_index >= 0:
-            segment = st.session_state.a_roll_segments[st.session_state.segment_edit_index]
-            st.subheader(f"Editing Segment {st.session_state.segment_edit_index + 1}")
-            
-            new_content = st.text_area("Edit segment content", segment["content"], height=150, key=f"edit_area_{st.session_state.segment_edit_index}")
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("Save Changes"):
-                    update_segment_content(st.session_state.segment_edit_index, new_content)
-                    save_a_roll_segments(st.session_state.a_roll_segments)
-                    st.session_state.segment_edit_index = -1
-                    st.success("Segment updated!")
-                    st.experimental_rerun()
-            
-            with col2:
-                if st.button("Cancel"):
-                    st.session_state.segment_edit_index = -1
-                    st.experimental_rerun()
-        
-        # Step 6: Theme and B-Roll Generation
-        st.header("Step 6: Theme and B-Roll Generation")
-        
-        # Theme selection
-        st.subheader("Select Content Theme")
-        
-        # Get current theme or default to empty
-        current_theme = st.session_state.script_theme
-        
-        # Theme container with styling
-        st.markdown("""
-        <div class="theme-container">
-            <h3>Content Theme</h3>
-            <p>The theme will guide B-Roll generation and provide context for visuals.</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Theme input
-        theme_col1, theme_col2 = st.columns([3, 1])
-        
-        with theme_col1:
-            # Provide some theme examples
-            theme_examples = ["Technology Explainer", "Product Review", "Educational Content", 
-                             "Travel Vlog", "Cooking Tutorial", "Fitness Guide", 
-                             "Business Tips", "Gaming Highlights", "Fashion Trends"]
-            
-            selected_example = st.selectbox(
-                "Choose a theme template or create your own below:",
-                ["Custom"] + theme_examples,
-                index=0
-            )
-            
-            if selected_example != "Custom":
-                st.session_state.script_theme = selected_example
-        
-        with theme_col2:
-            # Button to clear theme
-            if st.button("Clear Theme", key="clear_theme"):
-                st.session_state.script_theme = ""
-                st.experimental_rerun()
-        
-        # Custom theme input
-        custom_theme = st.text_input(
-            "Enter your content theme:",
-            value=current_theme,
-            help="This theme will guide B-Roll generation and provide context for visuals"
-        )
-        
-        if custom_theme != current_theme:
-            st.session_state.script_theme = custom_theme
-        
-        # B-Roll generation options
-        st.subheader("B-Roll Generation Options")
-        
-        # B-Roll generation strategy
-        strategy_options = {
-            "minimal": "Minimal (Intro/Outro only)",
-            "balanced": "Balanced (Strategic placement)",
-            "maximum": "Maximum (Between all A-Roll segments)"
-        }
-        
-        strategy = st.radio(
-            "B-Roll Generation Strategy:",
-            list(strategy_options.keys()),
-            format_func=lambda x: strategy_options[x],
-            index=list(strategy_options.keys()).index(st.session_state.broll_generation_strategy),
-            help="Choose how many B-Roll segments to generate and where to place them"
-        )
-        
-        if strategy != st.session_state.broll_generation_strategy:
-            st.session_state.broll_generation_strategy = strategy
-        
-        # Preview B-Roll generation
-        if st.button("Preview B-Roll Generation", key="preview_broll"):
-            if not st.session_state.script_theme:
-                st.warning("Please enter a content theme first.")
-            else:
-                # Generate B-Roll segments
-                b_roll_segments = generate_broll_segments(
-                    st.session_state.a_roll_segments,
-                    st.session_state.script_theme,
-                    st.session_state.broll_generation_strategy
-                )
-                
-                # Store in session state for later use
-                st.session_state.b_roll_segments = b_roll_segments
-                
-                # Show preview
-                st.subheader("B-Roll Preview")
-                st.success(f"Generated {len(b_roll_segments)} B-Roll segments")
-                
-                for i, segment in enumerate(b_roll_segments):
-                    with st.container():
-                        st.markdown(f"""
-                        <div class="broll-segment-container">
-                            <div class="segment-header">
-                                <h3>B-Roll Segment {i+1}</h3>
-                            </div>
-                            <div class="broll-segment-content">
-                                {segment['content']}
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
-        
-        # Show B-Roll segments if they exist
-        if "b_roll_segments" in st.session_state and st.session_state.b_roll_segments:
-            st.subheader("Generated B-Roll Segments")
-            
-            # Show count of segments
-            st.info(f"Generated {len(st.session_state.b_roll_segments)} B-Roll segments based on theme: **{st.session_state.script_theme}**")
-            
-            # Display each B-Roll segment
-            for i, segment in enumerate(st.session_state.b_roll_segments):
-                with st.container():
-                    st.markdown(f"""
-                    <div class="broll-segment-container">
-                        <div class="segment-header">
-                            <h3>B-Roll Segment {i+1}</h3>
-                        </div>
-                        <div class="broll-segment-content">
-                            {segment['content']}
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-            
-            # Save both A-Roll and B-Roll segments
-            if st.button("Save All Segments", type="primary", key="save_all_segments"):
-                with st.spinner("Saving segments..."):
-                    if save_segments(
+                    b_roll_segments = generate_broll_segments(
                         st.session_state.a_roll_segments,
-                        st.session_state.b_roll_segments,
-                        st.session_state.script_theme
-                    ):
-                        st.success("All segments saved successfully!")
+                        theme,
+                        strategy=st.session_state.broll_generation_strategy
+                    )
+                    
+                    if b_roll_segments:
+                        st.session_state.b_roll_segments = b_roll_segments
+                        
+                        # Save the segments
+                        save_segments(
+                            st.session_state.a_roll_segments,
+                            b_roll_segments,
+                            theme,
+                            aroll_percentage=st.session_state.aroll_percentage
+                        )
+                        
+                        st.success("B-Roll segments generated!")
+                        st.experimental_rerun()
                     else:
-                        st.error("Failed to save segments.")
-        
-        # Save and continue button
-        st.markdown("---")
-        if st.button("Save and Continue to B-Roll Prompts", type="primary"):
-            # Check if we have B-Roll segments
-            if "b_roll_segments" not in st.session_state or not st.session_state.b_roll_segments:
-                # Generate B-Roll segments if not already done
-                if not st.session_state.script_theme:
-                    st.warning("Please enter a content theme and generate B-Roll segments first.")
-                    st.stop()
+                        st.error("B-Roll generation failed!")
+            
+            # Display B-Roll segments if available
+            if hasattr(st.session_state, "b_roll_segments") and st.session_state.b_roll_segments:
+                st.subheader("B-Roll Segments")
                 
-                b_roll_segments = generate_broll_segments(
-                    st.session_state.a_roll_segments,
-                    st.session_state.script_theme,
-                    st.session_state.broll_generation_strategy
-                )
+                # Display the timeline with B-Roll overlay
+                display_timeline_visualization(st.session_state.a_roll_segments, st.session_state.b_roll_segments)
                 
-                st.session_state.b_roll_segments = b_roll_segments
-            
-            # Save all segments
-            save_segments(
-                st.session_state.a_roll_segments,
-                st.session_state.b_roll_segments,
-                st.session_state.script_theme
-            )
-            
-            # Mark this step as complete
-            mark_step_complete("a_roll_transcription")
-            
-            # Redirect to the B-Roll Prompts page
-            st.success("All segments saved! Redirecting to B-Roll Prompts...")
-            time.sleep(2)
-            st.switch_page("pages/4_BRoll_Prompts.py")
+                # Display B-Roll details
+                for i, segment in enumerate(st.session_state.b_roll_segments):
+                    with st.expander(f"B-Roll {i+1}: {segment.get('content', '')[:50]}{'...' if len(segment.get('content', '')) > 50 else ''}"):
+                        st.markdown(f"**Content:** {segment.get('content', '')}")
+                        st.markdown(f"**Timestamp:** {format_time(segment.get('timestamp', 0))}")
+                        st.markdown(f"**Duration:** {segment.get('duration', 3.0):.1f} seconds")
+                        
+                        # Display mapped A-Roll segment if available
+                        mapped_index = segment.get("mapped_aroll_index")
+                        if mapped_index is not None and 0 <= mapped_index < len(st.session_state.a_roll_segments):
+                            mapped_segment = st.session_state.a_roll_segments[mapped_index]
+                            st.markdown(f"**Mapped to A-Roll:** Segment {mapped_index + 1} ({format_time(mapped_segment.get('start_time', 0))} - {format_time(mapped_segment.get('end_time', 0))})")
+                        
+                        # Display visuals if available
+                        visuals = segment.get("visuals", [])
+                        if visuals:
+                            st.markdown("**Visuals:**")
+                            for j, visual in enumerate(visuals):
+                                st.markdown(f"  - Visual {j+1}: {visual.get('content', '')} (Duration: {visual.get('duration', 0):.1f}s)")
+                
+                # Add explanation of the new sequence structure
+                st.subheader("Assembly Sequence")
+                
+                st.markdown("""
+                The video will be assembled in the following sequence:
+                
+                **A-1**  
+                *A-Roll video*  
+                *A-Roll audio*
+                
+                **B-1 + A-2**  
+                *B-Roll video*  
+                *A-Roll audio*
+                
+                **B-2 + A-3**  
+                *B-Roll video*  
+                *A-Roll audio*
+                
+                **B-3 + A-4**  
+                *B-Roll video*  
+                *A-Roll audio*
+                """)
+                
+                st.markdown("**Detailed Sequence:**")
+                
+                # First sequence (A-Roll only)
+                if len(st.session_state.a_roll_segments) > 0:
+                    st.markdown(f"1. A-Roll Segment 1 (full video and audio)")
+                
+                # Subsequent sequences (B-Roll video + A-Roll audio)
+                for i in range(1, len(st.session_state.a_roll_segments)):
+                    if i-1 < len(st.session_state.b_roll_segments):
+                        st.markdown(f"{i+1}. B-Roll Segment {i} visuals + A-Roll Segment {i+1} audio")
 
 # Helper function to format time in MM:SS format
 def format_time(seconds):

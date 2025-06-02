@@ -414,7 +414,7 @@ def assemble_video(sequence, target_resolution=(1080, 1920), output_dir=None, pr
     Assemble a final video from A-Roll and B-Roll segments
     
     Args:
-        sequence: List of video segments to assemble
+        sequence: List of video segments to assemble or full A-Roll path and B-Roll mapping
         target_resolution: Target resolution (width, height)
         output_dir: Directory to save output video
         progress_callback: Callback function to update progress
@@ -433,15 +433,26 @@ def assemble_video(sequence, target_resolution=(1080, 1920), output_dir=None, pr
             print(f"Progress: {progress}% - {message}")
         progress_callback = progress_print
     
-    # Validate sequence
+    # Check if sequence is a dictionary with aroll_path and broll_mapping (new format)
+    if isinstance(sequence, dict) and "aroll_path" in sequence:
+        return assemble_video_timestamp_based(
+            sequence["aroll_path"],
+            sequence.get("broll_mapping", {}),
+            target_resolution=target_resolution,
+            output_dir=output_dir,
+            progress_callback=progress_callback,
+            aroll_percentage=aroll_percentage
+        )
+    
+    # If sequence is a list, use the older segment-based assembly logic
     if not sequence or not isinstance(sequence, list):
         return {"status": "error", "message": "Invalid sequence format"}
     
     # Check for audio overlaps
     overlaps = check_audio_overlaps(sequence)
-    if overlaps["has_overlaps"]:
+    if overlaps.get("has_overlaps", False):
         print("⚠️ Warning: Potential audio overlaps detected:")
-        for warning in overlaps["warnings"]:
+        for warning in overlaps.get("warnings", []):
             print(f"  - {warning}")
         
         # Print a more informative message with suggestions
@@ -556,329 +567,71 @@ def assemble_video(sequence, target_resolution=(1080, 1920), output_dir=None, pr
                             
                             # Adjust B-Roll duration to match the A-Roll segment
                             if broll_clip.duration < segment_duration:
-                                # Loop the B-Roll if it's too short
-                                print(f"B-Roll clip duration ({broll_clip.duration}s) is shorter than segment duration ({segment_duration}s), looping")
+                                print(f"B-Roll duration ({broll_clip.duration}s) is shorter than A-Roll segment ({segment_duration}s)")
+                                # Loop B-Roll clip to match A-Roll duration
                                 repeat_count = int(np.ceil(segment_duration / broll_clip.duration))
-                                broll_clip = mp.concatenate_videoclips([broll_clip] * repeat_count)
-                            
-                            broll_clip = broll_clip.subclip(0, segment_duration)
+                                print(f"Looping B-Roll clip {repeat_count} times")
+                                broll_clip = mp.concatenate_videoclips([broll_clip] * repeat_count).subclip(0, segment_duration)
+                            elif broll_clip.duration > segment_duration:
+                                print(f"Trimming B-Roll clip from {broll_clip.duration}s to {segment_duration}s")
+                                broll_clip = broll_clip.subclip(0, segment_duration)
                         
-                        # Create partial B-Roll overlay clip
-                        combined_clip = create_partial_broll_overlay(aroll_segment, broll_clip, aroll_percentage)
-                        combined_clip = resize_video(combined_clip, target_resolution)
-                        clips.append(combined_clip)
+                        # Resize B-Roll
+                        broll_clip = resize_video(broll_clip, target_resolution)
+                        
+                        # Create partial overlay with 60/40 split
+                        overlay_clip = create_partial_broll_overlay(aroll_segment, broll_clip, aroll_percentage)
+                        
+                        if overlay_clip:
+                            clips.append(overlay_clip)
+                        else:
+                            print(f"Warning: Failed to create partial overlay for segment {segment_id}")
+                            # Fall back to A-Roll only if overlay fails
+                            clips.append(aroll_segment)
                 except Exception as e:
                     print(f"Error processing segment {segment_id}: {str(e)}")
                     print(traceback.format_exc())
             
-            # Close the full A-Roll clip
-            full_aroll_clip.close()
+            # Create final video by concatenating all clips
+            if not clips:
+                return {"status": "error", "message": "No valid clips to assemble"}
             
-        else:
-            # Original implementation for individual segment files
-            # Extract audio from all A-Roll segments first
-            audio_temp_dir = tempfile.mkdtemp()
-            extracted_audio_paths = {}
-            audio_durations = {}
+            progress_callback(70, "Concatenating clips")
             
-            progress_callback(10, "Extracting audio from A-Roll segments")
+            try:
+                final_clip = mp.concatenate_videoclips(clips)
+            except Exception as e:
+                return {"status": "error", "message": f"Failed to concatenate clips: {str(e)}"}
             
-            # Process all A-Roll segments to extract audio first
-            for i, item in enumerate(sequence):
-                segment_id = item.get("segment_id", f"segment_{i}")
-                if "aroll_path" in item:
-                    audio_path = extract_audio_track(item["aroll_path"], audio_temp_dir)
-                    if audio_path:
-                        extracted_audio_paths[segment_id] = audio_path
-                        # Get audio duration
-                        try:
-                            audio_clip = mp.AudioFileClip(audio_path)
-                            audio_durations[segment_id] = audio_clip.duration
-                            audio_clip.close()
-                            print(f"Audio segment {segment_id} duration: {audio_durations[segment_id]:.2f}s")
-                        except Exception as e:
-                            print(f"Error getting audio duration for segment {segment_id}: {str(e)}")
+            # Define output path
+            if output_dir:
+                output_dir = Path(output_dir)
+                os.makedirs(output_dir, exist_ok=True)
+            else:
+                output_dir = Path.cwd()
             
-            # Load and assemble video clips
-            progress_callback(20, "Loading video segments")
-            clips = []
+            output_path = output_dir / f"assembled_video_{timestamp}.mp4"
             
-            # Track current audio position to ensure sequential placement
-            current_audio_position = 0
-            used_audio_segments = set()
+            # Write final video
+            progress_callback(80, f"Writing final video to {output_path}")
             
-            for i, item in enumerate(sequence):
-                progress_callback(20 + (i / len(sequence) * 40), f"Processing segment {i+1}/{len(sequence)}")
-                segment_id = item.get("segment_id", f"segment_{i}")
-                
-                # Skip if this A-Roll audio was already used (should be prevented by sequence creation)
-                if segment_id in used_audio_segments:
-                    print(f"⚠️ WARNING: Segment {segment_id} audio was already used - skipping duplicate")
-                    continue
-                
-                if item["type"] == "aroll_full":
-                    # Load A-Roll video
-                    aroll_path = item["aroll_path"]
-                    
-                    try:
-                        print(f"Loading A-Roll video: {aroll_path}")
-                        clip = mp.VideoFileClip(aroll_path)
-                        
-                        # Check if clip has valid audio, if not, try to use extracted audio
-                        if not has_valid_audio(clip) and segment_id in extracted_audio_paths:
-                            audio_path = extracted_audio_paths[segment_id]
-                            try:
-                                print(f"Loading extracted A-Roll audio: {audio_path}")
-                                audio_clip = mp.AudioFileClip(audio_path)
-                                
-                                # First, ensure the clip has no audio of its own
-                                clip = clip.without_audio()
-                                
-                                # If audio is shorter than video, extend it
-                                if audio_clip.duration < clip.duration:
-                                    print(f"Audio duration {audio_clip.duration} is shorter than video {clip.duration}, extending audio")
-                                
-                                # Ensure the clip duration exactly matches the audio duration
-                                exact_duration = min(clip.duration, audio_clip.duration)
-                                clip = clip.subclip(0, exact_duration)
-                                audio_clip = audio_clip.subclip(0, exact_duration)
-                                
-                                # Apply audio to clip
-                                clip = clip.set_audio(audio_clip)
-                                print("Successfully applied extracted audio to A-Roll clip")
-                                
-                                # Mark this segment as used
-                                used_audio_segments.add(segment_id)
-                                
-                                # Update current audio position
-                                current_audio_position += clip.duration
-                                
-                            except Exception as e:
-                                print(f"Error applying extracted audio: {str(e)}")
-                        elif not has_valid_audio(clip):
-                            print(f"Warning: Clip {i+1} has no valid audio, replacing with silent audio")
-                            # Create silent audio for the full duration
-                            silent_audio = mp.AudioClip(lambda t: 0, duration=clip.duration)
-                            clip = clip.set_audio(silent_audio)
-                        else:
-                            # Mark this segment as used
-                            used_audio_segments.add(segment_id)
-                            
-                            # Update current audio position
-                            current_audio_position += clip.duration
-                        
-                        # Resize to target resolution
-                        clip = resize_video(clip, target_resolution)
-                        clips.append(clip)
-                    except Exception as e:
-                        print(f"Error loading A-Roll clip: {str(e)}")
-                        return {"status": "error", "message": f"Error loading A-Roll clip: {str(e)}"}
-                
-                elif item["type"] == "broll_with_aroll_audio":
-                    # Load B-Roll video with A-Roll audio
-                    broll_path = item["broll_path"]
-                    aroll_path = item["aroll_path"]
-                    
-                    try:
-                        # Load B-Roll video
-                        print(f"Loading B-Roll video: {broll_path}")
-                        
-                        # Check if B-Roll is an image file
-                        if is_image_file(broll_path):
-                            # Get A-Roll audio duration to use for the image
-                            aroll_audio_duration = audio_durations.get(segment_id, 5.0)
-                            
-                            # Convert image to video with matching duration
-                            broll_clip = image_to_video(broll_path, duration=aroll_audio_duration, target_resolution=target_resolution)
-                            
-                            if broll_clip is None:
-                                print(f"❌ Failed to convert image to video: {broll_path}")
-                                continue
-                                
-                            print(f"✅ Successfully converted image to video with duration: {broll_clip.duration}s")
-                        else:
-                            # Load as regular video
-                            broll_clip = mp.VideoFileClip(broll_path)
-                            
-                            # Resize to target resolution
-                            broll_clip = resize_video(broll_clip, target_resolution)
-                        
-                        # Load A-Roll clip and create partial overlay
-                        try:
-                            print(f"Loading A-Roll video for partial overlay: {aroll_path}")
-                            aroll_clip = mp.VideoFileClip(aroll_path)
-                            
-                            # Create partial B-Roll overlay
-                            combined_clip = create_partial_broll_overlay(aroll_clip, broll_clip, aroll_percentage)
-                            
-                            if combined_clip is not None:
-                                # Mark this segment as used
-                                used_audio_segments.add(segment_id)
-                                
-                                # Update current audio position
-                                current_audio_position += combined_clip.duration
-                                
-                                # Add to clips list
-                                clips.append(combined_clip)
-                                
-                                # Close A-Roll clip
-                                aroll_clip.close()
-                                continue
-                            else:
-                                print("Failed to create partial B-Roll overlay, falling back to standard method")
-                                # Fall back to standard method (continue with existing code)
-                            
-                            # Close A-Roll clip if not used
-                            aroll_clip.close()
-                            
-                        except Exception as e:
-                            print(f"Error creating partial B-Roll overlay: {str(e)}")
-                            print("Falling back to standard B-Roll method")
-                            # Fall back to standard method (continue with existing code)
-                        
-                        # Original B-Roll with A-Roll audio implementation (fallback)
-                        # Load A-Roll audio
-                        if segment_id in extracted_audio_paths:
-                            audio_path = extracted_audio_paths[segment_id]
-                            try:
-                                print(f"Loading extracted A-Roll audio for B-Roll: {audio_path}")
-                                audio_clip = mp.AudioFileClip(audio_path)
-                                
-                                # Ensure B-Roll duration matches audio duration
-                                audio_duration = audio_clip.duration
-                                
-                                # If B-Roll is shorter than audio, loop it
-                                if broll_clip.duration < audio_duration:
-                                    print(f"B-Roll duration {broll_clip.duration}s is shorter than audio {audio_duration}s, looping")
-                                    # Calculate how many times to repeat the clip
-                                    repeat_count = int(np.ceil(audio_duration / broll_clip.duration))
-                                    # Create a list of the clip repeated
-                                    repeated_clips = [broll_clip] * repeat_count
-                                    # Concatenate the clips
-                                    broll_clip = mp.concatenate_videoclips(repeated_clips)
-                                
-                                # Trim to match audio duration
-                                broll_clip = broll_clip.subclip(0, audio_duration)
-                                
-                                # Apply audio
-                                broll_clip = broll_clip.set_audio(audio_clip)
-                                
-                                # Mark this segment as used
-                                used_audio_segments.add(segment_id)
-                                
-                            except Exception as e:
-                                print(f"Error applying A-Roll audio to B-Roll: {str(e)}")
-                                # Try loading A-Roll video directly as fallback
-                                try:
-                                    print(f"Trying fallback: Loading A-Roll video directly: {aroll_path}")
-                                    aroll_clip = mp.VideoFileClip(aroll_path)
-                                    
-                                    # Extract audio
-                                    audio_clip = aroll_clip.audio
-                                    
-                                    # Close A-Roll clip
-                                    aroll_clip.close()
-                                    
-                                    # Apply audio to B-Roll
-                                    broll_clip = broll_clip.set_audio(audio_clip)
-                                    
-                                    # Mark this segment as used
-                                    used_audio_segments.add(segment_id)
-                                    
-                                except Exception as e2:
-                                    print(f"Fallback also failed: {str(e2)}")
-                                    # Create silent audio as last resort
-                                    silent_audio = mp.AudioClip(lambda t: 0, duration=broll_clip.duration)
-                                    broll_clip = broll_clip.set_audio(silent_audio)
-                        else:
-                            # No extracted audio, try loading A-Roll video directly
-                            try:
-                                print(f"No extracted audio, loading A-Roll video directly: {aroll_path}")
-                                aroll_clip = mp.VideoFileClip(aroll_path)
-                                
-                                # Extract audio
-                                if aroll_clip.audio is not None:
-                                    audio_clip = aroll_clip.audio
-                                    
-                                    # Ensure B-Roll duration matches audio duration
-                                    audio_duration = audio_clip.duration
-                                    
-                                    # If B-Roll is shorter than audio, loop it
-                                    if broll_clip.duration < audio_duration:
-                                        print(f"B-Roll duration {broll_clip.duration}s is shorter than audio {audio_duration}s, looping")
-                                        # Calculate how many times to repeat the clip
-                                        repeat_count = int(np.ceil(audio_duration / broll_clip.duration))
-                                        # Create a list of the clip repeated
-                                        repeated_clips = [broll_clip] * repeat_count
-                                        # Concatenate the clips
-                                        broll_clip = mp.concatenate_videoclips(repeated_clips)
-                                    
-                                    # Trim to match audio duration
-                                    broll_clip = broll_clip.subclip(0, audio_duration)
-                                    
-                                    # Apply audio
-                                    broll_clip = broll_clip.set_audio(audio_clip)
-                                    
-                                    # Mark this segment as used
-                                    used_audio_segments.add(segment_id)
-                                else:
-                                    print(f"A-Roll clip has no audio: {aroll_path}")
-                                    # Create silent audio
-                                    silent_audio = mp.AudioClip(lambda t: 0, duration=broll_clip.duration)
-                                    broll_clip = broll_clip.set_audio(silent_audio)
-                                
-                                # Close A-Roll clip
-                                aroll_clip.close()
-                                
-                            except Exception as e:
-                                print(f"Error loading A-Roll video for audio: {str(e)}")
-                                # Create silent audio as last resort
-                                silent_audio = mp.AudioClip(lambda t: 0, duration=broll_clip.duration)
-                                broll_clip = broll_clip.set_audio(silent_audio)
-                        
-                        clips.append(broll_clip)
-                    except Exception as e:
-                        print(f"Error processing B-Roll segment: {str(e)}")
-                        print(traceback.format_exc())
-        
-        # If no clips were created, return error
-        if not clips:
-            return {"status": "error", "message": "No valid clips were created"}
-        
-        # Concatenate all clips
-        progress_callback(70, "Concatenating video segments")
-        try:
-            final_video = mp.concatenate_videoclips(clips)
-        except Exception as e:
-            print(f"Error concatenating clips: {str(e)}")
-            print(traceback.format_exc())
-            return {"status": "error", "message": f"Error concatenating clips: {str(e)}"}
-        
-        # Set up output path
-        if not output_dir:
-            output_dir = os.getcwd()
-        
-        output_filename = f"final_video_{timestamp}.mp4"
-        output_path = os.path.join(output_dir, output_filename)
-        
-        # Write final video
-        progress_callback(80, "Writing final video")
-        try:
-            final_video.write_videofile(
-                output_path,
-                codec="libx264",
-                audio_codec="aac",
-                temp_audiofile=os.path.join(output_dir, f"temp_audio_{timestamp}.m4a"),
-                remove_temp=True,
-                fps=30,
-                threads=4
-            )
-        except Exception as e:
-            print(f"Error writing final video: {str(e)}")
-            print(traceback.format_exc())
-            return {"status": "error", "message": f"Error writing final video: {str(e)}"}
-        finally:
-            # Close all clips
+            try:
+                final_clip.write_videofile(
+                    str(output_path),
+                    codec="libx264",
+                    audio_codec="aac",
+                    temp_audiofile=tempfile.mktemp(suffix='.m4a'),
+                    remove_temp=True,
+                    threads=4,
+                    preset="medium",
+                    fps=30
+                )
+            except Exception as e:
+                return {"status": "error", "message": f"Failed to write final video: {str(e)}"}
+            
+            # Clean up clips
+            progress_callback(95, "Cleaning up")
+            
             for clip in clips:
                 try:
                     clip.close()
@@ -886,34 +639,350 @@ def assemble_video(sequence, target_resolution=(1080, 1920), output_dir=None, pr
                     pass
             
             try:
-                final_video.close()
+                full_aroll_clip.close()
+            except:
+                pass
+            
+            progress_callback(100, "Video assembly complete")
+            
+            return {
+                "status": "success",
+                "message": "Video assembly complete",
+                "output_path": str(output_path)
+            }
+        
+        # Standard segment-based assembly logic (older approach)
+        else:
+            # Process each segment in the sequence
+            clips = []
+            progress_callback(10, "Processing segments")
+            
+            for i, item in enumerate(sequence):
+                segment_progress = 10 + (i / len(sequence) * 60)
+                progress_callback(segment_progress, f"Processing segment {i+1}/{len(sequence)}")
+                
+                try:
+                    if item["type"] == "aroll_full":
+                        aroll_path = item["aroll_path"]
+                        aroll_clip = mp.VideoFileClip(aroll_path)
+                        
+                        # Resize to target resolution
+                        aroll_clip = resize_video(aroll_clip, target_resolution)
+                        
+                        clips.append(aroll_clip)
+                    
+                    elif item["type"] == "broll_with_aroll_audio":
+                        broll_path = item["broll_path"]
+                        aroll_path = item["aroll_path"]
+                        
+                        # Load A-Roll for audio
+                        aroll_clip = mp.VideoFileClip(aroll_path)
+                        
+                        # Load B-Roll based on file type
+                        if is_image_file(broll_path):
+                            # Convert image to video with A-Roll duration
+                            broll_clip = image_to_video(broll_path, duration=aroll_clip.duration, target_resolution=target_resolution)
+                        else:
+                            # Load B-Roll video
+                            broll_clip = mp.VideoFileClip(broll_path)
+                            
+                            # Loop B-Roll if it's shorter than A-Roll
+                            if broll_clip.duration < aroll_clip.duration:
+                                repeat_count = int(np.ceil(aroll_clip.duration / broll_clip.duration))
+                                broll_clip = mp.concatenate_videoclips([broll_clip] * repeat_count).subclip(0, aroll_clip.duration)
+                            elif broll_clip.duration > aroll_clip.duration:
+                                broll_clip = broll_clip.subclip(0, aroll_clip.duration)
+                            
+                            # Resize to target resolution
+                            broll_clip = resize_video(broll_clip, target_resolution)
+                        
+                        # Create partial overlay with 60/40 split
+                        overlay_clip = create_partial_broll_overlay(aroll_clip, broll_clip, aroll_percentage)
+                        
+                        if overlay_clip:
+                            clips.append(overlay_clip)
+                        else:
+                            # Fall back to B-Roll with A-Roll audio if overlay fails
+                            broll_clip = broll_clip.set_audio(aroll_clip.audio)
+                            clips.append(broll_clip)
+                            
+                except Exception as e:
+                    print(f"Error processing segment {i+1}: {str(e)}")
+                    print(traceback.format_exc())
+            
+            # Create final video
+            if not clips:
+                return {"status": "error", "message": "No valid clips to assemble"}
+            
+            progress_callback(70, "Concatenating clips")
+            
+            try:
+                final_clip = mp.concatenate_videoclips(clips)
+            except Exception as e:
+                return {"status": "error", "message": f"Failed to concatenate clips: {str(e)}"}
+            
+            # Define output path
+            if output_dir:
+                output_dir = Path(output_dir)
+                os.makedirs(output_dir, exist_ok=True)
+            else:
+                output_dir = Path.cwd()
+            
+            output_path = output_dir / f"assembled_video_{timestamp}.mp4"
+            
+            # Write final video
+            progress_callback(80, "Writing final video")
+            
+            try:
+                final_clip.write_videofile(
+                    str(output_path),
+                    codec="libx264",
+                    audio_codec="aac",
+                    temp_audiofile=tempfile.mktemp(suffix='.m4a'),
+                    remove_temp=True,
+                    threads=4,
+                    preset="medium",
+                    fps=30
+                )
+            except Exception as e:
+                return {"status": "error", "message": f"Failed to write final video: {str(e)}"}
+            
+            # Clean up clips
+            progress_callback(95, "Cleaning up")
+            
+            for clip in clips:
+                try:
+                    clip.close()
+                except:
+                    pass
+            
+            progress_callback(100, "Video assembly complete")
+            
+            return {
+                "status": "success",
+                "message": "Video assembly complete",
+                "output_path": str(output_path)
+            }
+    
+    except Exception as e:
+        print(f"Error in video assembly: {str(e)}")
+        print(traceback.format_exc())
+        return {"status": "error", "message": f"Error in video assembly: {str(e)}"}
+
+@error_handler
+def assemble_video_timestamp_based(aroll_path, broll_mapping, target_resolution=(1080, 1920), output_dir=None, progress_callback=None, aroll_percentage=0.6):
+    """
+    Assemble a video using timestamp-based B-Roll mapping to a single A-Roll file
+    
+    Args:
+        aroll_path: Path to the full A-Roll video
+        broll_mapping: Dictionary mapping B-Roll IDs to their timestamp info
+        target_resolution: Target resolution (width, height)
+        output_dir: Directory to save the output video
+        progress_callback: Callback function to update progress
+        aroll_percentage: Percentage of time to show only A-Roll (0.6 = 60%)
+        
+    Returns:
+        dict: Result dictionary with status, message, and output_path if successful
+    """
+    if not MOVIEPY_AVAILABLE:
+        return {"status": "error", "message": "MoviePy is not available. Please install required packages."}
+    
+    if progress_callback is None:
+        def progress_print(progress, message):
+            print(f"Progress: {progress}% - {message}")
+        progress_callback = progress_print
+    
+    # Check A-Roll path
+    if not aroll_path or not os.path.exists(aroll_path):
+        return {"status": "error", "message": f"A-Roll file not found: {aroll_path}"}
+    
+    # Generate a timestamp for the output file
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    try:
+        # Load the full A-Roll video
+        progress_callback(5, "Loading A-Roll video")
+        aroll_clip = mp.VideoFileClip(aroll_path)
+        aroll_duration = aroll_clip.duration
+        
+        # Resize A-Roll to target resolution
+        aroll_clip = resize_video(aroll_clip, target_resolution)
+        
+        # Sort B-Roll mapping by timestamp
+        progress_callback(10, "Processing B-Roll mapping")
+        sorted_broll = []
+        
+        for broll_id, broll_info in broll_mapping.items():
+            timestamp = broll_info.get("timestamp", 0)
+            sorted_broll.append((broll_id, broll_info, timestamp))
+        
+        sorted_broll.sort(key=lambda x: x[2])  # Sort by timestamp
+        
+        # Process each segment
+        clips = []
+        current_time = 0
+        
+        # If there are no B-Roll segments, just use the full A-Roll
+        if not sorted_broll:
+            progress_callback(20, "No B-Roll segments found, using full A-Roll")
+            clips.append(aroll_clip)
+        else:
+            progress_callback(20, "Processing video segments")
+            
+            # Process each B-Roll segment and the A-Roll before it
+            for i, (broll_id, broll_info, timestamp) in enumerate(sorted_broll):
+                segment_progress = 20 + (i / len(sorted_broll) * 60)
+                progress_callback(segment_progress, f"Processing segment {i+1}/{len(sorted_broll)}")
+                
+                # If this is the first B-Roll or there's a gap, add A-Roll up to this point
+                if timestamp > current_time:
+                    # Add A-Roll segment from current_time to timestamp
+                    print(f"Adding A-Roll segment from {current_time}s to {timestamp}s")
+                    aroll_segment = aroll_clip.subclip(current_time, timestamp)
+                    clips.append(aroll_segment)
+                
+                # Get B-Roll path or determine if we need to generate it
+                visuals = broll_info.get("visuals", [])
+                duration = broll_info.get("duration", 0)
+                
+                # Skip if no duration or visuals
+                if duration <= 0 or not visuals:
+                    print(f"Skipping B-Roll {broll_id} - no duration or visuals")
+                    continue
+                
+                # Extract A-Roll segment for this B-Roll period
+                end_time = min(timestamp + duration, aroll_duration)
+                aroll_segment = aroll_clip.subclip(timestamp, end_time)
+                
+                # Process B-Roll visuals
+                visual_clips = []
+                
+                for j, visual in enumerate(visuals):
+                    visual_duration = visual.get("duration", 0)
+                    visual_content = visual.get("content", "")
+                    
+                    # Skip if no duration
+                    if visual_duration <= 0:
+                        continue
+                    
+                    # Get B-Roll path for this visual
+                    visual_path = visual.get("path")
+                    
+                    if visual_path and os.path.exists(visual_path):
+                        # Load B-Roll based on file type
+                        if is_image_file(visual_path):
+                            # Convert image to video
+                            broll_visual = image_to_video(visual_path, duration=visual_duration, target_resolution=target_resolution)
+                        else:
+                            # Load video and adjust duration
+                            broll_visual = mp.VideoFileClip(visual_path)
+                            
+                            # Adjust duration if needed
+                            if broll_visual.duration < visual_duration:
+                                repeat_count = int(np.ceil(visual_duration / broll_visual.duration))
+                                broll_visual = mp.concatenate_videoclips([broll_visual] * repeat_count).subclip(0, visual_duration)
+                            elif broll_visual.duration > visual_duration:
+                                broll_visual = broll_visual.subclip(0, visual_duration)
+                            
+                            # Resize to target resolution
+                            broll_visual = resize_video(broll_visual, target_resolution)
+                        
+                        visual_clips.append(broll_visual)
+                
+                # If we have visual clips, concatenate them and create overlay
+                if visual_clips:
+                    # Concatenate B-Roll visuals if multiple
+                    if len(visual_clips) > 1:
+                        broll_clip = mp.concatenate_videoclips(visual_clips)
+                    else:
+                        broll_clip = visual_clips[0]
+                    
+                    # Create partial overlay with 60/40 split
+                    overlay_clip = create_partial_broll_overlay(aroll_segment, broll_clip, aroll_percentage)
+                    
+                    if overlay_clip:
+                        clips.append(overlay_clip)
+                    else:
+                        # Fall back to B-Roll with A-Roll audio if overlay fails
+                        broll_clip = broll_clip.set_audio(aroll_segment.audio)
+                        clips.append(broll_clip)
+                else:
+                    # No valid B-Roll visuals, just use A-Roll
+                    clips.append(aroll_segment)
+                
+                # Update current time
+                current_time = end_time
+            
+            # If there's remaining A-Roll after the last B-Roll, add it
+            if current_time < aroll_duration:
+                print(f"Adding final A-Roll segment from {current_time}s to {aroll_duration}s")
+                final_aroll = aroll_clip.subclip(current_time, aroll_duration)
+                clips.append(final_aroll)
+        
+        # Create final video
+        if not clips:
+            return {"status": "error", "message": "No valid clips to assemble"}
+        
+        progress_callback(80, "Concatenating clips")
+        
+        try:
+            final_clip = mp.concatenate_videoclips(clips)
+        except Exception as e:
+            return {"status": "error", "message": f"Failed to concatenate clips: {str(e)}"}
+        
+        # Define output path
+        if output_dir:
+            output_dir = Path(output_dir)
+            os.makedirs(output_dir, exist_ok=True)
+        else:
+            output_dir = Path.cwd()
+        
+        output_path = output_dir / f"assembled_video_{timestamp}.mp4"
+        
+        # Write final video
+        progress_callback(90, "Writing final video")
+        
+        try:
+            final_clip.write_videofile(
+                str(output_path),
+                codec="libx264",
+                audio_codec="aac",
+                temp_audiofile=tempfile.mktemp(suffix='.m4a'),
+                remove_temp=True,
+                threads=4,
+                preset="medium",
+                fps=30
+            )
+        except Exception as e:
+            return {"status": "error", "message": f"Failed to write final video: {str(e)}"}
+        
+        # Clean up
+        progress_callback(95, "Cleaning up")
+        
+        for clip in clips:
+            try:
+                clip.close()
             except:
                 pass
         
-        # Clean up temporary files
-        progress_callback(95, "Cleaning up temporary files")
         try:
-            if os.path.exists(audio_temp_dir):
-                shutil.rmtree(audio_temp_dir)
-        except Exception as e:
-            print(f"Warning: Could not clean up temporary files: {str(e)}")
+            aroll_clip.close()
+        except:
+            pass
         
         progress_callback(100, "Video assembly complete")
         
         return {
             "status": "success",
-            "message": "Video assembly completed successfully",
-            "output_path": output_path
+            "message": "Video assembly complete",
+            "output_path": str(output_path)
         }
-    except Exception as e:
-        print(f"❌ Unexpected error during video assembly: {str(e)}")
-        print(traceback.format_exc())
         
-        return {
-            "status": "error",
-            "message": f"Unexpected error during video assembly: {str(e)}",
-            "traceback": traceback.format_exc()
-        }
+    except Exception as e:
+        print(f"Error in timestamp-based video assembly: {str(e)}")
+        print(traceback.format_exc())
+        return {"status": "error", "message": f"Error in timestamp-based video assembly: {str(e)}"}
 
 if __name__ == "__main__":
     # Simple test if this script is run directly

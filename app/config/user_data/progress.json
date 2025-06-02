@@ -7,5 +7,6 @@
     "step_5": true,
     "video_assembly": true,
     "caption_dreams": true,
-    "a_roll_transcription": true
+    "a_roll_transcription": true,
+    "aroll_transcription": true
 }

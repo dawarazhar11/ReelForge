@@ -357,7 +357,59 @@ def image_to_video(image_path, duration=5.0, target_resolution=(1080, 1920)):
         return None
 
 @error_handler
-def assemble_video(sequence, target_resolution=(1080, 1920), output_dir=None, progress_callback=None, is_transcription=False, segment_timestamps=None):
+def create_partial_broll_overlay(aroll_clip, broll_clip, aroll_percentage=0.6):
+    """
+    Creates a video clip with A-Roll at the beginning and B-Roll overlay for the remainder
+    
+    Args:
+        aroll_clip: The A-Roll clip
+        broll_clip: The B-Roll clip 
+        aroll_percentage: Percentage of time to show only A-Roll (0.6 = 60%)
+        
+    Returns:
+        MoviePy clip with A-Roll followed by B-Roll with A-Roll audio
+    """
+    if not MOVIEPY_AVAILABLE:
+        print("❌ MoviePy is not available, cannot create partial B-Roll overlay")
+        return None
+        
+    try:
+        # Get the full duration and calculate split time
+        total_duration = aroll_clip.duration
+        aroll_only_duration = total_duration * aroll_percentage
+        broll_duration = total_duration - aroll_only_duration
+        
+        print(f"Creating partial B-Roll overlay with {aroll_percentage*100}% A-Roll")
+        print(f"Total duration: {total_duration}s, A-Roll only: {aroll_only_duration}s, B-Roll: {broll_duration}s")
+        
+        # Create A-Roll only segment (first part)
+        aroll_only_segment = aroll_clip.subclip(0, aroll_only_duration)
+        
+        # Create B-Roll segment with A-Roll audio (second part)
+        aroll_audio_segment = aroll_clip.subclip(aroll_only_duration, total_duration).audio
+        
+        # If B-Roll is shorter than the required duration, loop it
+        if broll_clip.duration < broll_duration:
+            repeat_count = int(np.ceil(broll_duration / broll_clip.duration))
+            broll_clip = mp.concatenate_videoclips([broll_clip] * repeat_count)
+        
+        # Cut B-Roll to exact duration needed
+        broll_segment = broll_clip.subclip(0, broll_duration)
+        
+        # Apply A-Roll audio to B-Roll segment
+        broll_segment = broll_segment.set_audio(aroll_audio_segment)
+        
+        # Concatenate A-Roll and B-Roll segments
+        final_clip = mp.concatenate_videoclips([aroll_only_segment, broll_segment])
+        
+        return final_clip
+    except Exception as e:
+        print(f"❌ Error creating partial B-Roll overlay: {str(e)}")
+        print(traceback.format_exc())
+        return None
+
+@error_handler
+def assemble_video(sequence, target_resolution=(1080, 1920), output_dir=None, progress_callback=None, is_transcription=False, segment_timestamps=None, aroll_percentage=0.6):
     """
     Assemble a final video from A-Roll and B-Roll segments
     
@@ -368,6 +420,7 @@ def assemble_video(sequence, target_resolution=(1080, 1920), output_dir=None, pr
         progress_callback: Callback function to update progress
         is_transcription: Whether the A-Roll is from transcription
         segment_timestamps: Dictionary of segment timestamps for transcription-based A-Roll
+        aroll_percentage: Percentage of time to show only A-Roll (0.6 = 60%)
         
     Returns:
         dict: Result dictionary with status, message, and output_path if successful
@@ -488,10 +541,10 @@ def assemble_video(sequence, target_resolution=(1080, 1920), output_dir=None, pr
                             print(f"Warning: B-Roll file not found for segment {segment_id}")
                             continue
                         
-                        # Extract audio from the full A-Roll for this segment
-                        print(f"Extracting A-Roll audio from {start_time}s to {end_time}s")
+                        # Extract the A-Roll segment clip
+                        print(f"Extracting A-Roll segment for partial overlay from {start_time}s to {end_time}s")
+                        aroll_segment = full_aroll_clip.subclip(start_time, end_time)
                         segment_duration = end_time - start_time
-                        aroll_audio = full_aroll_clip.subclip(start_time, end_time).audio
                         
                         # Load B-Roll video or image
                         if is_image_file(broll_path):
@@ -510,10 +563,10 @@ def assemble_video(sequence, target_resolution=(1080, 1920), output_dir=None, pr
                             
                             broll_clip = broll_clip.subclip(0, segment_duration)
                         
-                        # Apply A-Roll audio to B-Roll video
-                        broll_clip = broll_clip.set_audio(aroll_audio)
-                        broll_clip = resize_video(broll_clip, target_resolution)
-                        clips.append(broll_clip)
+                        # Create partial B-Roll overlay clip
+                        combined_clip = create_partial_broll_overlay(aroll_segment, broll_clip, aroll_percentage)
+                        combined_clip = resize_video(combined_clip, target_resolution)
+                        clips.append(combined_clip)
                 except Exception as e:
                     print(f"Error processing segment {segment_id}: {str(e)}")
                     print(traceback.format_exc())
@@ -650,6 +703,40 @@ def assemble_video(sequence, target_resolution=(1080, 1920), output_dir=None, pr
                             # Resize to target resolution
                             broll_clip = resize_video(broll_clip, target_resolution)
                         
+                        # Load A-Roll clip and create partial overlay
+                        try:
+                            print(f"Loading A-Roll video for partial overlay: {aroll_path}")
+                            aroll_clip = mp.VideoFileClip(aroll_path)
+                            
+                            # Create partial B-Roll overlay
+                            combined_clip = create_partial_broll_overlay(aroll_clip, broll_clip, aroll_percentage)
+                            
+                            if combined_clip is not None:
+                                # Mark this segment as used
+                                used_audio_segments.add(segment_id)
+                                
+                                # Update current audio position
+                                current_audio_position += combined_clip.duration
+                                
+                                # Add to clips list
+                                clips.append(combined_clip)
+                                
+                                # Close A-Roll clip
+                                aroll_clip.close()
+                                continue
+                            else:
+                                print("Failed to create partial B-Roll overlay, falling back to standard method")
+                                # Fall back to standard method (continue with existing code)
+                            
+                            # Close A-Roll clip if not used
+                            aroll_clip.close()
+                            
+                        except Exception as e:
+                            print(f"Error creating partial B-Roll overlay: {str(e)}")
+                            print("Falling back to standard B-Roll method")
+                            # Fall back to standard method (continue with existing code)
+                        
+                        # Original B-Roll with A-Roll audio implementation (fallback)
                         # Load A-Roll audio
                         if segment_id in extracted_audio_paths:
                             audio_path = extracted_audio_paths[segment_id]
@@ -678,9 +765,6 @@ def assemble_video(sequence, target_resolution=(1080, 1920), output_dir=None, pr
                                 
                                 # Mark this segment as used
                                 used_audio_segments.add(segment_id)
-                                
-                                # Update current audio position
-                                current_audio_position += broll_clip.duration
                                 
                             except Exception as e:
                                 print(f"Error applying A-Roll audio to B-Roll: {str(e)}")

@@ -28,31 +28,31 @@
     "broll": {
         "segment_0": {
             "status": "complete",
-            "file_path": "config/user_data/my_short_video/media/broll/broll_segment_0_20250602_232201.png",
-            "prompt_id": "a92392d9-62d6-4f49-bd7a-c7e45d9a94b3",
+            "file_path": "config/user_data/my_short_video/media/broll/broll_segment_0_20250603_012704.png",
+            "prompt_id": "5d69c445-85ef-4c07-aa34-d28197c206ff",
             "content_type": "output",
-            "timestamp": "2025-06-02 23:22:01"
+            "timestamp": "2025-06-03 01:27:04"
         },
         "segment_1": {
             "status": "complete",
-            "file_path": "config/user_data/my_short_video/media/broll/broll_segment_1_20250602_232201.png",
-            "prompt_id": "05a6667c-eb6b-446b-a788-54ad1ee29d3f",
+            "file_path": "config/user_data/my_short_video/media/broll/broll_segment_1_20250603_012705.png",
+            "prompt_id": "56dd5377-c4e8-4dda-9f94-285f7ad1f586",
             "content_type": "output",
-            "timestamp": "2025-06-02 23:22:01"
+            "timestamp": "2025-06-03 01:27:05"
         },
         "segment_2": {
             "status": "complete",
-            "file_path": "config/user_data/my_short_video/media/broll/broll_segment_2_20250602_232202.png",
-            "prompt_id": "27a33668-fdd9-41d0-b7d4-55999ecb2d89",
+            "file_path": "config/user_data/my_short_video/media/broll/broll_segment_2_20250603_012705.png",
+            "prompt_id": "b14741ba-3847-4eb4-bfa2-3f3474683777",
             "content_type": "output",
-            "timestamp": "2025-06-02 23:22:02"
+            "timestamp": "2025-06-03 01:27:05"
         },
         "segment_3": {
             "status": "complete",
-            "file_path": "config/user_data/my_short_video/media/broll/broll_segment_3_20250602_232202.png",
-            "prompt_id": "978d29c7-968d-4bd9-9d6b-bca43bb7c0f5",
+            "file_path": "config/user_data/my_short_video/media/broll/broll_segment_3_20250603_012705.png",
+            "prompt_id": "eac3f484-2244-41b7-9912-650a7d9bcb74",
             "content_type": "output",
-            "timestamp": "2025-06-02 23:22:02"
+            "timestamp": "2025-06-03 01:27:05"
         }
     }
 }

@@ -30,6 +30,13 @@ try:
         get_available_engines,
         check_module_availability
     )
+    from utils.ai.broll_prompt_generator import (
+        check_ollama_availability,
+        get_available_models,
+        generate_all_broll_prompts,
+        save_broll_prompts,
+        DEFAULT_MODEL
+    )
     print("Successfully imported local modules")
 except ImportError as e:
     st.error(f"Failed to import local modules: {str(e)}")
@@ -198,8 +205,14 @@ if "segment_edit_index" not in st.session_state:
     st.session_state.segment_edit_index = -1
 if "script_theme" not in st.session_state:
     st.session_state.script_theme = ""
-if "broll_generation_strategy" not in st.session_state:
-    st.session_state.broll_generation_strategy = "balanced"
+if "use_ollama_prompts" not in st.session_state:
+    st.session_state.use_ollama_prompts = True
+if "ollama_available" not in st.session_state:
+    st.session_state.ollama_available = False
+if "ollama_models" not in st.session_state:
+    st.session_state.ollama_models = []
+if "selected_ollama_model" not in st.session_state:
+    st.session_state.selected_ollama_model = DEFAULT_MODEL
 
 # Function to save the transcription data
 def save_transcription_data(data):
@@ -594,6 +607,19 @@ def save_segments(a_roll_segments, b_roll_segments, theme):
         with open(script_file, "w") as f:
             json.dump(data, f, indent=2)
         print(f"Saved segments to {script_file}")
+        
+        # Generate B-Roll prompts with Ollama if enabled
+        if st.session_state.use_ollama_prompts and st.session_state.ollama_available:
+            try:
+                # Use selected model or default
+                model = st.session_state.selected_ollama_model or DEFAULT_MODEL
+                prompts = generate_all_broll_prompts(all_segments, theme, model, is_video=True)
+                if prompts:
+                    save_broll_prompts(prompts, project_path, broll_type="video")
+                    print(f"Generated and saved B-Roll prompts using Ollama model: {model}")
+            except Exception as e:
+                print(f"Error generating B-Roll prompts: {str(e)}")
+        
         return True
     except IOError as e:
         print(f"Error saving segments: {str(e)}")
@@ -610,6 +636,20 @@ def main():
     # Check if A-roll segments already exist
     if not st.session_state.segmentation_complete:
         load_a_roll_segments()
+    
+    # Check for Ollama availability
+    try:
+        st.session_state.ollama_available = check_ollama_availability()
+        if st.session_state.ollama_available:
+            st.session_state.ollama_models = get_available_models()
+            # Set default model if it's available, otherwise use the first available model
+            if DEFAULT_MODEL in st.session_state.ollama_models:
+                st.session_state.selected_ollama_model = DEFAULT_MODEL
+            elif st.session_state.ollama_models:
+                st.session_state.selected_ollama_model = st.session_state.ollama_models[0]
+    except Exception as e:
+        print(f"Error checking Ollama availability: {str(e)}")
+        st.session_state.ollama_available = False
     
     # Step 1: Upload video
     st.header("Step 1: Upload A-Roll Video")
@@ -705,33 +745,77 @@ def main():
                 save_transcription_data(st.session_state.transcription_data)
                 st.success("Transcription updated!")
         
-        # Step 4: Segment the transcription
-        st.header("Step 4: Create A-Roll Segments")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            min_duration = st.slider("Minimum Segment Duration (seconds)", 3, 10, 5)
-        
-        with col2:
-            max_duration = st.slider("Maximum Segment Duration (seconds)", 5, 10, 5)
-        
-        if st.button("Generate A-Roll Segments"):
-            with st.spinner("Generating segments..."):
-                a_roll_segments = segment_transcription(
-                    st.session_state.transcription_data,
-                    min_segment_duration=min_duration,
-                    max_segment_duration=max_duration
-                )
+        # Step 4: Adjust segmentation and B-Roll generation
+        if st.session_state.segmentation_complete:
+            st.header("Step 4: Finalize A-Roll Segments and Generate B-Roll")
+            
+            with st.expander("B-Roll Generation Options", expanded=True):
+                col1, col2 = st.columns(2)
                 
-                st.session_state.a_roll_segments = a_roll_segments
-                st.session_state.segmentation_complete = True
+                with col1:
+                    b_roll_strategy = st.selectbox(
+                        "B-Roll Placement Strategy",
+                        ["balanced", "minimal", "maximum"],
+                        index=0,
+                        help="Choose how B-Roll segments are placed: 'minimal' (intro/outro only), 'balanced' (approx. 1 B-Roll per 2 A-Roll), or 'maximum' (B-Roll between every A-Roll)"
+                    )
                 
-                # Save the segments
-                save_a_roll_segments(a_roll_segments)
+                with col2:
+                    theme = st.text_input("Video Theme", st.session_state.script_theme or "educational video")
+            
+                # Add Ollama integration UI if available
+                if st.session_state.ollama_available:
+                    st.success("✅ Ollama AI is available for enhanced B-Roll prompts")
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.session_state.use_ollama_prompts = st.checkbox(
+                            "Use Ollama for B-Roll Prompts", 
+                            value=st.session_state.use_ollama_prompts,
+                            help="Generate better B-Roll prompts using Ollama AI"
+                        )
+                    
+                    with col2:
+                        if st.session_state.use_ollama_prompts:
+                            model_options = st.session_state.ollama_models
+                            if model_options:
+                                # Find the index of the selected model in the list
+                                selected_index = 0
+                                if st.session_state.selected_ollama_model in model_options:
+                                    selected_index = model_options.index(st.session_state.selected_ollama_model)
+                                
+                                st.session_state.selected_ollama_model = st.selectbox(
+                                    "Ollama Model",
+                                    model_options,
+                                    index=selected_index,
+                                    help="Select the Ollama model to use for generating B-Roll prompts"
+                                )
                 
-                st.success(f"Created {len(a_roll_segments)} A-Roll segments!")
-                st.experimental_rerun()
+                    if st.session_state.use_ollama_prompts:
+                        st.info("The selected Ollama model will be used to generate detailed B-Roll prompts that accurately represent what's being spoken in each A-Roll segment.")
+                else:
+                    st.warning("⚠️ Ollama AI is not available. Simple B-Roll prompts will be used.")
+                    st.session_state.use_ollama_prompts = False
+            
+            # Button to generate B-Roll segments
+            if st.button("Generate B-Roll Segments"):
+                with st.spinner("Generating B-Roll segments..."):
+                    # Generate B-Roll segments
+                    b_roll_segments = generate_broll_segments(st.session_state.a_roll_segments, theme, b_roll_strategy)
+                    st.session_state.b_roll_segments = b_roll_segments
+                    
+                    # Save segments to file
+                    if save_segments(st.session_state.a_roll_segments, b_roll_segments, theme):
+                        st.success(f"Successfully generated {len(b_roll_segments)} B-Roll segments")
+                        st.session_state.script_theme = theme
+                        
+                        # Mark step as complete
+                        mark_step_complete("aroll_transcription")
+                        
+                        # Show success message with next steps
+                        st.success("A-Roll transcription and B-Roll generation complete! You can now proceed to B-Roll prompt customization or Video Assembly.")
+                    else:
+                        st.error("Failed to save segments. Please try again.")
     
     # Step 5: Review and edit segments
     if st.session_state.segmentation_complete and st.session_state.a_roll_segments:

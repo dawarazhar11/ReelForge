@@ -6,7 +6,18 @@ This guide will help you set up Ollama on your system to enable the automatic A-
 
 Ollama is a tool that lets you run large language models (LLMs) locally on your machine. Our app uses the `mistral:7b-instruct-v0.3-q4_K_M` model for intelligent video segmentation and B-Roll prompt generation.
 
-## Installation
+## Custom Ollama Server
+
+The application is configured to use a custom Ollama server at:
+```
+http://100.115.243.42:11434
+```
+
+This server should already have the required models installed and be accessible from your network.
+
+## Local Installation (Alternative)
+
+If you prefer to run Ollama locally or the custom server is unavailable, follow these installation steps:
 
 ### macOS
 
@@ -34,7 +45,7 @@ Ollama is a tool that lets you run large language models (LLMs) locally on your 
 
 ## Downloading the Required Model
 
-Once Ollama is installed and running, you need to download the Mistral model we use for segmentation:
+Once Ollama is installed and running locally, you need to download the Mistral model we use for segmentation:
 
 1. Open a terminal/command prompt
 2. Run the following command:
@@ -43,6 +54,14 @@ Once Ollama is installed and running, you need to download the Mistral model we 
    ```
 3. Wait for the download to complete (this may take a few minutes depending on your internet connection)
 
+## Using a Local Ollama Server
+
+If you want to use a local Ollama server instead of the custom one, you'll need to update the client configuration:
+
+1. Edit the file: `utils/ai/ollama_client.py`
+2. Change the `DEFAULT_HOST` value from `http://100.115.243.42:11434` to `http://localhost:11434`
+3. Save the file and restart the application
+
 ## Verifying the Installation
 
 To verify that Ollama is running correctly:
@@ -50,13 +69,13 @@ To verify that Ollama is running correctly:
 1. Open a terminal/command prompt
 2. Run the following command:
    ```bash
-   curl http://localhost:11434/api/tags
+   curl http://100.115.243.42:11434/api/tags
    ```
 3. You should see a JSON response listing the available models
 
 ## Using Ollama with the App
 
-Once Ollama is installed and running:
+Once Ollama is configured:
 
 1. Launch the AI Money Printer Shorts application
 2. Navigate to the A-Roll Transcription page
@@ -68,8 +87,8 @@ Once Ollama is installed and running:
 
 If you encounter issues with Ollama:
 
-- Make sure the Ollama application is running
-- Check if the service is accessible by running `curl http://localhost:11434/api/tags`
+- Make sure the Ollama server is accessible by running `curl http://100.115.243.42:11434/api/tags`
+- If using a local installation, check if the service is accessible by running `curl http://localhost:11434/api/tags`
 - Restart Ollama if it's not responding
 - Check Ollama's system requirements (8GB RAM minimum, 16GB recommended)
 

@@ -28,21 +28,31 @@
     "broll": {
         "segment_0": {
             "status": "complete",
-            "file_path": "broll_segment_0_20250520_123906.mp4",
-            "prompt_id": "ca26f439-3be6-4897-9e8a-d56448f4bb9a",
-            "timestamp": "2025-05-20 17:06:19"
+            "file_path": "config/user_data/my_short_video/media/broll/broll_segment_0_20250602_232201.png",
+            "prompt_id": "a92392d9-62d6-4f49-bd7a-c7e45d9a94b3",
+            "content_type": "output",
+            "timestamp": "2025-06-02 23:22:01"
         },
         "segment_1": {
             "status": "complete",
-            "file_path": "broll_segment_1_20250520_123907.mp4",
-            "prompt_id": "15027251-6c76-4aee-b5d1-adddfa591257",
-            "timestamp": "2025-05-20 17:06:20"
+            "file_path": "config/user_data/my_short_video/media/broll/broll_segment_1_20250602_232201.png",
+            "prompt_id": "05a6667c-eb6b-446b-a788-54ad1ee29d3f",
+            "content_type": "output",
+            "timestamp": "2025-06-02 23:22:01"
         },
         "segment_2": {
             "status": "complete",
-            "file_path": "broll_segment_2_20250520_123908.mp4",
-            "prompt_id": "8f34773a-a113-494b-be8a-e5ecd241a8a4",
-            "timestamp": "2025-05-20 17:06:20"
+            "file_path": "config/user_data/my_short_video/media/broll/broll_segment_2_20250602_232202.png",
+            "prompt_id": "27a33668-fdd9-41d0-b7d4-55999ecb2d89",
+            "content_type": "output",
+            "timestamp": "2025-06-02 23:22:02"
+        },
+        "segment_3": {
+            "status": "complete",
+            "file_path": "config/user_data/my_short_video/media/broll/broll_segment_3_20250602_232202.png",
+            "prompt_id": "978d29c7-968d-4bd9-9d6b-bca43bb7c0f5",
+            "content_type": "output",
+            "timestamp": "2025-06-02 23:22:02"
         }
     }
 }

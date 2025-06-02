@@ -1,23 +1,33 @@
 {
     "prompts": {
         "segment_0": {
-            "prompt": "A fluffy ginger cat, with wide, expressive emerald green eyes and adorably oversized, velvety black ears, sits on a plush velvet cushion in a warmly lit, sun-drenched study, speaking directly to the viewer with a slightly bewildered and charming expression, cinematic 9:16 aspect ratio, detailed textures, shallow depth of field, golden hour lighting, whimsical and slightly surreal style, emphasizing the cat's unique perspective.",
-            "negative_prompt": "poor quality, blurry, distorted faces, bad anatomy, ugly, unrealistic, deformed, low resolution, amateur, poorly composed, watermark, text, signature, extra limbs, extra fingers, extra toes, jpeg artifacts, oversaturated, unnatural colors, strange proportions, floating objects, out of focus, motion blur, chromatic aberration, grain, noise",
-            "is_video": true,
-            "segment_text": "You just can't see it."
+            "prompt": "In a warm, sun-drenched parlour with plush velvet cushions and antique vases on intricately carved wooden tables, a sleek black cat with piercing emerald eyes sits regally on a cushioned armchair, its whiskers twitching as it gazes intensely at its reflection in a gilded mirror. Soft afternoon light streams through the tall windows, casting a warm glow over the room and illuminating the delicate patterns of the Persian rug beneath its paws. The cat's ears perk up slightly as it begins to speak, its voice low and soothing, as if sharing a secret with the viewer. In the background, a delicate watercolour painting of a serene landscape hangs on the wall, adding a touch of elegance and refinement to the scene.",
+            "negative_prompt": "\"A photograph of a cat with a warped face, set in a poorly lit room with unrefined furniture, featuring an unflattering background with awkward composition, captured at low resolution and exhibiting noticeable pixelation.\"",
+            "is_video": false,
+            "segment_text": "Introductory visual for A cat talking about its eyes and ears."
         },
         "segment_1": {
-            "prompt": "A ginger tabby cat, with strikingly emerald eyes and oversized ears, sits perched on a worn, velvet armchair, illuminated by warm, golden hour sunlight streaming through a dusty window, speaking directly to the camera with a thoughtful, slightly anxious expression, creating a cozy, intimate 9:16 video with detailed fur textures and subtle bokeh, emphasizing the cat's perceptive gaze and the quietness of the room.",
-            "negative_prompt": "poor quality, blurry, distorted faces, bad anatomy, ugly, unrealistic, deformed, low resolution, amateur, poorly composed, watermark, text, signature, extra limbs, extra fingers, multiple views, out of frame, cropped, jpeg artifacts, noisy, grain, oversaturated, underexposed, motion blur, chromatic aberration, strange colors, unnatural lighting, floating objects, bad reflections, depth of field issues, bokeh artifacts, strange poses, unsettling, creepy, morbid.",
-            "is_video": true,
-            "segment_text": "I hear bugs in the wall."
+            "prompt": "In a cozy, dimly lit room with plush velvet curtains and a soft, cream-colored rug, a sleek black cat sits on a worn wooden armchair, its eyes gleaming like two bright emeralds in the warm glow of a nearby table lamp. The cat's ears perk up slightly as it begins to speak, its voice low and smooth, as it surveys its surroundings with an air of quiet self-satisfaction. A few scattered books and a vase with fresh flowers on the coffee table behind it add a touch of elegance and refinement to the scene, while a large window behind the cat lets in a soft, diffused light that highlights its fur and creates a sense of depth and dimensionality. The camera is positioned at a slight angle above the cat's left shoulder, capturing its profile as well as the intricate details of its facial features.",
+            "negative_prompt": "\"Generate an image/video of a cat in a cozy room with realistic texture, high-resolution, sharp facial features, accurate anatomy, and elegant composition. Avoid blurry, distorted, or deformed faces, poor quality lighting, low resolution, amateurish atmosphere, and unrealistic settings.\"",
+            "is_video": false,
+            "segment_text": "Introductory visual for A cat talking about its eyes and ears."
         },
         "segment_2": {
-            "prompt": "A ginger tabby cat, with strikingly emerald eyes and velvety ears, sits perched on a worn velvet armchair, bathed in the warm, diffused glow of a late afternoon sun, speaking directly to the camera with a contemplative expression, cinematic 9:16 aspect ratio, detailed fur texture, soft focus, painterly style, reminiscent of Rembrandt\u2019s lighting, evoking a sense of mystery and quiet observation.",
-            "negative_prompt": "poor quality, blurry, distorted faces, bad anatomy, ugly, unrealistic, deformed, low resolution, amateur, poorly composed, watermark, text, signature, jpeg artifacts, oversaturated, overexposed, underexposed, multiple limbs, extra limbs, extra fingers, extra toes, cropped, tiling, out of frame, disfigured, mutation, gross proportions, bad hands, bad paws, unnatural colors, noisy, grain, chromatic aberration",
-            "is_video": true,
-            "segment_text": "And sometimes, yes\u2014I sense ghosts."
+            "prompt": "In a dimly lit, old-world study with dusty bookshelves and faded velvet curtains, a sleek black cat sits perched on a worn armchair, its piercing green eyes fixed intently on an unseen listener. The cat's ears perk up slightly, as if aware of the unspoken threat, while its tail twitches with irritation. A faint glow emanates from a nearby candelabra, casting long shadows across the room and imbuing the atmosphere with a sense of unease. The camera captures the scene from a low angle, placing the viewer in the cat's position, as it begins to speak: \"You think you have privacy in this house? That's cute.\"",
+            "negative_prompt": "\"Generate an image/video of a high-quality, in-focus scene with accurate human/animal anatomy, realistic lighting, and proper composition. Avoid producing low resolution, blurry, distorted faces, ugly, unrealistic, deformed, poorly lit, or amateur-looking content. Ensure the atmosphere is tense but not eerie, and the cat's expression is intense yet not cartoonish.\"",
+            "is_video": false,
+            "segment_text": "Visual representation of: You think you have privacy in this house? That's c..."
+        },
+        "segment_3": {
+            "prompt": "A sleek black cat sits on a plush velvet cushion in a cozy, dimly lit library, surrounded by tall bookshelves and floor-to-ceiling windows that let in a warm, golden afternoon light. The cat's piercing green eyes seem to gleam with mischief as it begins to speak, its ears perked up and twitching slightly as if listening for something just out of earshot. A faint hint of a smile plays on the cat's lips as it gestures with a delicate paw, its tail swishing lazily behind it. The camera captures the scene from a slight angle, emphasizing the cat's elegant profile and the soft focus of the background books, which seem to fade into gentle shadows.",
+            "negative_prompt": "\"Generate a high-resolution image with crisp focus, clear and proportional facial features, realistic anatomy, and accurate colors. Avoid poor lighting, harsh shadows, and overly saturated hues. Ensure a well-composed scene with balanced elements and a clear subject of interest. The cat's ears should be proportionate to its head, and its eyes should be round and expressive. The background books should not be blurry or distorted. Exclude any elements that are pixelated, low-resolution, or amateur-looking.\"",
+            "is_video": false,
+            "segment_text": "Concluding visual for A cat talking about its eyes and ears."
         }
     },
-    "broll_type": "videos"
+    "broll_type": "image",
+    "exclude_negative_prompts": false,
+    "image_template": "image_homepc",
+    "map_broll_to_aroll": false,
+    "broll_aroll_mapping": {}
 }

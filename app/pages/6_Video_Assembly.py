@@ -12,6 +12,7 @@ import matplotlib.patches as patches
 import io
 import base64
 from matplotlib.figure import Figure
+import json
 
 # Add the parent directory to the Python path to allow importing from app modules
 app_root = Path(__file__).parent.parent.absolute()
@@ -198,10 +199,96 @@ except ImportError as e:
     except ImportError as e2:
         print(f"Alternative import also failed: {str(e2)}")
         # Create fallback values if import fails
-        helper_assemble_video = None
-        check_file = None
         MOVIEPY_AVAILABLE = False
-        simple_assemble_video = None
+        
+        # Define a dummy function for simple_assemble_video
+        def simple_assemble_video(*args, **kwargs):
+            return {"status": "error", "message": "Video assembly module not available"}
+            
+        # Define a dummy class for MoviePy
+        class DummyMoviePy:
+            def __getattr__(self, name):
+                def method(*args, **kwargs):
+                    return None
+                return method
+
+# Function to check if the A-Roll was created using transcription
+def is_transcription_based_aroll():
+    """Check if the A-Roll was created using transcription"""
+    project_path = Path(st.session_state.get("project_path", "."))
+    script_file = project_path / "script.json"
+    if script_file.exists():
+        try:
+            with open(script_file, "r") as f:
+                data = json.load(f)
+                return data.get("source") == "transcription"
+        except Exception as e:
+            print(f"Error checking transcription source: {str(e)}")
+    return False
+
+# Function to get the full A-Roll video path
+def get_full_aroll_video_path():
+    """Get the path to the full A-Roll video from transcription"""
+    project_path = Path(st.session_state.get("project_path", "."))
+    
+    # Check common locations for the uploaded video
+    potential_paths = [
+        project_path / "media" / "a-roll" / "full_video.mp4",
+        project_path / "media" / "aroll" / "full_video.mp4",
+        project_path / "uploaded_video.mp4"
+    ]
+    
+    # Check session state for uploaded video path
+    if "uploaded_video" in st.session_state and st.session_state.uploaded_video:
+        potential_paths.append(Path(st.session_state.uploaded_video))
+    
+    # Check if we have a transcription file that might contain the video path
+    transcription_file = project_path / "transcription.json"
+    if transcription_file.exists():
+        try:
+            with open(transcription_file, "r") as f:
+                data = json.load(f)
+                if "video_path" in data:
+                    potential_paths.append(Path(data["video_path"]))
+        except:
+            pass
+    
+    for path in potential_paths:
+        if path.exists():
+            print(f"Found full A-Roll video at: {path}")
+            return str(path)
+    
+    return None
+
+# Function to get segment timestamps from script.json
+def get_segment_timestamps():
+    """Get timestamps for A-Roll segments from script.json"""
+    project_path = Path(st.session_state.get("project_path", "."))
+    script_file = project_path / "script.json"
+    segment_timestamps = {}
+    
+    if script_file.exists():
+        try:
+            with open(script_file, "r") as f:
+                data = json.load(f)
+                segments = data.get("segments", [])
+                
+                # Extract timestamps for A-Roll segments
+                aroll_index = 0
+                for segment in segments:
+                    if segment.get("type") == "A-Roll":
+                        segment_id = f"segment_{aroll_index}"
+                        segment_timestamps[segment_id] = {
+                            "start_time": segment.get("start_time", 0),
+                            "end_time": segment.get("end_time", 0),
+                            "duration": segment.get("duration", 0),
+                            "content": segment.get("content", "")
+                        }
+                        aroll_index += 1
+        except Exception as e:
+            print(f"Error extracting segment timestamps: {str(e)}")
+    
+    return segment_timestamps
 
 # Try to import MoviePy, show helpful error if not available
 try:
@@ -226,7 +313,6 @@ from components.custom_navigation import render_custom_sidebar, render_horizonta
 from utils.session_state import get_settings, get_project_path, mark_step_complete
 
 # Rest of the imports
-import json
 from pathlib import Path
 import subprocess
 
@@ -485,6 +571,16 @@ def get_aroll_filepath(segment_id, segment_data):
     Returns:
         tuple: (filepath, success, error_message)
     """
+    # First check if we're using transcription-based A-Roll
+    if is_transcription_based_aroll():
+        full_video_path = get_full_aroll_video_path()
+        if full_video_path:
+            print(f"Using full A-Roll video for {segment_id}: {full_video_path}")
+            return full_video_path, True, None
+        else:
+            print("No full A-Roll video found for transcription-based A-Roll")
+    
+    # If not transcription-based or no full video found, continue with original implementation
     # First, check the status file for this segment
     aroll_status = st.session_state.content_status.get("aroll", {}).get(segment_id, {})
     
@@ -497,6 +593,7 @@ def get_aroll_filepath(segment_id, segment_data):
         return aroll_status["local_path"], True, None
     
     # Next, check media/a-roll directory for segment_id.mp4
+    project_path = Path(st.session_state.get("project_path", "."))
     aroll_file = project_path / "media" / "a-roll" / f"{segment_id}.mp4"
     if aroll_file.exists():
         print(f"Found A-Roll file at: {aroll_file}")
@@ -658,6 +755,36 @@ def create_assembly_sequence():
     print(f"A-Roll keys: {list(aroll_segments.keys())}")
     print(f"B-Roll keys: {list(broll_segments.keys())}")
     
+    # Check if we're using transcription-based A-Roll
+    is_transcription = is_transcription_based_aroll()
+    full_aroll_path = None
+    segment_timestamps = {}
+    
+    if is_transcription:
+        print("Using transcription-based A-Roll")
+        full_aroll_path = get_full_aroll_video_path()
+        if not full_aroll_path:
+            return {"status": "error", "message": "Full A-Roll video not found. Please upload a video in the A-Roll Transcription page."}
+        
+        # Load segment timestamps
+        segment_timestamps = get_segment_timestamps()
+        if not segment_timestamps:
+            return {"status": "error", "message": "No A-Roll segment timestamps found. Please complete the A-Roll Transcription step first."}
+        
+        # Store timestamps in session state for later use
+        st.session_state.segment_timestamps = segment_timestamps
+        
+        # Create virtual A-Roll segments based on timestamps if needed
+        if not aroll_segments:
+            for segment_id, timestamp_data in segment_timestamps.items():
+                aroll_segments[segment_id] = {
+                    "type": "A-Roll",
+                    "start_time": timestamp_data["start_time"],
+                    "end_time": timestamp_data["end_time"],
+                    "duration": timestamp_data["duration"],
+                    "content": timestamp_data["content"]
+                }
+    
     # Get selected sequence pattern
     selected_sequence = st.session_state.get("selected_sequence", "Standard (A-Roll start, B-Roll middle with A-Roll audio, A-Roll end)")
     
@@ -701,7 +828,14 @@ def create_assembly_sequence():
                 aroll_data = aroll_segments[aroll_segment_id]
                 broll_data = broll_segments[broll_segment_id]
                 
-                aroll_path, aroll_success, aroll_error = get_aroll_filepath(aroll_segment_id, aroll_data)
+                # For transcription-based A-Roll, use the full video path
+                if is_transcription and full_aroll_path:
+                    aroll_path = full_aroll_path
+                    aroll_success = True
+                    aroll_error = None
+                else:
+                    aroll_path, aroll_success, aroll_error = get_aroll_filepath(aroll_segment_id, aroll_data)
+                
                 broll_path = get_broll_filepath(broll_segment_id, broll_data)
                 
                 if aroll_path and broll_path:
@@ -711,7 +845,9 @@ def create_assembly_sequence():
                         "aroll_path": aroll_path,
                         "broll_path": broll_path,
                         "segment_id": aroll_segment_id,
-                        "broll_id": broll_segment_id
+                        "broll_id": broll_segment_id,
+                        "is_transcription": is_transcription,
+                        "timestamp_data": segment_timestamps.get(aroll_segment_id, {}) if is_transcription else {}
                     })
                     # Mark this A-Roll segment as used
                     used_aroll_segments.add(aroll_segment_id)
@@ -725,7 +861,14 @@ def create_assembly_sequence():
         # First segment is A-Roll only
         if "segment_0" in aroll_segments:
             aroll_data = aroll_segments["segment_0"]
-            aroll_path, aroll_success, aroll_error = get_aroll_filepath("segment_0", aroll_data)
+            
+            # For transcription-based A-Roll, use the full video path
+            if is_transcription and full_aroll_path:
+                aroll_path = full_aroll_path
+                aroll_success = True
+                aroll_error = None
+            else:
+                aroll_path, aroll_success, aroll_error = get_aroll_filepath("segment_0", aroll_data)
             
             if aroll_path:
                 print(f"Adding A-Roll segment 0 with path: {aroll_path}")
@@ -733,7 +876,9 @@ def create_assembly_sequence():
                     "type": "aroll_full",
                     "aroll_path": aroll_path,
                     "broll_path": None,
-                    "segment_id": "segment_0"
+                    "segment_id": "segment_0",
+                    "is_transcription": is_transcription,
+                    "timestamp_data": segment_timestamps.get("segment_0", {}) if is_transcription else {}
                 })
                 # Mark as used
                 used_aroll_segments.add("segment_0")
@@ -755,7 +900,14 @@ def create_assembly_sequence():
                 aroll_data = aroll_segments[aroll_segment_id]
                 broll_data = broll_segments[broll_segment_id]
                 
-                aroll_path, aroll_success, aroll_error = get_aroll_filepath(aroll_segment_id, aroll_data)
+                # For transcription-based A-Roll, use the full video path
+                if is_transcription and full_aroll_path:
+                    aroll_path = full_aroll_path
+                    aroll_success = True
+                    aroll_error = None
+                else:
+                    aroll_path, aroll_success, aroll_error = get_aroll_filepath(aroll_segment_id, aroll_data)
+                
                 broll_path = get_broll_filepath(broll_segment_id, broll_data)
                 
                 if aroll_path and broll_path:
@@ -765,7 +917,9 @@ def create_assembly_sequence():
                         "aroll_path": aroll_path,
                         "broll_path": broll_path,
                         "segment_id": aroll_segment_id,
-                        "broll_id": broll_segment_id
+                        "broll_id": broll_segment_id,
+                        "is_transcription": is_transcription,
+                        "timestamp_data": segment_timestamps.get(aroll_segment_id, {}) if is_transcription else {}
                     })
                     # Mark as used
                     used_aroll_segments.add(aroll_segment_id)
@@ -781,222 +935,35 @@ def create_assembly_sequence():
         # Skip if this A-Roll segment was already used
         if last_segment_id not in used_aroll_segments and last_segment_id in aroll_segments:
             aroll_data = aroll_segments[last_segment_id]
-            aroll_path, aroll_success, aroll_error = get_aroll_filepath(last_segment_id, aroll_data)
             
-            if aroll_path:
-                print(f"Adding final A-Roll segment with path: {aroll_path}")
-                assembly_sequence.append({
-                    "type": "aroll_full",
-                    "aroll_path": aroll_path,
-                    "broll_path": None,
-                    "segment_id": last_segment_id
-                })
-                # Mark as used
-                used_aroll_segments.add(last_segment_id)
-    
-    # A-Roll Bookends pattern
-    elif "Bookends" in selected_sequence:
-        # Track which A-Roll segments have been used to prevent duplicates
-        used_aroll_segments = set()
-        
-        # First segment is A-Roll only
-        if "segment_0" in aroll_segments:
-            aroll_data = aroll_segments["segment_0"]
-            aroll_path, aroll_success, aroll_error = get_aroll_filepath("segment_0", aroll_data)
-            
-            if aroll_path:
-                print(f"Adding A-Roll segment 0 with path: {aroll_path}")
-                assembly_sequence.append({
-                    "type": "aroll_full",
-                    "aroll_path": aroll_path,
-                    "broll_path": None,
-                    "segment_id": "segment_0"
-                })
-                # Mark as used
-                used_aroll_segments.add("segment_0")
-        
-        # All middle segments use B-Roll visuals with A-Roll audio
-        for i in range(1, total_aroll_segments - 1):
-            aroll_segment_id = f"segment_{i}"
-            
-            # Skip if this A-Roll segment was already used
-            if aroll_segment_id in used_aroll_segments:
-                print(f"Skipping duplicate A-Roll segment {i} to prevent audio overlap")
-                continue
-                
-            # Use the appropriate B-Roll segment or cycle through available ones
-            broll_index = (i - 1) % total_broll_segments
-            broll_segment_id = f"segment_{broll_index}"
-            
-            if aroll_segment_id in aroll_segments and broll_segment_id in broll_segments:
-                aroll_data = aroll_segments[aroll_segment_id]
-                broll_data = broll_segments[broll_segment_id]
-                
-                aroll_path, aroll_success, aroll_error = get_aroll_filepath(aroll_segment_id, aroll_data)
-                broll_path = get_broll_filepath(broll_segment_id, broll_data)
-                
-                if aroll_path and broll_path:
-                    print(f"Adding B-Roll segment {broll_index} with A-Roll segment {i}")
-                    assembly_sequence.append({
-                        "type": "broll_with_aroll_audio",
-                        "aroll_path": aroll_path,
-                        "broll_path": broll_path,
-                        "segment_id": aroll_segment_id,
-                        "broll_id": broll_segment_id
-                    })
-                    # Mark as used
-                    used_aroll_segments.add(aroll_segment_id)
-            
-        # Last segment is A-Roll only
-        last_segment_id = f"segment_{total_aroll_segments - 1}"
-        
-        # Skip if this A-Roll segment was already used
-        if last_segment_id not in used_aroll_segments and last_segment_id in aroll_segments:
-            aroll_data = aroll_segments[last_segment_id]
-            aroll_path, aroll_success, aroll_error = get_aroll_filepath(last_segment_id, aroll_data)
-            
-            if aroll_path:
-                print(f"Adding final A-Roll segment with path: {aroll_path}")
-                assembly_sequence.append({
-                    "type": "aroll_full",
-                    "aroll_path": aroll_path,
-                    "broll_path": None,
-                    "segment_id": last_segment_id
-                })
-                # Mark as used
-                used_aroll_segments.add(last_segment_id)
-    
-    # A-Roll Sandwich pattern (A-Roll at start, middle, and end)
-    elif "Sandwich" in selected_sequence:
-        # Track which A-Roll segments have been used to prevent duplicates
-        used_aroll_segments = set()
-        
-        # Calculate which segments will be A-Roll vs B-Roll
-        total_segments = total_aroll_segments
-        a_roll_positions = [0]  # First position is always A-Roll
-        
-        # Add middle position if we have at least 3 segments
-        if total_segments >= 3:
-            middle_pos = total_segments // 2
-            a_roll_positions.append(middle_pos)
-        
-        # Add last position if we have at least 2 segments
-        if total_segments >= 2:
-            a_roll_positions.append(total_segments - 1)
-        
-        # Create the sequence
-        for i in range(total_segments):
-            aroll_segment_id = f"segment_{i}"
-            
-            # Skip if this A-Roll segment was already used
-            if aroll_segment_id in used_aroll_segments:
-                print(f"Skipping duplicate A-Roll segment {i} to prevent audio overlap")
-                continue
-                
-            # If this is a position for A-Roll
-            if i in a_roll_positions:
-                if aroll_segment_id in aroll_segments:
-                    aroll_data = aroll_segments[aroll_segment_id]
-                    aroll_path, aroll_success, aroll_error = get_aroll_filepath(aroll_segment_id, aroll_data)
-                    
-                    if aroll_path:
-                        print(f"Adding A-Roll segment {i} with path: {aroll_path}")
-                        assembly_sequence.append({
-                            "type": "aroll_full",
-                            "aroll_path": aroll_path,
-                            "broll_path": None,
-                            "segment_id": aroll_segment_id
-                        })
-                        # Mark as used
-                        used_aroll_segments.add(aroll_segment_id)
-            # Otherwise use B-Roll with A-Roll audio
+            # For transcription-based A-Roll, use the full video path
+            if is_transcription and full_aroll_path:
+                aroll_path = full_aroll_path
+                aroll_success = True
+                aroll_error = None
             else:
-                # Use the appropriate B-Roll segment or cycle through available ones
-                broll_index = (i - 1) % total_broll_segments
-                broll_segment_id = f"segment_{broll_index}"
-                
-                if aroll_segment_id in aroll_segments and broll_segment_id in broll_segments:
-                    aroll_data = aroll_segments[aroll_segment_id]
-                    broll_data = broll_segments[broll_segment_id]
-                    
-                    aroll_path, aroll_success, aroll_error = get_aroll_filepath(aroll_segment_id, aroll_data)
-                    broll_path = get_broll_filepath(broll_segment_id, broll_data)
-                    
-                    if aroll_path and broll_path:
-                        print(f"Adding B-Roll segment {broll_index} with A-Roll segment {i}")
-                        assembly_sequence.append({
-                            "type": "broll_with_aroll_audio",
-                            "aroll_path": aroll_path,
-                            "broll_path": broll_path,
-                            "segment_id": aroll_segment_id,
-                            "broll_id": broll_segment_id
-                        })
-                        # Mark as used
-                        used_aroll_segments.add(aroll_segment_id)
-    
-    # B-Roll Heavy (only first segment uses A-Roll visual)
-    elif "B-Roll Heavy" in selected_sequence:
-        # Track which A-Roll segments have been used to prevent duplicates
-        used_aroll_segments = set()
-        
-        # First segment is A-Roll only
-        if "segment_0" in aroll_segments:
-            aroll_data = aroll_segments["segment_0"]
-            aroll_path, aroll_success, aroll_error = get_aroll_filepath("segment_0", aroll_data)
+                aroll_path, aroll_success, aroll_error = get_aroll_filepath(last_segment_id, aroll_data)
             
             if aroll_path:
-                print(f"Adding A-Roll segment 0 with path: {aroll_path}")
+                print(f"Adding final A-Roll segment with path: {aroll_path}")
                 assembly_sequence.append({
                     "type": "aroll_full",
                     "aroll_path": aroll_path,
                     "broll_path": None,
-                    "segment_id": "segment_0"
+                    "segment_id": last_segment_id,
+                    "is_transcription": is_transcription,
+                    "timestamp_data": segment_timestamps.get(last_segment_id, {}) if is_transcription else {}
                 })
                 # Mark as used
-                used_aroll_segments.add("segment_0")
-        
-        # All remaining segments use B-Roll visuals with A-Roll audio
-        for i in range(1, total_aroll_segments):
-            aroll_segment_id = f"segment_{i}"
-            
-            # Skip if this A-Roll segment was already used
-            if aroll_segment_id in used_aroll_segments:
-                print(f"Skipping duplicate A-Roll segment {i} to prevent audio overlap")
-                continue
-                
-            # Use the appropriate B-Roll segment or cycle through available ones
-            broll_index = (i - 1) % total_broll_segments
-            broll_segment_id = f"segment_{broll_index}"
-            
-            if aroll_segment_id in aroll_segments and broll_segment_id in broll_segments:
-                aroll_data = aroll_segments[aroll_segment_id]
-                broll_data = broll_segments[broll_segment_id]
-                
-                aroll_path, aroll_success, aroll_error = get_aroll_filepath(aroll_segment_id, aroll_data)
-                broll_path = get_broll_filepath(broll_segment_id, broll_data)
-                
-                if aroll_path and broll_path:
-                    print(f"Adding B-Roll segment {broll_index} with A-Roll segment {i}")
-                    assembly_sequence.append({
-                        "type": "broll_with_aroll_audio",
-                        "aroll_path": aroll_path,
-                        "broll_path": broll_path,
-                        "segment_id": aroll_segment_id,
-                        "broll_id": broll_segment_id
-                    })
-                    # Mark as used
-                    used_aroll_segments.add(aroll_segment_id)
+                used_aroll_segments.add(last_segment_id)
     
-    if assembly_sequence:
-        return {
-            "status": "success",
-            "sequence": assembly_sequence
-        }
-    else:
-        return {
-            "status": "error",
-            "message": "No valid segments found for assembly"
-        }
+    # Store the is_transcription flag and segment timestamps in the result
+    return {
+        "status": "success", 
+        "sequence": assembly_sequence,
+        "is_transcription": is_transcription,
+        "segment_timestamps": segment_timestamps if is_transcription else {}
+    }
 
 def check_for_audio_overlaps(sequence):
     """
@@ -1103,148 +1070,108 @@ def check_for_audio_overlaps(sequence):
 def assemble_video():
     """
     Assemble the final video from A-Roll and B-Roll segments
+    
+    Returns:
+        dict: Result dictionary with status and message
     """
     if not MOVIEPY_AVAILABLE:
-        st.error("MoviePy is not available. Installing required packages...")
-        st.info("Please run: `python utils/video/dependencies.py` to install required packages")
-        return
-
-    # If we're using Custom arrangement and already have a sequence, use it directly
-    if ("Custom" in st.session_state.get("selected_sequence", "") and 
-        "sequence" in st.session_state.video_assembly and 
-        st.session_state.video_assembly["sequence"]):
-        assembly_sequence = st.session_state.video_assembly["sequence"]
-        # Verify the sequence has at least one item
-        if not assembly_sequence:
-            st.error("No valid segments found in the custom sequence. Please create a sequence first.")
-            return
-        sequence_result = {"status": "success", "sequence": assembly_sequence}
-        print("Using existing custom sequence for assembly")
+        st.error("MoviePy is not available. Please install required packages.")
+        return {"status": "error", "message": "MoviePy is not available. Please install required packages."}
+    
+    # Get the sequence from session state or create a new one
+    if "video_assembly" not in st.session_state or "sequence" not in st.session_state.video_assembly:
+        # Create a new sequence
+        result = create_assembly_sequence()
+        if result["status"] != "success":
+            st.error(result["message"])
+            return result
+        
+        sequence = result["sequence"]
+        is_transcription = result.get("is_transcription", False)
+        segment_timestamps = result.get("segment_timestamps", {})
+        
+        # Store in session state
+        if "video_assembly" not in st.session_state:
+            st.session_state.video_assembly = {}
+        st.session_state.video_assembly["sequence"] = sequence
+        st.session_state.video_assembly["is_transcription"] = is_transcription
+        st.session_state.video_assembly["segment_timestamps"] = segment_timestamps
     else:
-        # Get the assembly sequence
-        sequence_result = create_assembly_sequence()
-        
-    if sequence_result["status"] != "success":
-        error_message = sequence_result.get("message", "Failed to create assembly sequence")
-        st.error(error_message)
-        
-        # Add navigation button if no A-Roll segments found
-        if "No A-Roll segments found" in error_message:
-            st.warning("You need to create A-Roll segments first.")
-            
-            # Add button to navigate to A-Roll Transcription page
-            if st.button("Go to A-Roll Transcription", type="primary"):
-                st.switch_page("pages/4.5_ARoll_Transcription.py")
-        
-        return
+        # Use existing sequence
+        sequence = st.session_state.video_assembly["sequence"]
+        is_transcription = st.session_state.video_assembly.get("is_transcription", False)
+        segment_timestamps = st.session_state.video_assembly.get("segment_timestamps", {})
     
-    # Get the assembly sequence from the result
-    assembly_sequence = sequence_result["sequence"]
-        
-    # Check for audio overlaps and warn the user
-    has_overlaps = check_for_audio_overlaps(assembly_sequence)
-    if has_overlaps:
-        continue_anyway = st.checkbox("Continue with assembly despite audio overlaps", value=False)
-        if not continue_anyway:
-            st.warning("Video assembly paused until audio overlaps are resolved or you choose to continue anyway.")
-            return
-    
-    # Parse selected resolution
-    resolution_options = {"1080x1920 (9:16)": (1080, 1920), 
-                         "720x1280 (9:16)": (720, 1280), 
-                         "1920x1080 (16:9)": (1920, 1080)}
-    selected_resolution = st.session_state.get("selected_resolution", "1080x1920 (9:16)")
-    width, height = resolution_options[selected_resolution]
-    
-    # Set up progress reporting
-    progress_text = st.empty()
-    progress_bar = st.progress(0)
-    
-    def update_progress(progress, message):
-        # Update the progress bar and text
-        progress_bar.progress(min(1.0, progress / 100))
-        progress_text.text(f"{message} ({int(progress)}%)")
-    
-    # Perform the video assembly using our helper
-    st.info("Assembling video, please wait...")
-    update_progress(0, "Starting video assembly")
+    # Get the output resolution
+    width = st.session_state.get("output_width", 1080)
+    height = st.session_state.get("output_height", 1920)
     
     # Create output directory if it doesn't exist
+    project_path = Path(st.session_state.get("project_path", "."))
     output_dir = project_path / "output"
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    # Display a checkbox to choose assembly method
-    use_simple_assembly = st.session_state.get("use_simple_assembly", False)
-    st.checkbox("Use simple assembly (FFmpeg direct)", value=use_simple_assembly, 
-                help="Use this if you experience issues with MoviePy", 
-                key="use_simple_assembly")
+    # Generate output filename with timestamp
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_filename = f"final_video_{timestamp}.mp4"
+    output_path = output_dir / output_filename
     
-    try:
-        # Try primary assembly method first unless simple assembly is selected
-        if not st.session_state.get("use_simple_assembly", False):
-            # Call our helper function
-            result = helper_assemble_video(
-                sequence=assembly_sequence,
-                target_resolution=(width, height),
-                output_dir=str(output_dir),
-                progress_callback=update_progress
+    # Create progress bar
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
+    # Function to update progress
+    def update_progress(progress, message):
+        # Update the progress bar and text
+        progress_bar.progress(progress / 100)
+        status_text.text(f"{message} ({progress}%)")
+    
+    # Call the assembly function with the additional parameters for transcription-based A-Roll
+    result = helper_assemble_video(
+        sequence=sequence,
+        target_resolution=(width, height),
+        output_dir=str(output_dir),
+        progress_callback=update_progress,
+        is_transcription=is_transcription,
+        segment_timestamps=segment_timestamps
+    )
+    
+    # Check the result
+    if result["status"] == "success":
+        st.success("Video assembly completed successfully!")
+        
+        # Display the output video
+        st.subheader("Final Video")
+        st.video(result["output_path"])
+        
+        # Add download button
+        with open(result["output_path"], "rb") as file:
+            st.download_button(
+                label="Download Final Video",
+                data=file,
+                file_name=output_filename,
+                mime="video/mp4"
             )
-            
-            # If primary method failed and simple assembly is available, try it
-            if result["status"] == "error" and simple_assemble_video:
-                st.warning("Primary assembly method failed. Trying simple assembly fallback...")
-                update_progress(0, "Starting simple assembly fallback")
+        
+        # Save the result to session state
+        st.session_state.video_assembly["result"] = result
+        
+        return result
+    else:
+        st.error(f"Video assembly failed: {result.get('message', 'Unknown error')}")
+        
+        # Show more detailed error information
+        if "errors" in result:
+            st.subheader("Error Details")
+            for error in result["errors"]:
+                st.error(error)
                 
-                # Try fallback method
-                result = simple_assemble_video(
-                    sequence=assembly_sequence,
-                    output_path=None,  # Use default path
-                    target_resolution=(width, height),
-                    progress_callback=update_progress
-                )
-        else:
-            # Use simple assembly method directly
-            result = simple_assemble_video(
-                sequence=assembly_sequence,
-                output_path=None,  # Use default path
-                target_resolution=(width, height),
-                progress_callback=update_progress
-            )
+        if "missing_files" in result:
+            st.subheader("Missing Files")
+            for file in result["missing_files"]:
+                st.warning(file)
         
-        # Process result
-        if result["status"] == "success":
-            st.session_state.video_assembly["status"] = "complete"
-            st.session_state.video_assembly["output_path"] = result["output_path"]
-            
-            # Mark step as complete
-            mark_step_complete("video_assembly")
-            
-            st.success(f"Video assembled successfully!")
-            update_progress(100, "Video assembly complete")
-            st.rerun()
-        else:
-            st.session_state.video_assembly["status"] = "error"
-            st.session_state.video_assembly["error"] = result["message"]
-            
-            # Display detailed error information
-            st.error(f"Video assembly failed: {result['message']}")
-            if "missing_files" in result:
-                st.warning("Missing files:")
-                for missing in result["missing_files"]:
-                    st.warning(f" - {missing}")
-            
-            # Show traceback in expander if available
-            if "traceback" in result:
-                with st.expander("Error Details"):
-                    st.code(result["traceback"])
-                    
-    except Exception as e:
-        st.session_state.video_assembly["status"] = "error"
-        st.session_state.video_assembly["error"] = str(e)
-        
-        st.error(f"Unexpected error during video assembly: {str(e)}")
-        with st.expander("Error Details"):
-            st.code(traceback.format_exc())
+        return result
 
 # Replace the assembly options section with this improved version
 st.subheader("Assembly Options")
@@ -1327,6 +1254,33 @@ st.markdown("""
 Create your final video by assembling A-Roll and B-Roll segments.
 This step will combine all the visual assets into a single, coherent video.
 """)
+
+# Check if we're using transcription-based A-Roll
+is_transcription = is_transcription_based_aroll()
+if is_transcription:
+    st.info("📝 **Using transcription-based A-Roll**: B-Roll segments will be overlaid on the full A-Roll video based on timestamps.")
+    
+    # Display the full A-Roll video
+    full_aroll_path = get_full_aroll_video_path()
+    if full_aroll_path:
+        with st.expander("Full A-Roll Video", expanded=False):
+            st.video(full_aroll_path)
+    
+    # Show segment timestamps
+    segment_timestamps = get_segment_timestamps()
+    if segment_timestamps:
+        with st.expander("A-Roll Segment Timestamps", expanded=False):
+            for segment_id, timestamp_data in segment_timestamps.items():
+                start_time = timestamp_data.get("start_time", 0)
+                end_time = timestamp_data.get("end_time", 0)
+                duration = timestamp_data.get("duration", 0)
+                content = timestamp_data.get("content", "")
+                
+                st.markdown(f"""
+                **{segment_id}**
+                - Time: {format_time(start_time)} - {format_time(end_time)} (Duration: {duration:.1f}s)
+                - Content: {content[:50]}{"..." if len(content) > 50 else ""}
+                """)
 
 # Check if MoviePy is available
 if not MOVIEPY_AVAILABLE:

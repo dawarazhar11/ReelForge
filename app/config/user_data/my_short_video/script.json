@@ -1,34 +1,52 @@
 {
-    "full_script": "You're always asking, 'Why are you staring at nothing?' But it's not nothing. You just can't see it. My eyes and ears pick up frequencies way beyond your weak human perception. I hear bugs in the wall. I see light bouncing off particles you can't comprehend. And sometimes, yes\u2014I sense ghosts. You laugh, but when I bolt across the room and your lights flicker? That's not random. That's a warning. You're welcome.",
-    "segments": [
-        {
-            "type": "A-Roll",
-            "content": "You're always asking, 'Why are you staring at nothing?' But it's not nothing."
-        },
-        {
-            "type": "B-Roll",
-            "content": "You just can't see it."
-        },
-        {
-            "type": "A-Roll",
-            "content": "My eyes and ears pick up frequencies way beyond your weak human perception."
-        },
-        {
-            "type": "B-Roll",
-            "content": "I hear bugs in the wall."
-        },
-        {
-            "type": "A-Roll",
-            "content": "I see light bouncing off particles you can't comprehend."
-        },
-        {
-            "type": "B-Roll",
-            "content": "And sometimes, yes\u2014I sense ghosts."
-        },
-        {
-            "type": "A-Roll",
-            "content": "You laugh, but when I bolt across the room and your lights flicker? That's not random. That's a warning. You're welcome."
-        }
-    ],
-    "theme": "A cat talking about its eyes and ears."
+  "full_script": "Introductory visual for A cat talking about its eyes and ears. Introductory visual for A cat talking about its eyes and ears. Visual representation of: You think you have privacy in this house? That's c... You think you have privacy in this house? That's cute. I know when you wake up when you go to bed and how often you pee. I know you eat snacks at midnight and pretend it didn't happen. Concluding visual for A cat talking about its eyes and ears. I see the way you talk to your plants. I hear your cringe voice memos before you delete them. I am always watching, silently from a shelf, or a doorway, or top of the fridge like a judgmental gargoyle. I don't judge out loud, but I do absorb everything. So when I stare at you with deadpan eyes, just know I have seen things.",
+  "segments": [
+    {
+      "type": "B-Roll",
+      "content": "Introductory visual for A cat talking about its eyes and ears.",
+      "duration": 3.0
+    },
+    {
+      "type": "B-Roll",
+      "content": "Introductory visual for A cat talking about its eyes and ears.",
+      "duration": 3.0,
+      "start_time": 0,
+      "end_time": 10
+    },
+    {
+      "type": "B-Roll",
+      "content": "Visual representation of: You think you have privacy in this house? That's c...",
+      "duration": 3.0,
+      "related_aroll": 2
+    },
+    {
+      "type": "A-Roll",
+      "start_time": 0,
+      "end_time": 10.446666666666667,
+      "duration": 10.446666666666667,
+      "content": "You think you have privacy in this house? That's cute. I know when you wake up when you go to bed and how often you pee. I know you eat snacks at midnight and pretend it didn't happen."
+    },
+    {
+      "type": "B-Roll",
+      "content": "Concluding visual for A cat talking about its eyes and ears.",
+      "duration": 3.0
+    },
+    {
+      "type": "A-Roll",
+      "start_time": 10.446666666666667,
+      "end_time": 20.893333333333334,
+      "duration": 10.446666666666667,
+      "content": "I see the way you talk to your plants. I hear your cringe voice memos before you delete them. I am always watching, silently from a shelf, or a doorway, or"
+    },
+    {
+      "type": "A-Roll",
+      "start_time": 20.893333333333334,
+      "end_time": 31.34,
+      "duration": 10.446666666666665,
+      "content": "top of the fridge like a judgmental gargoyle. I don't judge out loud, but I do absorb everything. So when I stare at you with deadpan eyes, just know I have seen things."
+    }
+  ],
+  "theme": "A cat talking about its eyes and ears.",
+  "source": "transcription",
+  "timestamp": 1748880504.35474
 }

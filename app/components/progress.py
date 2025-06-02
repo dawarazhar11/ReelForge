@@ -24,16 +24,36 @@ def render_progress_bar():
     st.sidebar.progress(progress)
     st.sidebar.caption(f"{int(progress * 100)}% complete")
 
-def render_step_header(step_number_or_name, step_name_or_description=None, total_steps=8):
+def render_step_header(step_number_or_name, step_name_or_description=None, total_steps=8, step_number=None, title=None):
     """
     Render a header with step information
     
-    Supports two calling patterns:
+    Supports the following calling patterns:
     1. render_step_header(step_number, step_name, total_steps)
     2. render_step_header(step_name, description)
+    3. render_step_header(step_number=4.5, title="Step Title", total_steps=8)
     """
-    # Determine which calling pattern is being used
-    if step_name_or_description is None or isinstance(step_number_or_name, int):
+    # Handle the named parameter case (new pattern #3)
+    if step_number is not None and title is not None:
+        st.subheader(f"Step {step_number} of {total_steps}: {title}")
+        
+        # Calculate normalized progress value (0-1 range)
+        if step_number <= 1:
+            progress = 0.0
+        elif step_number >= total_steps:
+            progress = 1.0
+        else:
+            # Normalize to range [0,1]
+            progress = (step_number - 1) / (total_steps - 1)
+            
+        # Show progress bar
+        progress = min(1.0, max(0.0, progress))
+        st.progress(progress)
+        st.markdown("---")
+        return
+    
+    # Determine which of the legacy calling patterns is being used
+    if step_name_or_description is None or isinstance(step_number_or_name, int) or isinstance(step_number_or_name, float):
         # First pattern: step_number, step_name, total_steps
         step_number = step_number_or_name
         step_name = step_name_or_description if step_name_or_description else "Step"

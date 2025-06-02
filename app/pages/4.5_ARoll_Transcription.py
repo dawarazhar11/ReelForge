@@ -820,7 +820,7 @@ def generate_broll_prompts_with_ollama(a_roll_segments, theme):
 def main():
     # Header and instructions
     st.title("A-Roll Transcription")
-    render_step_header(step_number=4.5, title="A-Roll Transcription", total_steps=8)
+    render_step_header(4.5, "A-Roll Transcription", 8)
     
     st.write("Upload your A-Roll video to generate a transcript and split it into segments.")
     

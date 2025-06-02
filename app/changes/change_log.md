@@ -133,4 +133,57 @@
    - Updated warning message to reference "A-Roll Transcription" page instead of "5A A-Roll Video Production" page
    - Removed reference to the 5A page in the page description
 
-3. These changes ensure a consistent user experience with the new workflow that uses A-Roll Transcription instead of the previous A-Roll Video Production page 
+3. These changes ensure a consistent user experience with the new workflow that uses A-Roll Transcription instead of the previous A-Roll Video Production page
+
+## 2025-06-02 - Fix Additional References to 5A A-Roll Video Production Page
+
+### User Prompt
+> Settings page is refercning 5A A-Roll Video Production
+> Blue print page is refernecing 5A A-Roll Video Production
+> ✂️ Script Segmentation page is referencing 5A A-Roll Video Production
+> B Roll Prompts page is referecning 5A A-Roll Video Production
+>
+> In navigration, it should be A roll transcription. No?
+
+### Changes Made
+1. Updated references in `pages/5B_BRoll_Video_Production.py`
+   - Changed the info message from "For A-Roll (talking head) generation, please use the '5A A-Roll Video Production' page" to "For A-Roll (talking head) generation, please use the 'A-Roll Transcription' page"
+
+2. Updated references in `pages/6_Video_Assembly.py`
+   - Changed error messages to point to "A-Roll Transcription" instead of "5A A-Roll Video Production"
+   - Updated the error message in `get_aroll_filepath` function
+   - Updated the error message in `create_assembly_sequence` function
+   - Updated the error message in the manual sequence editor
+
+3. Verified that the navigation in `pages/4_BRoll_Prompts.py` is already correctly pointing to the A-Roll Transcription page
+
+4. Checked other pages mentioned in the user prompt:
+   - `pages/00_settings/settings.py` - No references to 5A A-Roll Video Production found
+   - `pages/01_blueprint_setup/blueprint.py` - No references to 5A A-Roll Video Production found
+   - `pages/02_script_segmentation/segmentation.py` - No references to 5A A-Roll Video Production found
+
+5. These changes ensure a consistent user experience with the new workflow that uses A-Roll Transcription instead of the previous A-Roll Video Production page
+
+## 2025-06-02 - Fix KeyError in A-Roll Transcription Page
+
+### User Prompt
+> KeyError: 'start_time'
+> Traceback:
+> File "/Users/dawarazhar/Desktop/AI-Money-Printer-Shorts/app/.venv/lib/python3.13/site-packages/streamlit/runtime/scriptrunner/script_runner.py", line 535, in _run_script
+>     exec(code, module.__dict__)
+>     ~~~~^^^^^^^^^^^^^^^^^^^^^^^
+> File "/Users/dawarazhar/Desktop/AI-Money-Printer-Shorts/app/pages/4.5_ARoll_Transcription.py", line 546, in <module>
+>     main()
+>     ~~~~^^
+> File "/Users/dawarazhar/Desktop/AI-Money-Printer-Shorts/app/pages/4.5_ARoll_Transcription.py", line 493, in main
+>     <span class="timestamp">{format_time(segment['start_time'])} - {format_time(segment['end_time'])} ({segment['duration']:.1f}s)</span>
+>                                          ~~~~~~~^^^^^^^^^^^^^^
+
+### Changes Made
+1. Updated the segment display code to safely access timing information using `.get()` with default values
+2. Added an `ensure_segments_have_timing()` function to add default timing information to segments that don't have it
+3. Called this function before displaying segments to ensure all required fields exist
+4. Made the `format_time()` function more robust to handle potential type errors
+5. Updated the `update_segment_content()` function to preserve timing information when editing segments
+
+These changes ensure that the A-Roll Transcription page can handle segments that don't have timing information, preventing KeyErrors and providing a more robust user experience. 

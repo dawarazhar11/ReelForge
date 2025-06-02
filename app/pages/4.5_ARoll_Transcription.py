@@ -249,6 +249,15 @@ def load_a_roll_segments():
                 if data.get("source") == "transcription":
                     segments = data.get("segments", [])
                     if segments:
+                        # Ensure all segments have timing information
+                        for i, segment in enumerate(segments):
+                            if "start_time" not in segment:
+                                segment["start_time"] = i * 10  # Default 10 seconds per segment
+                            if "end_time" not in segment:
+                                segment["end_time"] = (i + 1) * 10
+                            if "duration" not in segment:
+                                segment["duration"] = segment["end_time"] - segment["start_time"]
+                        
                         st.session_state.a_roll_segments = segments
                         st.session_state.segmentation_complete = True
                         return True
@@ -341,9 +350,32 @@ def segment_transcription(transcription, min_segment_duration=5, max_segment_dur
 # Function to update segment content
 def update_segment_content(index, new_content):
     if 0 <= index < len(st.session_state.a_roll_segments):
-        st.session_state.a_roll_segments[index]["content"] = new_content
+        # Update content while preserving timing information
+        segment = st.session_state.a_roll_segments[index]
+        segment["content"] = new_content
+        
+        # Ensure timing information is preserved
+        if "start_time" not in segment:
+            segment["start_time"] = index * 10  # Default 10 seconds per segment
+        if "end_time" not in segment:
+            segment["end_time"] = (index + 1) * 10
+        if "duration" not in segment:
+            segment["duration"] = segment["end_time"] - segment["start_time"]
+        
         return True
     return False
+
+# Function to ensure all segments have timing information
+def ensure_segments_have_timing(segments):
+    """Add default timing information to segments that don't have it"""
+    for i, segment in enumerate(segments):
+        if "start_time" not in segment:
+            segment["start_time"] = i * 10  # Default 10 seconds per segment
+        if "end_time" not in segment:
+            segment["end_time"] = (i + 1) * 10
+        if "duration" not in segment:
+            segment["duration"] = segment["end_time"] - segment["start_time"]
+    return segments
 
 # Main function
 def main():
@@ -483,6 +515,9 @@ def main():
     if st.session_state.segmentation_complete and st.session_state.a_roll_segments:
         st.header("Step 5: Review and Edit A-Roll Segments")
         
+        # Ensure all segments have timing information
+        st.session_state.a_roll_segments = ensure_segments_have_timing(st.session_state.a_roll_segments)
+        
         # Display each segment with edit options
         for i, segment in enumerate(st.session_state.a_roll_segments):
             with st.container():
@@ -490,7 +525,7 @@ def main():
                 <div class="segment-container">
                     <div class="segment-header">
                         <h3>Segment {i+1}</h3>
-                        <span class="timestamp">{format_time(segment['start_time'])} - {format_time(segment['end_time'])} ({segment['duration']:.1f}s)</span>
+                        <span class="timestamp">{format_time(segment.get('start_time', 0))} - {format_time(segment.get('end_time', 0))} ({segment.get('duration', 0):.1f}s)</span>
                     </div>
                     <div class="segment-content">
                         {segment['content']}
@@ -538,9 +573,15 @@ def main():
 
 # Helper function to format time in MM:SS format
 def format_time(seconds):
-    minutes = int(seconds // 60)
-    seconds = int(seconds % 60)
-    return f"{minutes:02d}:{seconds:02d}"
+    try:
+        # Convert to float first in case it's a string or other type
+        seconds_float = float(seconds)
+        minutes = int(seconds_float // 60)
+        seconds = int(seconds_float % 60)
+        return f"{minutes:02d}:{seconds:02d}"
+    except (ValueError, TypeError):
+        # Return a default value if conversion fails
+        return "00:00"
 
 if __name__ == "__main__":
     main() 

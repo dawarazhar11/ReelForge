@@ -114,4 +114,23 @@
 3. Updated the page navigation in `pages/4.5_ARoll_Transcription.py`
    - Changed from `st.switch_page("4_BRoll_Prompts")` to `st.switch_page("pages/4_BRoll_Prompts.py")`
    - According to Streamlit documentation, the path should be relative to the main app directory and include both the directory and file extension
-   - This should resolve the StreamlitAPIException that occurred when trying to navigate between pages 
+   - This should resolve the StreamlitAPIException that occurred when trying to navigate between pages
+
+## 2025-06-02 - Remove Remaining References to 5A A-Roll Video Production Page
+
+### User Prompt
+> 5A A-Roll Video Production
+> this page exists in naavigation of pages until b roll promots
+
+### Changes Made
+1. Updated `pages/6_Video_Assembly.py` to reference the new A-Roll Transcription page
+   - Changed the warning message from "You need to generate A-Roll videos in the 5A page first" to "You need to create A-Roll segments first"
+   - Updated the navigation button from "Go to A-Roll Video Production" to "Go to A-Roll Transcription"
+   - Changed the button's target from `st.switch_page("pages/5A_ARoll_Video_Production.py")` to `st.switch_page("pages/4.5_ARoll_Transcription.py")`
+
+2. Updated `pages/5B_BRoll_Video_Production.py` to remove references to the 5A page
+   - Changed function docstring from "Use 5A_ARoll_Video_Production.py instead" to "Use 4.5_ARoll_Transcription.py instead"
+   - Updated warning message to reference "A-Roll Transcription" page instead of "5A A-Roll Video Production" page
+   - Removed reference to the 5A page in the page description
+
+3. These changes ensure a consistent user experience with the new workflow that uses A-Roll Transcription instead of the previous A-Roll Video Production page 

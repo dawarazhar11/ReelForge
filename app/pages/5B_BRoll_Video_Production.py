@@ -957,9 +957,9 @@ def batch_process_broll_prompts():
 
 # Function for A-Roll content generation only
 def generate_aroll_content(segments, aroll_fetch_ids):
-    """Generate A-Roll content only - DISABLED: Use 5A_ARoll_Video_Production.py instead"""
-    # This function is disabled - A-Roll generation should be done in the dedicated 5A page
-    st.warning("⚠️ A-Roll generation is disabled in this page. Please use the '5A A-Roll Video Production' page instead.")
+    """Generate A-Roll content only - DISABLED: Use 4.5_ARoll_Transcription.py instead"""
+    # This function is disabled - A-Roll generation should be done in the dedicated 4.5 page
+    st.warning("⚠️ A-Roll generation is disabled in this page. Please use the 'A-Roll Transcription' page instead.")
     
     # Mark as complete immediately to avoid issues
     if "parallel_tasks" in st.session_state:
@@ -967,8 +967,8 @@ def generate_aroll_content(segments, aroll_fetch_ids):
         st.session_state.parallel_tasks["running"] = False
         
     return {
-                            "status": "error",
-        "message": "A-Roll generation is disabled in this page. Please use the '5A A-Roll Video Production' page instead."
+        "status": "error",
+        "message": "A-Roll generation is disabled in this page. Please use the 'A-Roll Transcription' page instead."
     }
 
 # Function for parallel content generation
@@ -1068,7 +1068,7 @@ if st.button("🔄 CLEAR ALL CACHE", type="primary", key="force_clear_cache", he
 
 st.title("⚡ B-Roll Content Production")
 st.markdown("""
-This page is for generating visual B-Roll content only. For A-Roll (talking head) production, please use the '5A A-Roll Video Production' page.
+This page is for generating visual B-Roll content for your video.
 
 This step will use the prompts generated in the previous step to create all the visual B-Roll assets for your video.
 """)

@@ -1130,11 +1130,11 @@ def assemble_video():
         
         # Add navigation button if no A-Roll segments found
         if "No A-Roll segments found" in error_message:
-            st.warning("You need to generate A-Roll videos in the 5A page first.")
+            st.warning("You need to create A-Roll segments first.")
             
-            # Add button to navigate to 5A page
-            if st.button("Go to A-Roll Video Production", type="primary"):
-                st.switch_page("pages/5A_ARoll_Video_Production.py")
+            # Add button to navigate to A-Roll Transcription page
+            if st.button("Go to A-Roll Transcription", type="primary"):
+                st.switch_page("pages/4.5_ARoll_Transcription.py")
         
         return
     

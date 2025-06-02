@@ -155,4 +155,25 @@ still this, pleae create planed steps then execute
   - Changed from `st.switch_page("4_BRoll_Prompts")` to `st.switch_page("pages/4_BRoll_Prompts.py")`
   - This format includes both the directory and file extension as required
 - Updated both the change log and prompt log to document this third fix attempt
-- This should resolve the navigation issue by using the fully qualified path 
+- This should resolve the navigation issue by using the fully qualified path
+
+## 2025-06-02 18:35 - Remove Remaining References to 5A A-Roll Video Production Page
+
+### User Prompt
+```
+5A A-Roll Video Production
+this page exists in naavigation of pages until b roll promots
+```
+
+### Actions Taken
+- Identified remaining references to the 5A A-Roll Video Production page in the codebase
+- Updated `pages/6_Video_Assembly.py`:
+  - Changed warning message from "You need to generate A-Roll videos in the 5A page first" to "You need to create A-Roll segments first"
+  - Updated navigation button from "Go to A-Roll Video Production" to "Go to A-Roll Transcription"
+  - Changed button target to point to the A-Roll Transcription page
+- Updated `pages/5B_BRoll_Video_Production.py`:
+  - Changed function docstrings to reference the A-Roll Transcription page instead
+  - Updated warning messages to direct users to the A-Roll Transcription page
+  - Removed references to the 5A page in the page description
+- Updated the change log to document these changes
+- These changes ensure a consistent user experience with the new workflow 

@@ -418,6 +418,17 @@ def load_segments():
             with open(script_file, "r") as f:
                 data = json.load(f)
                 segments = data.get("segments", [])
+                
+                # Ensure all A-Roll segments have segment_id values
+                aroll_count = 0
+                for i, segment in enumerate(segments):
+                    if isinstance(segment, dict) and segment.get("type") == "A-Roll":
+                        # If no segment_id, set one based on aroll_count
+                        if "segment_id" not in segment:
+                            segment["segment_id"] = f"segment_{aroll_count}"
+                            print(f"Assigned segment_id {segment['segment_id']} to A-Roll segment at index {i}")
+                        aroll_count += 1
+                
                 return segments
         except Exception as e:
             st.error(f"Error loading segments: {str(e)}")
@@ -706,6 +717,25 @@ def create_assembly_sequence():
     print(f"A-Roll keys: {list(aroll_segments.keys())}")
     print(f"B-Roll keys: {list(broll_segments.keys())}")
     
+    # Get the script segments
+    script_segments = load_segments()
+    aroll_script_segments = [s for s in script_segments if isinstance(s, dict) and s.get("type") == "A-Roll"]
+    
+    print(f"Found {len(aroll_script_segments)} A-Roll segments in script.json")
+    for i, segment in enumerate(aroll_script_segments):
+        segment_id = segment.get("segment_id", f"segment_{i}")
+        file_path = segment.get("file_path", "Not found")
+        exists = "✓" if file_path != "Not found" and os.path.exists(file_path) else "✗"
+        print(f"  Script segment {i}: ID={segment_id}, Path={file_path} {exists}")
+    
+    # Map segment indices to segment_ids
+    segment_id_map = {}
+    for i, segment in enumerate(aroll_script_segments):
+        segment_id = segment.get("segment_id", f"segment_{i}")
+        segment_id_map[i] = segment_id
+        # Also create reverse mapping for lookup by segment_id
+        segment_id_map[segment_id] = i
+    
     # Get selected sequence pattern
     selected_sequence = st.session_state.get("selected_sequence", "Standard (A-Roll start, B-Roll middle with A-Roll audio, A-Roll end)")
     
@@ -719,7 +749,7 @@ def create_assembly_sequence():
     assembly_sequence = []
     
     # Check how many segments we have
-    total_aroll_segments = len(aroll_segments)
+    total_aroll_segments = len(aroll_script_segments)
     total_broll_segments = len(broll_segments)
     
     if total_aroll_segments == 0:
@@ -733,11 +763,12 @@ def create_assembly_sequence():
         
         # First arrange all A-Roll segments sequentially, with B-Roll visuals
         for i in range(total_aroll_segments):
-            aroll_segment_id = f"segment_{i}"
+            # Use the mapped segment_id if available
+            segment_id = segment_id_map.get(i, f"segment_{i}")
             
             # Skip if this A-Roll segment was already used
-            if aroll_segment_id in used_aroll_segments:
-                print(f"Skipping duplicate A-Roll segment {i} to prevent audio overlap")
+            if segment_id in used_aroll_segments:
+                print(f"Skipping duplicate A-Roll segment {segment_id} to prevent audio overlap")
                 continue
                 
             # Use the appropriate B-Roll segment or cycle through available ones
@@ -745,94 +776,108 @@ def create_assembly_sequence():
             broll_index = i % total_broll_segments
             broll_segment_id = f"segment_{broll_index}"
             
-            if aroll_segment_id in aroll_segments and broll_segment_id in broll_segments:
-                aroll_data = aroll_segments[aroll_segment_id]
+            # Get the segment data
+            segment_data = aroll_script_segments[i] if i < len(aroll_script_segments) else None
+            
+            if segment_data and broll_segment_id in broll_segments:
                 broll_data = broll_segments[broll_segment_id]
                 
-                aroll_path, aroll_success, aroll_error = get_aroll_filepath(aroll_segment_id, aroll_data)
+                aroll_path, aroll_success, aroll_error = get_aroll_filepath(segment_id, segment_data)
                 broll_path = get_broll_filepath(broll_segment_id, broll_data)
                 
                 if aroll_path and broll_path:
-                    print(f"Adding B-Roll segment {broll_index} with A-Roll segment {i}")
+                    print(f"Adding B-Roll segment {broll_index} with A-Roll segment {i} (ID: {segment_id})")
                     assembly_sequence.append({
                         "type": "broll_with_aroll_audio",
                         "aroll_path": aroll_path,
                         "broll_path": broll_path,
-                        "segment_id": aroll_segment_id,
+                        "segment_id": segment_id,
                         "broll_id": broll_segment_id
                     })
                     # Mark this A-Roll segment as used
-                    used_aroll_segments.add(aroll_segment_id)
+                    used_aroll_segments.add(segment_id)
                     
-                    print(f"✅ Added audio segment {aroll_segment_id} to sequence position {len(assembly_sequence)}")
+                    print(f"✅ Added audio segment {segment_id} to sequence position {len(assembly_sequence)}")
     # Standard pattern (original implementation)
     elif "Standard" in selected_sequence:
         # Track which A-Roll segments have been used to prevent duplicates
         used_aroll_segments = set()
         
         # First segment is A-Roll only
-        if "segment_0" in aroll_segments:
-            aroll_data = aroll_segments["segment_0"]
-            aroll_path, aroll_success, aroll_error = get_aroll_filepath("segment_0", aroll_data)
+        first_segment_id = segment_id_map.get(0, "segment_0")
+        first_segment = next((s for s in aroll_script_segments if s.get("segment_id") == first_segment_id), 
+                            aroll_script_segments[0] if aroll_script_segments else None)
+        
+        if first_segment:
+            aroll_path, aroll_success, aroll_error = get_aroll_filepath(first_segment_id, first_segment)
             
             if aroll_path:
-                print(f"Adding A-Roll segment 0 with path: {aroll_path}")
+                print(f"Adding A-Roll segment 0 (ID: {first_segment_id}) with path: {aroll_path}")
                 assembly_sequence.append({
                     "type": "aroll_full",
                     "aroll_path": aroll_path,
                     "broll_path": None,
-                    "segment_id": "segment_0"
+                    "segment_id": first_segment_id
                 })
                 # Mark as used
-                used_aroll_segments.add("segment_0")
+                used_aroll_segments.add(first_segment_id)
             else:
-                st.error(f"A-Roll file not found: {aroll_data.get('file_path', 'No path specified')}")
+                st.error(f"A-Roll file not found for first segment: {first_segment.get('file_path', 'No path specified')}")
         
         # Middle segments: B-Roll visuals with A-Roll audio
         for i in range(1, total_aroll_segments - 1):
-            aroll_segment_id = f"segment_{i}"
+            # Use the mapped segment_id if available
+            segment_id = segment_id_map.get(i, f"segment_{i}")
             
             # Skip if this A-Roll segment was already used
-            if aroll_segment_id in used_aroll_segments:
-                print(f"Skipping duplicate A-Roll segment {i} to prevent audio overlap")
+            if segment_id in used_aroll_segments:
+                print(f"Skipping duplicate A-Roll segment {segment_id} to prevent audio overlap")
                 continue
                 
             broll_segment_id = f"segment_{i-1}"  # B-Roll segments are named "segment_X" in content_status.json
             
-            if aroll_segment_id in aroll_segments and broll_segment_id in broll_segments:
-                aroll_data = aroll_segments[aroll_segment_id]
+            # Get the segment data
+            segment_data = next((s for s in aroll_script_segments if s.get("segment_id") == segment_id), None)
+            if not segment_data and i < len(aroll_script_segments):
+                segment_data = aroll_script_segments[i]
+            
+            if segment_data and broll_segment_id in broll_segments:
                 broll_data = broll_segments[broll_segment_id]
                 
-                aroll_path, aroll_success, aroll_error = get_aroll_filepath(aroll_segment_id, aroll_data)
+                aroll_path, aroll_success, aroll_error = get_aroll_filepath(segment_id, segment_data)
                 broll_path = get_broll_filepath(broll_segment_id, broll_data)
                 
                 if aroll_path and broll_path:
-                    print(f"Adding B-Roll segment {i-1} with A-Roll segment {i}")
+                    print(f"Adding B-Roll segment {i-1} with A-Roll segment {i} (ID: {segment_id})")
                     assembly_sequence.append({
                         "type": "broll_with_aroll_audio",
                         "aroll_path": aroll_path,
                         "broll_path": broll_path,
-                        "segment_id": aroll_segment_id,
+                        "segment_id": segment_id,
                         "broll_id": broll_segment_id
                     })
                     # Mark as used
-                    used_aroll_segments.add(aroll_segment_id)
+                    used_aroll_segments.add(segment_id)
                 else:
                     if not aroll_path:
-                        st.error(f"A-Roll file not found for {aroll_segment_id}")
+                        st.error(f"A-Roll file not found for {segment_id}")
                     if not broll_path:
                         st.error(f"B-Roll file not found for {broll_segment_id}")
         
         # Last segment is A-Roll only
-        last_segment_id = f"segment_{total_aroll_segments - 1}"
+        last_idx = total_aroll_segments - 1
+        last_segment_id = segment_id_map.get(last_idx, f"segment_{last_idx}")
+        
+        # Get the last segment data
+        last_segment = next((s for s in aroll_script_segments if s.get("segment_id") == last_segment_id), 
+                          aroll_script_segments[last_idx] if last_idx < len(aroll_script_segments) else None)
         
         # Skip if this A-Roll segment was already used
-        if last_segment_id not in used_aroll_segments and last_segment_id in aroll_segments:
-            aroll_data = aroll_segments[last_segment_id]
-            aroll_path, aroll_success, aroll_error = get_aroll_filepath(last_segment_id, aroll_data)
+        if last_segment_id not in used_aroll_segments and last_segment:
+            aroll_path, aroll_success, aroll_error = get_aroll_filepath(last_segment_id, last_segment)
             
             if aroll_path:
-                print(f"Adding final A-Roll segment with path: {aroll_path}")
+                print(f"Adding final A-Roll segment (ID: {last_segment_id}) with path: {aroll_path}")
                 assembly_sequence.append({
                     "type": "aroll_full",
                     "aroll_path": aroll_path,
@@ -842,69 +887,81 @@ def create_assembly_sequence():
                 # Mark as used
                 used_aroll_segments.add(last_segment_id)
     
-    # A-Roll Bookends pattern
+    # A-Roll Bookends pattern (similar changes needed for other patterns)
     elif "Bookends" in selected_sequence:
         # Track which A-Roll segments have been used to prevent duplicates
         used_aroll_segments = set()
         
         # First segment is A-Roll only
-        if "segment_0" in aroll_segments:
-            aroll_data = aroll_segments["segment_0"]
-            aroll_path, aroll_success, aroll_error = get_aroll_filepath("segment_0", aroll_data)
+        first_segment_id = segment_id_map.get(0, "segment_0")
+        first_segment = next((s for s in aroll_script_segments if s.get("segment_id") == first_segment_id), 
+                            aroll_script_segments[0] if aroll_script_segments else None)
+        
+        if first_segment:
+            aroll_path, aroll_success, aroll_error = get_aroll_filepath(first_segment_id, first_segment)
             
             if aroll_path:
-                print(f"Adding A-Roll segment 0 with path: {aroll_path}")
+                print(f"Adding A-Roll segment 0 (ID: {first_segment_id}) with path: {aroll_path}")
                 assembly_sequence.append({
                     "type": "aroll_full",
                     "aroll_path": aroll_path,
                     "broll_path": None,
-                    "segment_id": "segment_0"
+                    "segment_id": first_segment_id
                 })
                 # Mark as used
-                used_aroll_segments.add("segment_0")
+                used_aroll_segments.add(first_segment_id)
         
         # All middle segments use B-Roll visuals with A-Roll audio
         for i in range(1, total_aroll_segments - 1):
-            aroll_segment_id = f"segment_{i}"
+            # Use the mapped segment_id if available
+            segment_id = segment_id_map.get(i, f"segment_{i}")
             
             # Skip if this A-Roll segment was already used
-            if aroll_segment_id in used_aroll_segments:
-                print(f"Skipping duplicate A-Roll segment {i} to prevent audio overlap")
+            if segment_id in used_aroll_segments:
+                print(f"Skipping duplicate A-Roll segment {segment_id} to prevent audio overlap")
                 continue
                 
+            # Get the segment data
+            segment_data = next((s for s in aroll_script_segments if s.get("segment_id") == segment_id), None)
+            if not segment_data and i < len(aroll_script_segments):
+                segment_data = aroll_script_segments[i]
+            
             # Use the appropriate B-Roll segment or cycle through available ones
             broll_index = (i - 1) % total_broll_segments
             broll_segment_id = f"segment_{broll_index}"
             
-            if aroll_segment_id in aroll_segments and broll_segment_id in broll_segments:
-                aroll_data = aroll_segments[aroll_segment_id]
+            if segment_data and broll_segment_id in broll_segments:
                 broll_data = broll_segments[broll_segment_id]
                 
-                aroll_path, aroll_success, aroll_error = get_aroll_filepath(aroll_segment_id, aroll_data)
+                aroll_path, aroll_success, aroll_error = get_aroll_filepath(segment_id, segment_data)
                 broll_path = get_broll_filepath(broll_segment_id, broll_data)
                 
                 if aroll_path and broll_path:
-                    print(f"Adding B-Roll segment {broll_index} with A-Roll segment {i}")
+                    print(f"Adding B-Roll segment {broll_index} with A-Roll segment {i} (ID: {segment_id})")
                     assembly_sequence.append({
                         "type": "broll_with_aroll_audio",
                         "aroll_path": aroll_path,
                         "broll_path": broll_path,
-                        "segment_id": aroll_segment_id,
+                        "segment_id": segment_id,
                         "broll_id": broll_segment_id
                     })
                     # Mark as used
-                    used_aroll_segments.add(aroll_segment_id)
-            
+                    used_aroll_segments.add(segment_id)
+        
         # Last segment is A-Roll only
-        last_segment_id = f"segment_{total_aroll_segments - 1}"
+        last_idx = total_aroll_segments - 1
+        last_segment_id = segment_id_map.get(last_idx, f"segment_{last_idx}")
+        
+        # Get the last segment data
+        last_segment = next((s for s in aroll_script_segments if s.get("segment_id") == last_segment_id), 
+                          aroll_script_segments[last_idx] if last_idx < len(aroll_script_segments) else None)
         
         # Skip if this A-Roll segment was already used
-        if last_segment_id not in used_aroll_segments and last_segment_id in aroll_segments:
-            aroll_data = aroll_segments[last_segment_id]
-            aroll_path, aroll_success, aroll_error = get_aroll_filepath(last_segment_id, aroll_data)
+        if last_segment_id not in used_aroll_segments and last_segment:
+            aroll_path, aroll_success, aroll_error = get_aroll_filepath(last_segment_id, last_segment)
             
             if aroll_path:
-                print(f"Adding final A-Roll segment with path: {aroll_path}")
+                print(f"Adding final A-Roll segment (ID: {last_segment_id}) with path: {aroll_path}")
                 assembly_sequence.append({
                     "type": "aroll_full",
                     "aroll_path": aroll_path,
@@ -914,126 +971,9 @@ def create_assembly_sequence():
                 # Mark as used
                 used_aroll_segments.add(last_segment_id)
     
-    # A-Roll Sandwich pattern (A-Roll at start, middle, and end)
-    elif "Sandwich" in selected_sequence:
-        # Track which A-Roll segments have been used to prevent duplicates
-        used_aroll_segments = set()
-        
-        # Calculate which segments will be A-Roll vs B-Roll
-        total_segments = total_aroll_segments
-        a_roll_positions = [0]  # First position is always A-Roll
-        
-        # Add middle position if we have at least 3 segments
-        if total_segments >= 3:
-            middle_pos = total_segments // 2
-            a_roll_positions.append(middle_pos)
-        
-        # Add last position if we have at least 2 segments
-        if total_segments >= 2:
-            a_roll_positions.append(total_segments - 1)
-        
-        # Create the sequence
-        for i in range(total_segments):
-            aroll_segment_id = f"segment_{i}"
-            
-            # Skip if this A-Roll segment was already used
-            if aroll_segment_id in used_aroll_segments:
-                print(f"Skipping duplicate A-Roll segment {i} to prevent audio overlap")
-                continue
-                
-            # If this is a position for A-Roll
-            if i in a_roll_positions:
-                if aroll_segment_id in aroll_segments:
-                    aroll_data = aroll_segments[aroll_segment_id]
-                    aroll_path, aroll_success, aroll_error = get_aroll_filepath(aroll_segment_id, aroll_data)
-                    
-                    if aroll_path:
-                        print(f"Adding A-Roll segment {i} with path: {aroll_path}")
-                        assembly_sequence.append({
-                            "type": "aroll_full",
-                            "aroll_path": aroll_path,
-                            "broll_path": None,
-                            "segment_id": aroll_segment_id
-                        })
-                        # Mark as used
-                        used_aroll_segments.add(aroll_segment_id)
-            # Otherwise use B-Roll with A-Roll audio
-            else:
-                # Use the appropriate B-Roll segment or cycle through available ones
-                broll_index = (i - 1) % total_broll_segments
-                broll_segment_id = f"segment_{broll_index}"
-                
-                if aroll_segment_id in aroll_segments and broll_segment_id in broll_segments:
-                    aroll_data = aroll_segments[aroll_segment_id]
-                    broll_data = broll_segments[broll_segment_id]
-                    
-                    aroll_path, aroll_success, aroll_error = get_aroll_filepath(aroll_segment_id, aroll_data)
-                    broll_path = get_broll_filepath(broll_segment_id, broll_data)
-                    
-                    if aroll_path and broll_path:
-                        print(f"Adding B-Roll segment {broll_index} with A-Roll segment {i}")
-                        assembly_sequence.append({
-                            "type": "broll_with_aroll_audio",
-                            "aroll_path": aroll_path,
-                            "broll_path": broll_path,
-                            "segment_id": aroll_segment_id,
-                            "broll_id": broll_segment_id
-                        })
-                        # Mark as used
-                        used_aroll_segments.add(aroll_segment_id)
-    
-    # B-Roll Heavy (only first segment uses A-Roll visual)
-    elif "B-Roll Heavy" in selected_sequence:
-        # Track which A-Roll segments have been used to prevent duplicates
-        used_aroll_segments = set()
-        
-        # First segment is A-Roll only
-        if "segment_0" in aroll_segments:
-            aroll_data = aroll_segments["segment_0"]
-            aroll_path, aroll_success, aroll_error = get_aroll_filepath("segment_0", aroll_data)
-            
-            if aroll_path:
-                print(f"Adding A-Roll segment 0 with path: {aroll_path}")
-                assembly_sequence.append({
-                    "type": "aroll_full",
-                    "aroll_path": aroll_path,
-                    "broll_path": None,
-                    "segment_id": "segment_0"
-                })
-                # Mark as used
-                used_aroll_segments.add("segment_0")
-        
-        # All remaining segments use B-Roll visuals with A-Roll audio
-        for i in range(1, total_aroll_segments):
-            aroll_segment_id = f"segment_{i}"
-            
-            # Skip if this A-Roll segment was already used
-            if aroll_segment_id in used_aroll_segments:
-                print(f"Skipping duplicate A-Roll segment {i} to prevent audio overlap")
-                continue
-                
-            # Use the appropriate B-Roll segment or cycle through available ones
-            broll_index = (i - 1) % total_broll_segments
-            broll_segment_id = f"segment_{broll_index}"
-            
-            if aroll_segment_id in aroll_segments and broll_segment_id in broll_segments:
-                aroll_data = aroll_segments[aroll_segment_id]
-                broll_data = broll_segments[broll_segment_id]
-                
-                aroll_path, aroll_success, aroll_error = get_aroll_filepath(aroll_segment_id, aroll_data)
-                broll_path = get_broll_filepath(broll_segment_id, broll_data)
-                
-                if aroll_path and broll_path:
-                    print(f"Adding B-Roll segment {broll_index} with A-Roll segment {i}")
-                    assembly_sequence.append({
-                        "type": "broll_with_aroll_audio",
-                        "aroll_path": aroll_path,
-                        "broll_path": broll_path,
-                        "segment_id": aroll_segment_id,
-                        "broll_id": broll_segment_id
-                    })
-                    # Mark as used
-                    used_aroll_segments.add(aroll_segment_id)
+    # Final summary of what was included
+    print(f"Created assembly sequence with {len(assembly_sequence)} items")
+    print(f"Used {len(used_aroll_segments)}/{total_aroll_segments} A-Roll segments")
     
     if assembly_sequence:
         return {
@@ -1433,19 +1373,40 @@ if content_status and segments:
     # Count completed segments - a segment is complete if it has a file_path or local_path
     aroll_completed = 0
     for i, segment in enumerate(aroll_segments):
-        segment_id = f"segment_{i}"
+        # Get segment_id from the segment itself or create one from index
+        segment_id = segment.get("segment_id", f"segment_{i}")
         
         # Check multiple indicators that a segment is "complete"
         segment_data = content_status["aroll"].get(segment_id, {})
         
-        # A segment is complete if:
-        # 1. It has a status of "complete", OR
-        # 2. It has a local_path attribute that exists, OR
-        # 3. It has a file_path attribute in the segment data itself
-        if (segment_data.get("status") == "complete" or 
-            (segment_data.get("local_path") and os.path.exists(segment_data.get("local_path"))) or
-            ("file_path" in segment and os.path.exists(segment["file_path"]))):
+        # First check if the segment itself has a file_path that exists
+        has_file_path = False
+        if "file_path" in segment and os.path.exists(segment["file_path"]):
+            has_file_path = True
+            print(f"Segment {segment_id} has valid file_path: {segment['file_path']}")
+        
+        # Next check if the segment status has a local_path that exists
+        has_local_path = False
+        if "local_path" in segment_data and os.path.exists(segment_data["local_path"]):
+            has_local_path = True
+            print(f"Segment {segment_id} has valid local_path: {segment_data['local_path']}")
+        
+        # Then try to find the file using our path resolution function
+        found_file = False
+        resolved_path, success, _ = get_aroll_filepath(segment_id, segment)
+        if success and resolved_path:
+            found_file = True
+            print(f"Segment {segment_id} found via path resolution: {resolved_path}")
+        
+        # Finally check for segment status being explicitly marked as complete
+        has_complete_status = segment_data.get("status") == "complete"
+        
+        # Count as completed if any of the above checks passed
+        if has_file_path or has_local_path or found_file or has_complete_status:
             aroll_completed += 1
+            print(f"Marking segment {segment_id} as completed")
+        else:
+            print(f"Segment {segment_id} is not completed: file_path={has_file_path}, local_path={has_local_path}, resolved_path={found_file}, status={has_complete_status}")
     
     broll_completed = sum(1 for i in range(len(broll_segments)) 
                          if f"segment_{i}" in content_status["broll"] and 
@@ -1986,10 +1947,10 @@ with st.expander("Debug Information", expanded=False):
     # Debug A-Roll segments from script.json
     st.markdown("### A-Roll Segments from Script")
     for i, segment in enumerate(aroll_segments):
-        segment_id = f"segment_{i}"
+        segment_id = segment.get("segment_id", f"segment_{i}")
         file_path = segment.get("file_path", "Not found")
         exists = "✅" if file_path != "Not found" and os.path.exists(file_path) else "❌"
-        st.markdown(f"**Segment {i}:** ID=`{segment.get('segment_id', segment_id)}`, Path=`{file_path}` {exists}")
+        st.markdown(f"**Segment {i}:** ID=`{segment_id}`, Path=`{file_path}` {exists}")
     
     # Debug content status
     st.markdown("### Content Status")
@@ -2010,3 +1971,12 @@ with st.expander("Debug Information", expanded=False):
         st.markdown(f"**Search for Segment {i}:** {status}, Path=`{test_path}`")
         if error:
             st.write(f"Error: {error}")
+            
+    # List available files in media directory
+    media_dir = os.path.join(project_path, "media", "a-roll")
+    if os.path.exists(media_dir):
+        st.markdown("### Available Files in A-Roll Directory")
+        files = os.listdir(media_dir)
+        for file in files:
+            if file.endswith('.mp4'):
+                st.markdown(f"- `{file}`")

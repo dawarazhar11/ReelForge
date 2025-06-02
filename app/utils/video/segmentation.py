@@ -173,6 +173,8 @@ def cut_video_segments(
             # Skip if invalid timing
             if end_time <= start_time:
                 print(f"Invalid timing for segment {i}: start={start_time}, end={end_time}")
+                # Still ensure it has a segment_id and update it
+                segment["segment_id"] = f"segment_{i}"
                 updated_segments.append(segment)
                 continue
             
@@ -210,12 +212,20 @@ def cut_video_segments(
             # Close the segment clip
             segment_clip.close()
             
+            # Log success
+            print(f"✅ Successfully created segment {i}: {absolute_output_path}")
+            
         except Exception as e:
             print(f"Error processing segment {i}: {str(e)}")
+            # Still ensure it has a segment_id even if there was an error
+            segment["segment_id"] = f"segment_{i}"
             updated_segments.append(segment)
     
     # Close the main video
     video.close()
+    
+    # Log the number of segments created
+    print(f"Created {len(updated_segments)} segments, with {sum(1 for s in updated_segments if 'file_path' in s)} having valid file paths")
     
     return updated_segments
 

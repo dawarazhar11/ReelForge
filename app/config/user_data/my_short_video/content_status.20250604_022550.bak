@@ -1,0 +1,98 @@
+{
+    "aroll": {
+        "segment_0": {
+            "status": "complete",
+            "file_path": "fetched_aroll_segment_0_5169ef5a.mp4",
+            "prompt_id": "5169ef5a328149a8b13c365ee7060106",
+            "timestamp": "2025-05-20 17:06:17"
+        },
+        "segment_1": {
+            "status": "complete",
+            "file_path": "fetched_aroll_segment_1_aed87db0.mp4",
+            "prompt_id": "aed87db0234e4965825c7ee4c1067467",
+            "timestamp": "2025-05-20 17:06:17"
+        },
+        "segment_2": {
+            "status": "complete",
+            "file_path": "fetched_aroll_segment_2_e7d47355.mp4",
+            "prompt_id": "e7d47355c21e4190bad8752c799343ee",
+            "timestamp": "2025-05-20 17:06:17"
+        },
+        "segment_3": {
+            "status": "complete",
+            "file_path": "fetched_aroll_segment_3_36064085.mp4",
+            "prompt_id": "36064085e2a240768a8368bc6a911aea",
+            "timestamp": "2025-05-20 17:06:17"
+        }
+    },
+    "broll": {
+        "segment_0": {
+            "status": "complete",
+            "file_path": "config/user_data/my_short_video/media/broll/broll_segment_0_20250604_022119.mp4",
+            "prompt_id": "46d1b550-f11f-4097-bdef-57f61b6d5bb1",
+            "content_type": "video",
+            "timestamp": "2025-06-04 02:21:19"
+        },
+        "segment_1": {
+            "status": "complete",
+            "file_path": "config/user_data/my_short_video/media/broll/broll_segment_1_20250604_022119.mp4",
+            "prompt_id": "59a1ff51-482c-43f0-a04e-bba5b5963e21",
+            "content_type": "video",
+            "timestamp": "2025-06-04 02:21:19"
+        },
+        "segment_2": {
+            "status": "complete",
+            "file_path": "config/user_data/my_short_video/media/broll/broll_segment_2_20250604_022119.mp4",
+            "prompt_id": "5bc6d2c2-1621-4647-8450-213c3fb985f3",
+            "content_type": "video",
+            "timestamp": "2025-06-04 02:21:19"
+        },
+        "segment_3": {
+            "status": "complete",
+            "file_path": "config/user_data/my_short_video/media/broll/broll_segment_3_20250604_022119.mp4",
+            "prompt_id": "74425274-b465-4599-bd9d-d0c59173590d",
+            "content_type": "video",
+            "timestamp": "2025-06-04 02:21:19"
+        },
+        "segment_4": {
+            "status": "complete",
+            "file_path": "config/user_data/my_short_video/media/broll/broll_segment_4_20250604_022119.mp4",
+            "prompt_id": "e3fc02b9-9b84-4014-9637-5b76a0fea4e3",
+            "content_type": "video",
+            "timestamp": "2025-06-04 02:21:19"
+        },
+        "segment_5": {
+            "status": "complete",
+            "file_path": "config/user_data/my_short_video/media/broll/broll_segment_5_20250604_022119.mp4",
+            "prompt_id": "4770830d-600b-4b07-8a6b-2a42781a0114",
+            "content_type": "video",
+            "timestamp": "2025-06-04 02:21:19"
+        },
+        "segment_6": {
+            "status": "complete",
+            "file_path": "config/user_data/my_short_video/media/broll/broll_segment_6_20250604_022119.mp4",
+            "prompt_id": "6d2d88b1-2d18-4b7f-8173-364563135b1f",
+            "content_type": "video",
+            "timestamp": "2025-06-04 02:21:19"
+        },
+        "segment_7": {
+            "status": "complete",
+            "file_path": "config/user_data/my_short_video/media/broll/broll_segment_7_20250604_022119.mp4",
+            "prompt_id": "65652862-01a3-4e57-9385-3df554c1ce60",
+            "content_type": "video",
+            "timestamp": "2025-06-04 02:21:19"
+        },
+        "segment_8": {
+            "status": "error",
+            "message": "Prompt ID not found in history",
+            "prompt_id": "efc56f24-90fb-4402-a071-9c3c3b6462cd",
+            "timestamp": "2025-06-04 02:21:19"
+        },
+        "segment_9": {
+            "status": "error",
+            "message": "Prompt ID not found in history",
+            "prompt_id": "16e1e472-287a-4326-b1e3-25ca4e6ae89d",
+            "timestamp": "2025-06-04 02:21:19"
+        }
+    }
+}

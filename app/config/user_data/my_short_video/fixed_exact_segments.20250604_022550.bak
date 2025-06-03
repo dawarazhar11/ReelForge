@@ -1,0 +1,122 @@
+{
+  "sequence": [
+    {
+      "type": "aroll_full",
+      "aroll_path": "config/user_data/my_short_video/media/a-roll/main_aroll.mp4",
+      "broll_path": null,
+      "segment_id": "segment_0",
+      "start_time": 0,
+      "end_time": 2.6555555833333333,
+      "duration": 2.6555555833333333
+    },
+    {
+      "type": "broll_with_aroll_audio",
+      "aroll_path": "config/user_data/my_short_video/media/a-roll/main_aroll.mp4",
+      "broll_path": "config/user_data/my_short_video/media/broll/broll_segment_0_20250604_004344.png",
+      "segment_id": "segment_1",
+      "broll_id": "segment_0",
+      "start_time": 2.6555555833333333,
+      "end_time": 5.311111166666667,
+      "duration": 2.6555555833333333
+    },
+    {
+      "type": "broll_with_aroll_audio",
+      "aroll_path": "config/user_data/my_short_video/media/a-roll/main_aroll.mp4",
+      "broll_path": "config/user_data/my_short_video/media/broll/broll_segment_1_20250604_004344.png",
+      "segment_id": "segment_2",
+      "broll_id": "segment_1",
+      "start_time": 5.311111166666667,
+      "end_time": 7.96666675,
+      "duration": 2.6555555833333333
+    },
+    {
+      "type": "broll_with_aroll_audio",
+      "aroll_path": "config/user_data/my_short_video/media/a-roll/main_aroll.mp4",
+      "broll_path": "config/user_data/my_short_video/media/broll/broll_segment_2_20250604_004344.png",
+      "segment_id": "segment_3",
+      "broll_id": "segment_2",
+      "start_time": 7.96666675,
+      "end_time": 10.622222333333333,
+      "duration": 2.6555555833333333
+    },
+    {
+      "type": "broll_with_aroll_audio",
+      "aroll_path": "config/user_data/my_short_video/media/a-roll/main_aroll.mp4",
+      "broll_path": "config/user_data/my_short_video/media/broll/broll_segment_3_20250604_004344.png",
+      "segment_id": "segment_4",
+      "broll_id": "segment_3",
+      "start_time": 10.622222333333333,
+      "end_time": 13.277777916666667,
+      "duration": 2.6555555833333333
+    },
+    {
+      "type": "broll_with_aroll_audio",
+      "aroll_path": "config/user_data/my_short_video/media/a-roll/main_aroll.mp4",
+      "broll_path": "config/user_data/my_short_video/media/broll/broll_segment_4_20250604_004344.png",
+      "segment_id": "segment_5",
+      "broll_id": "segment_4",
+      "start_time": 13.277777916666667,
+      "end_time": 15.9333335,
+      "duration": 2.6555555833333333
+    },
+    {
+      "type": "broll_with_aroll_audio",
+      "aroll_path": "config/user_data/my_short_video/media/a-roll/main_aroll.mp4",
+      "broll_path": "config/user_data/my_short_video/media/broll/broll_segment_5_20250604_004344.png",
+      "segment_id": "segment_6",
+      "broll_id": "segment_5",
+      "start_time": 15.9333335,
+      "end_time": 18.588889083333335,
+      "duration": 2.6555555833333333
+    },
+    {
+      "type": "broll_with_aroll_audio",
+      "aroll_path": "config/user_data/my_short_video/media/a-roll/main_aroll.mp4",
+      "broll_path": "config/user_data/my_short_video/media/broll/broll_segment_6_20250604_004344.png",
+      "segment_id": "segment_7",
+      "broll_id": "segment_6",
+      "start_time": 18.588889083333335,
+      "end_time": 21.244444666666666,
+      "duration": 2.6555555833333333
+    },
+    {
+      "type": "broll_with_aroll_audio",
+      "aroll_path": "config/user_data/my_short_video/media/a-roll/main_aroll.mp4",
+      "broll_path": "config/user_data/my_short_video/media/broll/broll_segment_7_20250604_004344.png",
+      "segment_id": "segment_8",
+      "broll_id": "segment_7",
+      "start_time": 21.244444666666666,
+      "end_time": 23.900000249999998,
+      "duration": 2.6555555833333333
+    },
+    {
+      "type": "broll_with_aroll_audio",
+      "aroll_path": "config/user_data/my_short_video/media/a-roll/main_aroll.mp4",
+      "broll_path": "config/user_data/my_short_video/media/broll/broll_segment_8_20250603_224615.png",
+      "segment_id": "segment_9",
+      "broll_id": "segment_8",
+      "start_time": 23.900000249999998,
+      "end_time": 26.555555833333333,
+      "duration": 2.6555555833333333
+    },
+    {
+      "type": "broll_with_aroll_audio",
+      "aroll_path": "config/user_data/my_short_video/media/a-roll/main_aroll.mp4",
+      "broll_path": "config/user_data/my_short_video/media/broll/broll_segment_9_20250603_224615.png",
+      "segment_id": "segment_10",
+      "broll_id": "segment_9",
+      "start_time": 26.555555833333333,
+      "end_time": 29.211111416666668,
+      "duration": 2.6555555833333333
+    },
+    {
+      "type": "aroll_full",
+      "aroll_path": "config/user_data/my_short_video/media/a-roll/main_aroll.mp4",
+      "broll_path": null,
+      "segment_id": "segment_11",
+      "start_time": 29.211111416666668,
+      "end_time": 31.866667,
+      "duration": 2.6555555833333315
+    }
+  ]
+}

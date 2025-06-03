@@ -31,6 +31,7 @@ try:
 except ImportError as e:
     st.error(f"Failed to import local modules: {str(e)}")
     st.stop()
+
 # Set page configuration
 st.set_page_config(
     page_title="5B B-Roll Video Production | AI Money Printer",
@@ -184,6 +185,8 @@ if "batch_process_status" not in st.session_state:
         "prompt_ids": {},
         "errors": {}
     }
+if "max_broll_segments" not in st.session_state:
+    st.session_state.max_broll_segments = 3  # Default to 3 segments
 
 # Function to load saved script and segments# Function to load saved script and segments (for B-Roll only)
 def load_script_data():
@@ -379,6 +382,40 @@ def save_content_status():
     status_file = project_path / "content_status.json"
     with open(status_file, "w") as f:
         json.dump(st.session_state.content_status, f, indent=4)
+    return True
+
+# Function to update content status for a specific segment
+def update_content_status(segment_id, segment_type, status, message="", **kwargs):
+    """
+    Update the content status for a specific segment
+    
+    Args:
+        segment_id: ID of the segment (e.g., "segment_0")
+        segment_type: Type of segment ("aroll" or "broll")
+        status: Status string (e.g., "complete", "error", "processing")
+        message: Optional status message
+        **kwargs: Additional status data to store
+    """
+    # Initialize the segment type dict if it doesn't exist
+    if segment_type not in st.session_state.content_status:
+        st.session_state.content_status[segment_type] = {}
+    
+    # Initialize or update the segment status
+    if segment_id not in st.session_state.content_status[segment_type]:
+        st.session_state.content_status[segment_type][segment_id] = {}
+    
+    # Update status fields
+    st.session_state.content_status[segment_type][segment_id]["status"] = status
+    st.session_state.content_status[segment_type][segment_id]["message"] = message
+    st.session_state.content_status[segment_type][segment_id]["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # Add any additional data
+    for key, value in kwargs.items():
+        st.session_state.content_status[segment_type][segment_id][key] = value
+    
+    # Save the updated status
+    save_content_status()
+    
     return True
 
 # Function to replace template values in ComfyUI workflow JSON
@@ -1292,22 +1329,16 @@ st.markdown("---")
 col1, col2 = st.columns(2)
 
 with col1:
-    st.markdown("#### A-Roll Options")
-    st.info("A-Roll segments are the parts where you appear on camera.")
-    st.markdown("For this prototype, A-Roll generation is simulated.")
+    # B-Roll ID fetch inputs
+    st.markdown("#### B-Roll Options")
+    st.info("B-Roll segments are the visual elements that play while your voice narrates.")
     
-    # A-Roll ID fetch inputs
-    st.markdown("##### Fetch Existing A-Roll by ID")
-    st.caption("Optional: Enter IDs to use existing A-Roll content")
-    
-    for i, segment in enumerate(aroll_segments):
-        segment_id = f"segment_{i}"
-        fetch_id = st.text_input(
-            f"A-Roll ID for Segment {i+1}",
-            value=st.session_state.aroll_fetch_ids.get(segment_id, ""),
-            key=f"aroll_id_{segment_id}"
-        )
-        st.session_state.aroll_fetch_ids[segment_id] = fetch_id
+    # Add a toggle for manual ID input or automated generation
+    st.session_state.manual_upload = st.toggle(
+        "Enter B-Roll IDs Manually", 
+        value=st.session_state.manual_upload,
+        help="Toggle to manually enter IDs for existing B-Roll videos"
+    )
 
 with col2:
     st.markdown("#### B-Roll Options")
@@ -1588,105 +1619,36 @@ st.markdown("---")
 st.subheader("Generate Content")
 st.markdown("Choose which type of content to generate:")
 
-if st.session_state.parallel_tasks["running"]:
-    progress_value = st.session_state.parallel_tasks["completed"] / max(1, st.session_state.parallel_tasks["total"])
-    st.progress(progress_value)
-    st.info(f"Generating content... {st.session_state.parallel_tasks['completed']} of {st.session_state.parallel_tasks['total']} tasks completed")
+# Create button for generation
+col1, col2 = st.columns(2)
+
+with col1:
+    # B-Roll content generation
+    st.markdown("### B-Roll Content")
+    st.markdown("Generate visual B-Roll content from prompts")
     
-    # Refresh the page every few seconds to update progress
-    st.markdown("""
-    <meta http-equiv="refresh" content="3">
-    """, unsafe_allow_html=True)
-else:
-    # Create two columns for separate generation buttons
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("### A-Roll Content")
-        st.markdown("Generate on-camera talking head video content")
-        
-        if st.button("🎬 Generate A-Roll Content", type="primary", key="generate_aroll", use_container_width=True):
-            # Capture all required data before starting the thread
-            temp_segments = st.session_state.segments.copy() if hasattr(st.session_state, 'segments') and st.session_state.segments else []
-            temp_aroll_fetch_ids = st.session_state.aroll_fetch_ids.copy() if hasattr(st.session_state, 'aroll_fetch_ids') and st.session_state.aroll_fetch_ids else {}
-            
-            # Print debug info
-            print(f"Debug - Starting A-Roll content generation")
-            
-            # Check if segments is empty
-            if not temp_segments:
-                st.error("No segments found. Please ensure you have completed the Script Segmentation step.")
-                st.stop()
-            
-                        # Mark as running before starting the thread
-            st.session_state.parallel_tasks["running"] = True
-                        
-            # Start the A-Roll content generation in a separate thread
-            thread = threading.Thread(
-                target=generate_aroll_content, 
-                args=(temp_segments, temp_aroll_fetch_ids)
-            )
-            thread.daemon = True
-            thread.start()
-                        
-            # Refresh the page to show progress
-            st.rerun()
-    
-    with col2:
-        st.markdown("### B-Roll Content")
-        st.markdown("Generate visual content based on prompts")
-        
-        if st.session_state.manual_upload:
-            st.info("You've selected manual upload mode. Use the batch processing option or upload files manually.")
-            
-            if st.button("📤 Start Batch Processing", type="primary", key="batch_process", use_container_width=True):
-                with st.spinner("Submitting prompts to video server..."):
-                    prompt_ids, errors = batch_process_broll_prompts()
-                    if prompt_ids:
-                        st.success(f"Successfully submitted {len(prompt_ids)} prompts to video server!")
-                    if errors:
-                        st.error(f"Encountered {len(errors)} errors during submission.")
-                    st.rerun()
-        else:
-            # Replace the original button with our new sequential implementation
-            comfyui_helpers.render_broll_generation_section(unique_key="col2", project_path=project_path, save_function=save_content_status)
-    
-    # Still provide an option for parallel generation
-    st.markdown("### Generate All B-Roll Content")
-    st.info("⚠️ Note: For A-Roll (talking head) generation, please use the '5A A-Roll Video Production' page.")
-    if st.button("🚀 Generate All B-Roll Content", key="parallel_generation", help="Generate B-Roll content for all segments"):
+    if st.button("🎬 Generate B-Roll Content", type="primary", key="generate_broll", use_container_width=True):
         # Capture all required data before starting the thread
         temp_segments = st.session_state.segments.copy() if hasattr(st.session_state, 'segments') and st.session_state.segments else []
         temp_broll_prompts = st.session_state.broll_prompts.copy() if hasattr(st.session_state, 'broll_prompts') and st.session_state.broll_prompts else {}
         temp_manual_upload = st.session_state.manual_upload if hasattr(st.session_state, 'manual_upload') else False
         temp_broll_fetch_ids = st.session_state.broll_fetch_ids.copy() if hasattr(st.session_state, 'broll_fetch_ids') and st.session_state.broll_fetch_ids else {}
         temp_workflow_selection = st.session_state.workflow_selection.copy() if hasattr(st.session_state, 'workflow_selection') and st.session_state.workflow_selection else {"image": "default"}
+    
+    # Display progress if we have parallel tasks running
+    if hasattr(st.session_state, 'parallel_tasks') and st.session_state.parallel_tasks.get('running', False):
+        total = st.session_state.parallel_tasks.get('total', 0)
+        completed = st.session_state.parallel_tasks.get('completed', 0)
         
-        # Print debug info
-        print(f"Debug - Starting B-Roll content generation with {len(temp_segments)} segments")
-        if len(temp_segments) > 0:
-            # Log segment types
-            b_roll_count = len([s for s in temp_segments if isinstance(s, dict) and s.get("type") == "B-Roll"])
-            print(f"Debug - Found {b_roll_count} B-Roll segments")
-        
-        # Check if segments is empty
-        if not temp_segments:
-            st.error("No segments found. Please ensure you have completed the Script Segmentation step.")
-            st.stop()
-        
-        # Mark as running before starting the thread
-        st.session_state.parallel_tasks["running"] = True
-        
-        # Start the content generation in a separate thread with captured data
-        thread = threading.Thread(
-            target=generate_content_parallel, 
-            args=(temp_segments, temp_broll_prompts, temp_manual_upload, temp_broll_fetch_ids, temp_workflow_selection)
-        )
-        thread.daemon = True
-        thread.start()
-        
-        # Refresh the page to show progress
-        st.rerun()
+        if total > 0:
+            # Show progress bar
+            progress_text = f"Processing {completed}/{total} content items..."
+            progress_percentage = completed / total
+            st.progress(progress_percentage, text=progress_text)
+            
+            # Add auto-refresh if still running
+            if completed < total:
+                st.rerun()
 
 # Display generation status
 if "aroll" in st.session_state.content_status and "broll" in st.session_state.content_status:
@@ -2486,3 +2448,66 @@ def render_broll_generation_section(unique_key="main"):
                 if success_count == len(broll_segments):
                     mark_step_complete('content_production')
                     st.balloons()  # Add some fun!
+
+# Show content status
+st.markdown("---")
+st.subheader("📊 Content Status")
+st.markdown("Check the status of your content generation")
+
+# Display B-Roll Status
+broll_status = st.session_state.content_status.get("broll", {})
+if broll_status:
+    st.info(f"B-Roll Status: {len(broll_status)} segments")
+    
+    for segment_id, status in broll_status.items():
+        with st.expander(f"B-Roll {segment_id}"):
+            st.write(f"Status: {status.get('status', 'Unknown')}")
+            st.write(f"Message: {status.get('message', 'No message')}")
+            
+            # If there's a local path, show the video
+            if status.get("local_path") and os.path.exists(status.get("local_path")):
+                video_path = status.get("local_path")
+                st.video(video_path)
+                st.text(f"File: {video_path}")
+            
+            # If there's an error, show it
+            if status.get("error"):
+                st.error(f"Error: {status.get('error')}")
+else:
+    st.warning("No B-Roll content has been generated yet.")
+
+# Count total B-Roll segments
+broll_segments = [s for s in st.session_state.segments if s.get("type") == "B-Roll"]
+total_broll_segments = len(broll_segments)
+
+# Create columns for the controls
+controls_col1, controls_col2 = st.columns([3, 1])
+
+with controls_col1:
+    # Add slider to control max segments to process
+    max_segments = st.slider(
+        "Maximum B-Roll Segments to Process",
+        min_value=1,
+        max_value=max(1, total_broll_segments),
+        value=min(3, total_broll_segments) if total_broll_segments > 0 else 1,  # Default to 3 or less if fewer segments exist
+        step=1,
+        key="max_broll_segments",
+        help="Limit the number of B-Roll segments that will be processed. This is useful if you only want to generate a few segments at a time."
+    )
+    
+    # Add informational message
+    if total_broll_segments > 0 and max_segments < total_broll_segments:
+        st.info(f"Only the first {max_segments} of {total_broll_segments} B-Roll segments will be processed.")
+    
+with controls_col2:
+    # Add a button to process all segments - using a different approach
+    if st.button("Process All", key="process_all_button"):
+        # Use a separate session state flag to indicate we want to process all segments
+        st.session_state.process_all_segments = True
+        st.info(f"Processing all {total_broll_segments} segments")
+        
+        # When processing segments, we would check this flag:
+        # if st.session_state.get("process_all_segments", False):
+        #     segments_to_process = total_broll_segments  # Use all segments
+        # else:
+        #     segments_to_process = st.session_state.max_broll_segments  # Use slider value

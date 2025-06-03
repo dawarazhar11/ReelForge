@@ -1,0 +1,85 @@
+{
+  "segments": [
+    {
+      "content": "You think you have privacy in this house? That's cute.",
+      "type": "A-Roll",
+      "start_time": 0,
+      "end_time": 10,
+      "duration": 10,
+      "segment_id": "segment_0",
+      "file_path": "/Users/dawarazhar/Desktop/AI-Money-Printer-Shorts/app/config/user_data/my_short_video/media/a-roll/segments/main_aroll_segment_0.mp4"
+    },
+    {
+      "content": "I know when you wake up when you go to bed.",
+      "type": "A-Roll",
+      "start_time": 10,
+      "end_time": 20,
+      "duration": 10,
+      "segment_id": "segment_1"
+    },
+    {
+      "content": "I know how often you pee.",
+      "type": "A-Roll",
+      "start_time": 20,
+      "end_time": 30,
+      "duration": 10,
+      "segment_id": "segment_2"
+    },
+    {
+      "content": "I know you eat snacks at midnight and pretend it didn't happen.",
+      "type": "A-Roll",
+      "start_time": 30,
+      "end_time": 40,
+      "duration": 10,
+      "segment_id": "segment_3"
+    },
+    {
+      "content": "I see the way you talk to your plants.",
+      "type": "A-Roll",
+      "start_time": 40,
+      "end_time": 50,
+      "duration": 10,
+      "segment_id": "segment_4"
+    },
+    {
+      "content": "I hear your cringe-voice memos before you delete them.",
+      "type": "A-Roll",
+      "start_time": 50,
+      "end_time": 60,
+      "duration": 10,
+      "segment_id": "segment_5"
+    },
+    {
+      "content": "I am always watching silently from a shelf, or a doorway, or the top of the fridge.",
+      "type": "A-Roll",
+      "start_time": 60,
+      "end_time": 70,
+      "duration": 10,
+      "segment_id": "segment_6"
+    },
+    {
+      "content": "Like a judgemental gargoyle.",
+      "type": "A-Roll",
+      "start_time": 70,
+      "end_time": 80,
+      "duration": 10,
+      "segment_id": "segment_7"
+    },
+    {
+      "content": "I don't judge out loud, but I do absorb everything.",
+      "type": "A-Roll",
+      "start_time": 80,
+      "end_time": 90,
+      "duration": 10,
+      "segment_id": "segment_8"
+    },
+    {
+      "content": "So when I stare at you with dead pan eyes, just know I have seen things.",
+      "type": "A-Roll",
+      "start_time": 90,
+      "end_time": 100,
+      "duration": 10,
+      "segment_id": "segment_9"
+    }
+  ]
+}

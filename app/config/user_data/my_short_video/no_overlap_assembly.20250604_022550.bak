@@ -1,0 +1,82 @@
+{
+  "sequence": [
+    {
+      "type": "aroll_full",
+      "aroll_path": "/Users/dawarazhar/Desktop/AI-Money-Printer-Shorts/app/config/user_data/my_short_video/media/a-roll/main_aroll.mp4",
+      "broll_path": null,
+      "segment_id": "segment_0",
+      "start_time": 0,
+      "end_time": 4.09125,
+      "duration": 4.09125
+    },
+    {
+      "type": "broll_with_aroll_audio",
+      "aroll_path": "/Users/dawarazhar/Desktop/AI-Money-Printer-Shorts/app/config/user_data/my_short_video/media/a-roll/main_aroll.mp4",
+      "broll_path": "config/user_data/my_short_video/media/broll/broll_segment_0_20250603_224613.png",
+      "segment_id": "segment_1",
+      "broll_id": "segment_0",
+      "start_time": 4.09125,
+      "end_time": 8.1825,
+      "duration": 4.09125
+    },
+    {
+      "type": "broll_with_aroll_audio",
+      "aroll_path": "/Users/dawarazhar/Desktop/AI-Money-Printer-Shorts/app/config/user_data/my_short_video/media/a-roll/main_aroll.mp4",
+      "broll_path": "config/user_data/my_short_video/media/broll/broll_segment_1_20250603_224614.png",
+      "segment_id": "segment_2",
+      "broll_id": "segment_1",
+      "start_time": 8.1825,
+      "end_time": 12.27375,
+      "duration": 4.0912500000000005
+    },
+    {
+      "type": "broll_with_aroll_audio",
+      "aroll_path": "/Users/dawarazhar/Desktop/AI-Money-Printer-Shorts/app/config/user_data/my_short_video/media/a-roll/main_aroll.mp4",
+      "broll_path": "config/user_data/my_short_video/media/broll/broll_segment_2_20250603_224614.png",
+      "segment_id": "segment_3",
+      "broll_id": "segment_2",
+      "start_time": 12.27375,
+      "end_time": 16.365,
+      "duration": 4.091249999999999
+    },
+    {
+      "type": "broll_with_aroll_audio",
+      "aroll_path": "/Users/dawarazhar/Desktop/AI-Money-Printer-Shorts/app/config/user_data/my_short_video/media/a-roll/main_aroll.mp4",
+      "broll_path": "config/user_data/my_short_video/media/broll/broll_segment_3_20250603_224615.png",
+      "segment_id": "segment_4",
+      "broll_id": "segment_3",
+      "start_time": 16.365,
+      "end_time": 20.456249999999997,
+      "duration": 4.091249999999999
+    },
+    {
+      "type": "broll_with_aroll_audio",
+      "aroll_path": "/Users/dawarazhar/Desktop/AI-Money-Printer-Shorts/app/config/user_data/my_short_video/media/a-roll/main_aroll.mp4",
+      "broll_path": "config/user_data/my_short_video/media/broll/broll_segment_4_20250603_224615.png",
+      "segment_id": "segment_5",
+      "broll_id": "segment_4",
+      "start_time": 20.456249999999997,
+      "end_time": 24.547499999999996,
+      "duration": 4.091249999999999
+    },
+    {
+      "type": "broll_with_aroll_audio",
+      "aroll_path": "/Users/dawarazhar/Desktop/AI-Money-Printer-Shorts/app/config/user_data/my_short_video/media/a-roll/main_aroll.mp4",
+      "broll_path": "config/user_data/my_short_video/media/broll/broll_segment_5_20250603_224615.png",
+      "segment_id": "segment_6",
+      "broll_id": "segment_5",
+      "start_time": 24.547499999999996,
+      "end_time": 28.638749999999995,
+      "duration": 4.091249999999999
+    },
+    {
+      "type": "aroll_full",
+      "aroll_path": "/Users/dawarazhar/Desktop/AI-Money-Printer-Shorts/app/config/user_data/my_short_video/media/a-roll/main_aroll.mp4",
+      "broll_path": null,
+      "segment_id": "segment_7",
+      "start_time": 28.638749999999995,
+      "end_time": 32.73,
+      "duration": 4.091250000000002
+    }
+  ]
+}

@@ -96,27 +96,40 @@ def direct_assembly(project_path, output_name=None):
     broll_dir = os.path.join(project_path, "media", "broll")
     broll_paths = []
     
-    # Find the most recent B-Roll images for each segment
+    # Search in multiple potential locations to find the most recent B-Roll images
+    potential_broll_dirs = [
+        os.path.join(project_path, "media", "broll"),
+        os.path.join("media", "broll"),
+        os.path.join(app_root, "media", "broll"),
+        os.path.join("config", "user_data", "my_short_video", "media", "broll")
+    ]
+    
+    # Find the most recent B-Roll images for each segment across all potential directories
     for i in range(10):  # Look for up to 10 segments
         segment_pattern = f"broll_segment_{i}_"
         
-        matching_files = []
-        if os.path.exists(broll_dir):
-            for filename in os.listdir(broll_dir):
-                if segment_pattern in filename and filename.endswith(('.png', '.jpg', '.jpeg')):
-                    file_path = os.path.join(broll_dir, filename)
-                    matching_files.append((file_path, os.path.getmtime(file_path)))
+        all_matching_files = []
         
-        # Sort by modification time (newest first)
-        matching_files.sort(key=lambda x: x[1], reverse=True)
+        # Search across all potential directories
+        for broll_dir in potential_broll_dirs:
+            if os.path.exists(broll_dir):
+                for filename in os.listdir(broll_dir):
+                    if segment_pattern in filename and filename.endswith(('.png', '.jpg', '.jpeg')):
+                        file_path = os.path.join(broll_dir, filename)
+                        # Get modification time for sorting
+                        mod_time = os.path.getmtime(file_path)
+                        all_matching_files.append((file_path, mod_time))
         
-        if matching_files:
-            newest_file = matching_files[0][0]
+        # Sort all matching files by modification time (newest first)
+        all_matching_files.sort(key=lambda x: x[1], reverse=True)
+        
+        if all_matching_files:
+            newest_file = all_matching_files[0][0]
             broll_paths.append(newest_file)
-            print(f"Found B-Roll image for segment {i}: {os.path.basename(newest_file)}")
+            print(f"Found B-Roll image for segment {i}: {os.path.basename(newest_file)} (modified: {datetime.fromtimestamp(all_matching_files[0][1]).strftime('%Y-%m-%d %H:%M:%S')})")
     
     if not broll_paths:
-        print("No B-Roll images found in the project directory.")
+        print("No B-Roll images found in any of the potential directories.")
         return None
     
     # Calculate segment durations - ensure segments are around 4 seconds

@@ -651,6 +651,7 @@ def get_aroll_filepath(segment_id, segment_data):
 def get_broll_filepath(segment_id, segment_data):
     """
     Get the filepath for a B-Roll segment, supporting different path formats
+    Always finds the most recent file by modification time
     
     Args:
         segment_id: ID of the segment (e.g., 'segment_0')
@@ -659,6 +660,9 @@ def get_broll_filepath(segment_id, segment_data):
     Returns:
         str: Path to the B-Roll file if found, None otherwise
     """
+    # Track all matching files with their modification times
+    all_matching_files = []
+    
     # Check the file path in the content status
     if "file_path" in segment_data:
         file_path = segment_data["file_path"]
@@ -667,12 +671,15 @@ def get_broll_filepath(segment_id, segment_data):
         if not os.path.dirname(file_path):
             media_path = f"media/b-roll/{file_path}"
             if os.path.exists(media_path):
-                print(f"Found B-Roll file: {media_path}")
-                return media_path
+                mod_time = os.path.getmtime(media_path)
+                all_matching_files.append((media_path, mod_time))
+                print(f"Found B-Roll file: {media_path} (modified: {datetime.fromtimestamp(mod_time).strftime('%Y-%m-%d %H:%M:%S')})")
         
         # Check if the provided path exists directly
         if os.path.exists(file_path):
-            return file_path
+            mod_time = os.path.getmtime(file_path)
+            all_matching_files.append((file_path, mod_time))
+            print(f"Found B-Roll file: {file_path} (modified: {datetime.fromtimestamp(mod_time).strftime('%Y-%m-%d %H:%M:%S')})")
     
     # Try alternative formats if the primary file path doesn't exist
     segment_num = segment_id.split('_')[-1]
@@ -683,28 +690,57 @@ def get_broll_filepath(segment_id, segment_data):
     image_extensions = [".png", ".jpg", ".jpeg"]
     all_extensions = video_extensions + image_extensions
     
+    # Search in multiple potential directories
+    potential_dirs = [
+        os.path.join(project_path, "media", "b-roll"),
+        os.path.join(project_path, "media", "broll"),
+        os.path.join("media", "b-roll"),
+        os.path.join("media", "broll"),
+        os.path.join(app_root, "media", "b-roll"),
+        os.path.join(app_root, "media", "broll"),
+        os.path.join("config", "user_data", "my_short_video", "media", "broll"),
+        os.path.join("config", "user_data", "my_short_video", "media", "b-roll")
+    ]
+    
     # Different file naming patterns to try
     base_patterns = [
         # Common formats
-        f"media/b-roll/broll_segment_{segment_num}",
-        f"{app_root}/media/b-roll/broll_segment_{segment_num}",
-        f"media/b-roll/fetched_broll_segment_{segment_num}",
-        f"{app_root}/media/b-roll/fetched_broll_segment_{segment_num}",
+        f"broll_segment_{segment_num}",
+        f"fetched_broll_segment_{segment_num}",
         # Additional patterns for images
-        f"media/b-roll/image_{segment_num}",
-        f"{app_root}/media/b-roll/image_{segment_num}",
-        f"media/images/broll_{segment_num}",
-        f"{app_root}/media/images/broll_{segment_num}"
+        f"image_{segment_num}",
+        f"broll_{segment_num}"
     ]
     
-    # Try each pattern with each extension
-    for pattern in base_patterns:
-        for ext in all_extensions:
-            path_to_try = pattern + ext
-            if os.path.exists(path_to_try):
-                print(f"Found B-Roll {'image' if ext in image_extensions else 'video'} file: {path_to_try}")
-                return path_to_try
-            
+    # Try each pattern with each extension in each potential directory
+    for directory in potential_dirs:
+        if os.path.exists(directory):
+            for pattern in base_patterns:
+                # Check for files with timestamps (e.g., broll_segment_0_20250604_004344.png)
+                matching_files = []
+                for filename in os.listdir(directory):
+                    if pattern in filename and any(filename.endswith(ext) for ext in all_extensions):
+                        file_path = os.path.join(directory, filename)
+                        mod_time = os.path.getmtime(file_path)
+                        matching_files.append((file_path, mod_time))
+                
+                # Sort by modification time (newest first) and add to all_matching_files
+                matching_files.sort(key=lambda x: x[1], reverse=True)
+                all_matching_files.extend(matching_files)
+    
+    # If we found any matching files, return the most recent one
+    if all_matching_files:
+        # Sort all files by modification time (newest first)
+        all_matching_files.sort(key=lambda x: x[1], reverse=True)
+        newest_file = all_matching_files[0][0]
+        mod_time = all_matching_files[0][1]
+        print(f"Using newest B-Roll file for {segment_id}: {newest_file} (modified: {datetime.fromtimestamp(mod_time).strftime('%Y-%m-%d %H:%M:%S')})")
+        
+        # Update segment_data to use this file path
+        segment_data["file_path"] = newest_file
+        
+        return newest_file
+    
     print(f"B-Roll file not found for {segment_id}")
     return None
 

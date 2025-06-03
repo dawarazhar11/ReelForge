@@ -166,7 +166,15 @@ def resize_video(clip, target_resolution=(1080, 1920)):
 
 # Add this new function to validate audio
 def has_valid_audio(clip):
-    """Check if a clip has valid audio"""
+    """
+    Check if a clip has valid audio
+    
+    Args:
+        clip: MoviePy video clip
+        
+    Returns:
+        bool: True if the clip has valid audio, False otherwise
+    """
     try:
         if clip.audio is None:
             print("Clip has no audio track")
@@ -180,6 +188,19 @@ def has_valid_audio(clip):
             if clip.audio.duration <= 0:
                 print("Audio track has zero or negative duration")
                 return False
+                
+            # Check if audio has valid fps
+            if clip.audio.fps is None or clip.audio.fps <= 0:
+                print("Audio track has invalid fps")
+                return False
+                
+            # Check if audio has valid nchannels
+            if not hasattr(clip.audio, 'nchannels') or clip.audio.nchannels <= 0:
+                print("Audio track has invalid number of channels")
+                return False
+                
+            # All checks passed
+            print(f"Audio validation successful: duration={clip.audio.duration:.2f}s, fps={clip.audio.fps}, channels={clip.audio.nchannels}")
             return True
         except (AttributeError, IOError, ValueError) as e:
             print(f"Audio validation error: {str(e)}")
@@ -343,8 +364,8 @@ def image_to_video(image_path, duration=5.0, target_resolution=(1080, 1920)):
         return None
         
     try:
-        # Load image as clip
-        print(f"Converting image to video: {image_path} (duration: {duration}s)")
+        # Load image as clip with exact specified duration
+        print(f"Converting image to video with exact duration: {duration}s - {image_path}")
         image_clip = mp.ImageClip(image_path, duration=duration)
         
         # Resize to target resolution
@@ -535,11 +556,36 @@ def assemble_video(sequence, target_resolution=(1080, 1920), output_dir=None, pr
                     
                     # Check if B-Roll is an image file
                     if is_image_file(broll_path):
-                        # Get A-Roll audio duration to use for the image
-                        aroll_audio_duration = audio_durations.get(segment_id, 5.0)
+                        # Get segment-specific duration to use for the image
+                        segment_duration = item.get("duration", 0)
+                        
+                        if segment_duration <= 0:
+                            # If duration is not in the item, calculate from start/end time
+                            segment_start = item.get("start_time", 0)
+                            segment_end = item.get("end_time", 0)
+                            if segment_end > segment_start:
+                                segment_duration = segment_end - segment_start
+                                print(f"Calculated segment duration from timestamps: {segment_duration}s")
+                        
+                        # If still no valid duration, fall back to audio duration
+                        if segment_duration <= 0:
+                            # Get A-Roll audio duration to use for the image
+                            segment_duration = audio_durations.get(segment_id, 0)
+                        
+                        if segment_duration <= 0:
+                            # If we don't have the audio duration yet, try to get it from the item
+                            if "duration" in item and item["duration"] > 0:
+                                segment_duration = item["duration"]
+                                print(f"Using duration from sequence data: {segment_duration}s")
+                            else:
+                                # Default fallback duration
+                                segment_duration = 5.0
+                                print(f"No valid duration found, using default: {segment_duration}s")
+                        
+                        print(f"Creating B-Roll image video with exact segment duration: {segment_duration}s")
                         
                         # Convert image to video with matching duration
-                        broll_clip = image_to_video(broll_path, duration=aroll_audio_duration, target_resolution=target_resolution)
+                        broll_clip = image_to_video(broll_path, duration=segment_duration, target_resolution=target_resolution)
                         
                         if broll_clip is None:
                             print(f"❌ Failed to convert image to video: {broll_path}")

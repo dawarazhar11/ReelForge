@@ -20,6 +20,18 @@ if str(app_root) not in sys.path:
     print(f"Added {app_root} to path")
     print("Successfully imported local modules")
 
+# Add the app directory to the Python path to allow importing from our fix script
+app_dir = Path(__file__).parent.parent.absolute()
+if str(app_dir) not in sys.path:
+    sys.path.insert(0, str(app_dir))
+
+# Attempt to import the direct assembly function from our fix script
+try:
+    from video_assembly_streamlit_fix import direct_assembly as fixed_assembly
+    FIXED_ASSEMBLY_AVAILABLE = True
+except ImportError:
+    FIXED_ASSEMBLY_AVAILABLE = False
+
 # Define render_sequence_timeline function here, before it's needed
 def render_sequence_timeline(sequence):
     """
@@ -740,7 +752,7 @@ def create_assembly_sequence():
         segment_id_map[segment_id] = i
     
     # Get selected sequence pattern
-    selected_sequence = st.session_state.get("selected_sequence", "Standard (A-Roll start, B-Roll middle with A-Roll audio, A-Roll end)")
+    selected_sequence = st.session_state.get("selected_sequence", "No Overlap (Prevents audio repetition - recommended)")
     
     # If Custom is selected and we already have a manually created sequence, preserve it
     if "Custom" in selected_sequence and "video_assembly" in st.session_state and "sequence" in st.session_state.video_assembly:
@@ -758,8 +770,146 @@ def create_assembly_sequence():
     if total_aroll_segments == 0:
         return {"status": "error", "message": "No A-Roll segments found. Please go to the A-Roll Transcription page to create A-Roll videos first."}
     
+    # Helper function to extract duration information from segment data
+    def extract_duration_info(segment_data):
+        """Extract duration information from segment data"""
+        start_time = segment_data.get("start_time", 0)
+        end_time = segment_data.get("end_time", 0)
+        duration = segment_data.get("duration", 0)
+        
+        # If we have start and end times but no duration, calculate it
+        if duration == 0 and end_time > start_time:
+            duration = end_time - start_time
+            print(f"Calculated duration from timestamps: {duration}s")
+        
+        return {
+            "start_time": start_time,
+            "end_time": end_time,
+            "duration": duration
+        }
+    
+    # No Overlap pattern (prioritizes preventing audio repetition)
+    if "No Overlap" in selected_sequence:
+        # Track which A-Roll segments have been used to prevent duplicates
+        used_aroll_segments = set()
+        
+        # First, identify all available A-Roll segments
+        available_aroll_segments = []
+        for i in range(total_aroll_segments):
+            segment_id = segment_id_map.get(i, f"segment_{i}")
+            segment_data = next((s for s in aroll_script_segments if s.get("segment_id") == segment_id), 
+                               aroll_script_segments[i] if i < len(aroll_script_segments) else None)
+            
+            if segment_data:
+                aroll_path, aroll_success, aroll_error = get_aroll_filepath(segment_id, segment_data)
+                if aroll_path:
+                    # Extract duration information
+                    duration_info = extract_duration_info(segment_data)
+                    
+                    available_aroll_segments.append({
+                        "segment_id": segment_id,
+                        "segment_data": segment_data,
+                        "aroll_path": aroll_path,
+                        "index": i,
+                        "start_time": duration_info["start_time"],
+                        "end_time": duration_info["end_time"],
+                        "duration": duration_info["duration"]
+                    })
+        
+        print(f"Found {len(available_aroll_segments)} available A-Roll segments")
+        
+        # First segment is A-Roll only (if we have enough segments)
+        if len(available_aroll_segments) > 0:
+            first_segment = available_aroll_segments[0]
+            segment_id = first_segment["segment_id"]
+            aroll_path = first_segment["aroll_path"]
+            
+            print(f"Adding A-Roll segment 0 (ID: {segment_id}) with path: {aroll_path}")
+            assembly_sequence.append({
+                "type": "aroll_full",
+                "aroll_path": aroll_path,
+                "broll_path": None,
+                "segment_id": segment_id,
+                "start_time": first_segment.get("start_time", 0),
+                "end_time": first_segment.get("end_time", 0),
+                "duration": first_segment.get("duration", 0)
+            })
+            # Mark as used
+            used_aroll_segments.add(segment_id)
+            
+            # Remove from available segments
+            available_aroll_segments = available_aroll_segments[1:]
+        
+        # Last segment is A-Roll only (if we have enough segments)
+        last_segment = None
+        if len(available_aroll_segments) > 1:
+            last_segment = available_aroll_segments[-1]
+            available_aroll_segments = available_aroll_segments[:-1]
+        
+        # Middle segments use B-Roll visuals with A-Roll audio
+        for i, aroll_segment in enumerate(available_aroll_segments):
+            segment_id = aroll_segment["segment_id"]
+            aroll_path = aroll_segment["aroll_path"]
+            
+            # Use the appropriate B-Roll segment or cycle through available ones
+            broll_index = i % total_broll_segments
+            broll_segment_id = f"segment_{broll_index}"
+            
+            if broll_segment_id in broll_segments:
+                broll_data = broll_segments[broll_segment_id]
+                broll_path = get_broll_filepath(broll_segment_id, broll_data)
+                
+                if broll_path:
+                    print(f"Adding B-Roll segment {broll_index} with A-Roll segment {segment_id}")
+                    assembly_sequence.append({
+                        "type": "broll_with_aroll_audio",
+                        "aroll_path": aroll_path,
+                        "broll_path": broll_path,
+                        "segment_id": segment_id,
+                        "broll_id": broll_segment_id,
+                        "start_time": aroll_segment.get("start_time", 0),
+                        "end_time": aroll_segment.get("end_time", 0),
+                        "duration": aroll_segment.get("duration", 0)
+                    })
+                    # Mark as used
+                    used_aroll_segments.add(segment_id)
+                else:
+                    st.error(f"B-Roll file not found for {broll_segment_id}")
+            else:
+                # If no matching B-Roll, use A-Roll visuals
+                print(f"No B-Roll segment available for {segment_id}, using A-Roll visuals")
+                assembly_sequence.append({
+                    "type": "aroll_full",
+                    "aroll_path": aroll_path,
+                    "broll_path": None,
+                    "segment_id": segment_id,
+                    "start_time": aroll_segment.get("start_time", 0),
+                    "end_time": aroll_segment.get("end_time", 0),
+                    "duration": aroll_segment.get("duration", 0)
+                })
+                # Mark as used
+                used_aroll_segments.add(segment_id)
+        
+        # Add the last segment if we saved one
+        if last_segment:
+            segment_id = last_segment["segment_id"]
+            aroll_path = last_segment["aroll_path"]
+            
+            print(f"Adding final A-Roll segment (ID: {segment_id}) with path: {aroll_path}")
+            assembly_sequence.append({
+                "type": "aroll_full",
+                "aroll_path": aroll_path,
+                "broll_path": None,
+                "segment_id": segment_id,
+                "start_time": last_segment.get("start_time", 0),
+                "end_time": last_segment.get("end_time", 0),
+                "duration": last_segment.get("duration", 0)
+            })
+            # Mark as used
+            used_aroll_segments.add(segment_id)
+    
     # B-Roll Full (all visuals are B-Roll with A-Roll audio)
-    if "B-Roll Full" in selected_sequence:
+    elif "B-Roll Full" in selected_sequence:
         # All segments use B-Roll visuals with A-Roll audio
         # Track which A-Roll segments have been used to prevent duplicates
         used_aroll_segments = set()
@@ -780,13 +930,17 @@ def create_assembly_sequence():
             broll_segment_id = f"segment_{broll_index}"
             
             # Get the segment data
-            segment_data = aroll_script_segments[i] if i < len(aroll_script_segments) else None
+            segment_data = next((s for s in aroll_script_segments if s.get("segment_id") == segment_id), 
+                              aroll_script_segments[i] if i < len(aroll_script_segments) else None)
             
             if segment_data and broll_segment_id in broll_segments:
                 broll_data = broll_segments[broll_segment_id]
                 
                 aroll_path, aroll_success, aroll_error = get_aroll_filepath(segment_id, segment_data)
                 broll_path = get_broll_filepath(broll_segment_id, broll_data)
+                
+                # Extract duration information
+                duration_info = extract_duration_info(segment_data)
                 
                 if aroll_path and broll_path:
                     print(f"Adding B-Roll segment {broll_index} with A-Roll segment {i} (ID: {segment_id})")
@@ -795,7 +949,10 @@ def create_assembly_sequence():
                         "aroll_path": aroll_path,
                         "broll_path": broll_path,
                         "segment_id": segment_id,
-                        "broll_id": broll_segment_id
+                        "broll_id": broll_segment_id,
+                        "start_time": duration_info["start_time"],
+                        "end_time": duration_info["end_time"],
+                        "duration": duration_info["duration"]
                     })
                     # Mark this A-Roll segment as used
                     used_aroll_segments.add(segment_id)
@@ -814,13 +971,19 @@ def create_assembly_sequence():
         if first_segment:
             aroll_path, aroll_success, aroll_error = get_aroll_filepath(first_segment_id, first_segment)
             
+            # Extract duration information
+            duration_info = extract_duration_info(first_segment)
+            
             if aroll_path:
                 print(f"Adding A-Roll segment 0 (ID: {first_segment_id}) with path: {aroll_path}")
                 assembly_sequence.append({
                     "type": "aroll_full",
                     "aroll_path": aroll_path,
                     "broll_path": None,
-                    "segment_id": first_segment_id
+                    "segment_id": first_segment_id,
+                    "start_time": duration_info["start_time"],
+                    "end_time": duration_info["end_time"],
+                    "duration": duration_info["duration"]
                 })
                 # Mark as used
                 used_aroll_segments.add(first_segment_id)
@@ -850,6 +1013,9 @@ def create_assembly_sequence():
                 aroll_path, aroll_success, aroll_error = get_aroll_filepath(segment_id, segment_data)
                 broll_path = get_broll_filepath(broll_segment_id, broll_data)
                 
+                # Extract duration information
+                duration_info = extract_duration_info(segment_data)
+                
                 if aroll_path and broll_path:
                     print(f"Adding B-Roll segment {i-1} with A-Roll segment {i} (ID: {segment_id})")
                     assembly_sequence.append({
@@ -857,7 +1023,10 @@ def create_assembly_sequence():
                         "aroll_path": aroll_path,
                         "broll_path": broll_path,
                         "segment_id": segment_id,
-                        "broll_id": broll_segment_id
+                        "broll_id": broll_segment_id,
+                        "start_time": duration_info["start_time"],
+                        "end_time": duration_info["end_time"],
+                        "duration": duration_info["duration"]
                     })
                     # Mark as used
                     used_aroll_segments.add(segment_id)
@@ -879,13 +1048,19 @@ def create_assembly_sequence():
         if last_segment_id not in used_aroll_segments and last_segment:
             aroll_path, aroll_success, aroll_error = get_aroll_filepath(last_segment_id, last_segment)
             
+            # Extract duration information
+            duration_info = extract_duration_info(last_segment)
+            
             if aroll_path:
                 print(f"Adding final A-Roll segment (ID: {last_segment_id}) with path: {aroll_path}")
                 assembly_sequence.append({
                     "type": "aroll_full",
                     "aroll_path": aroll_path,
                     "broll_path": None,
-                    "segment_id": last_segment_id
+                    "segment_id": last_segment_id,
+                    "start_time": duration_info["start_time"],
+                    "end_time": duration_info["end_time"],
+                    "duration": duration_info["duration"]
                 })
                 # Mark as used
                 used_aroll_segments.add(last_segment_id)
@@ -903,13 +1078,19 @@ def create_assembly_sequence():
         if first_segment:
             aroll_path, aroll_success, aroll_error = get_aroll_filepath(first_segment_id, first_segment)
             
+            # Extract duration information
+            duration_info = extract_duration_info(first_segment)
+            
             if aroll_path:
                 print(f"Adding A-Roll segment 0 (ID: {first_segment_id}) with path: {aroll_path}")
                 assembly_sequence.append({
                     "type": "aroll_full",
                     "aroll_path": aroll_path,
                     "broll_path": None,
-                    "segment_id": first_segment_id
+                    "segment_id": first_segment_id,
+                    "start_time": duration_info["start_time"],
+                    "end_time": duration_info["end_time"],
+                    "duration": duration_info["duration"]
                 })
                 # Mark as used
                 used_aroll_segments.add(first_segment_id)
@@ -939,6 +1120,9 @@ def create_assembly_sequence():
                 aroll_path, aroll_success, aroll_error = get_aroll_filepath(segment_id, segment_data)
                 broll_path = get_broll_filepath(broll_segment_id, broll_data)
                 
+                # Extract duration information
+                duration_info = extract_duration_info(segment_data)
+                
                 if aroll_path and broll_path:
                     print(f"Adding B-Roll segment {broll_index} with A-Roll segment {i} (ID: {segment_id})")
                     assembly_sequence.append({
@@ -946,7 +1130,10 @@ def create_assembly_sequence():
                         "aroll_path": aroll_path,
                         "broll_path": broll_path,
                         "segment_id": segment_id,
-                        "broll_id": broll_segment_id
+                        "broll_id": broll_segment_id,
+                        "start_time": duration_info["start_time"],
+                        "end_time": duration_info["end_time"],
+                        "duration": duration_info["duration"]
                     })
                     # Mark as used
                     used_aroll_segments.add(segment_id)
@@ -963,13 +1150,19 @@ def create_assembly_sequence():
         if last_segment_id not in used_aroll_segments and last_segment:
             aroll_path, aroll_success, aroll_error = get_aroll_filepath(last_segment_id, last_segment)
             
+            # Extract duration information
+            duration_info = extract_duration_info(last_segment)
+            
             if aroll_path:
                 print(f"Adding final A-Roll segment (ID: {last_segment_id}) with path: {aroll_path}")
                 assembly_sequence.append({
                     "type": "aroll_full",
                     "aroll_path": aroll_path,
                     "broll_path": None,
-                    "segment_id": last_segment_id
+                    "segment_id": last_segment_id,
+                    "start_time": duration_info["start_time"],
+                    "end_time": duration_info["end_time"],
+                    "duration": duration_info["duration"]
                 })
                 # Mark as used
                 used_aroll_segments.add(last_segment_id)
@@ -1164,15 +1357,65 @@ def assemble_video():
     output_dir = project_path / "output"
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    # Display a checkbox to choose assembly method
-    use_simple_assembly = st.session_state.get("use_simple_assembly", False)
-    st.checkbox("Use simple assembly (FFmpeg direct)", value=use_simple_assembly, 
-                help="Use this if you experience issues with MoviePy", 
-                key="use_simple_assembly")
+    # Display assembly method options
+    assembly_col1, assembly_col2 = st.columns(2)
+    
+    with assembly_col1:
+        use_simple_assembly = st.session_state.get("use_simple_assembly", False)
+        st.checkbox("Use simple assembly (FFmpeg direct)", value=use_simple_assembly, 
+                    help="Use this if you experience issues with MoviePy", 
+                    key="use_simple_assembly")
+    
+    with assembly_col2:
+        # Only show fixed assembly option if available
+        if FIXED_ASSEMBLY_AVAILABLE:
+            use_fixed_assembly = st.session_state.get("use_fixed_assembly", True)
+            st.checkbox("Use fixed assembly (Accurate B-Roll durations)", value=use_fixed_assembly,
+                       help="Fix the issue where B-Roll images have incorrect durations", 
+                       key="use_fixed_assembly")
     
     try:
-        # Try primary assembly method first unless simple assembly is selected
-        if not st.session_state.get("use_simple_assembly", False):
+        # Check if we should use the fixed assembly method
+        if FIXED_ASSEMBLY_AVAILABLE and st.session_state.get("use_fixed_assembly", True):
+            # Use the fixed assembly method that correctly handles B-Roll image durations
+            update_progress(10, "Using fixed assembly method for accurate B-Roll durations")
+            
+            # Get project directory
+            project_dir = str(project_path)
+            
+            # Generate a unique output name
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_name = f"fixed_assembly_{timestamp}"
+            
+            # Call the fixed assembly function
+            result = {"status": "error", "message": "Not started"}
+            
+            try:
+                # Run the fixed assembly
+                output_path = fixed_assembly(project_dir, output_name)
+                
+                if output_path:
+                    result = {
+                        "status": "success",
+                        "message": "Video assembled successfully with accurate B-Roll durations",
+                        "output_path": output_path
+                    }
+                else:
+                    result = {
+                        "status": "error",
+                        "message": "Fixed assembly failed to generate an output video"
+                    }
+            except Exception as e:
+                import traceback
+                result = {
+                    "status": "error",
+                    "message": f"Error during fixed assembly: {str(e)}",
+                    "traceback": traceback.format_exc()
+                }
+        
+        # Try primary or simple assembly methods if fixed assembly wasn't used or failed
+        elif not st.session_state.get("use_simple_assembly", False):
             # Call our helper function
             result = helper_assemble_video(
                 sequence=assembly_sequence,
@@ -1242,6 +1485,7 @@ st.subheader("Assembly Options")
 
 # Add sequence selection with improved descriptions
 sequence_options = [
+    "No Overlap (Prevents audio repetition - recommended)",
     "Standard (A-Roll start, B-Roll middle with A-Roll audio, A-Roll end)",
     "A-Roll Bookends (A-Roll at start and end only, B-Roll middle with A-Roll audio)",
     "A-Roll Sandwich (A-Roll at start, middle, and end; B-Roll with A-Roll audio between)",
@@ -1257,10 +1501,10 @@ st.session_state.selected_sequence = st.selectbox(
 )
 
 # Add warning about audio overlaps in certain presets
-if not "B-Roll Full" in st.session_state.selected_sequence and not "Custom" in st.session_state.selected_sequence:
+if not "No Overlap" in st.session_state.selected_sequence and not "B-Roll Full" in st.session_state.selected_sequence and not "Custom" in st.session_state.selected_sequence:
     st.info("""
     ℹ️ **Note:** Some sequence patterns may cause audio overlaps if there are more A-Roll segments than B-Roll segments.
-    If you experience audio overlaps, try the "B-Roll Full" preset or "Custom" arrangement for full control.
+    If you experience audio overlaps, try the "No Overlap" or "B-Roll Full" preset to prevent audio repetition.
     """)
 
 # If Custom is selected, enable manual editing

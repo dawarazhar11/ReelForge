@@ -91,6 +91,7 @@ def image_to_video(image_path, output_path, duration=5.0, target_resolution=(108
             output_path
         ]
         
+        print(f"Creating video from image with exact duration: {duration}s")
         subprocess.run(cmd, check=True, capture_output=True)
         return True
     except Exception as e:
@@ -171,58 +172,150 @@ def simple_assemble_video(sequence, output_path=None, target_resolution=(1080, 1
                 aroll_path = item.get("aroll_path")
                 temp_output = os.path.join(temp_dir, f"segment_{i}.mp4")
                 
-                # Extract audio from A-Roll
-                temp_audio = os.path.join(temp_dir, f"audio_{i}.aac")
-                cmd_audio = [
-                    "ffmpeg", "-y", "-i", aroll_path,
-                    "-vn", "-c:a", "aac", "-b:a", "128k",
-                    temp_audio
-                ]
+                # Get segment duration from the item - this is critical for correct timing
+                segment_duration = item.get("duration", 0)
+                segment_start = item.get("start_time", 0)
+                segment_end = item.get("end_time", 0)
                 
+                # If we have a valid duration in the sequence item, use it
+                if segment_duration > 0:
+                    print(f"Using segment duration from sequence: {segment_duration}s")
+                    extract_duration = segment_duration
+                # If we have start and end times, calculate duration
+                elif segment_end > segment_start:
+                    extract_duration = segment_end - segment_start
+                    print(f"Calculated duration from start/end times: {extract_duration}s")
+                else:
+                    # Fallback to a reasonable default (not the entire video)
+                    extract_duration = 5.0
+                    print(f"Using default duration: {extract_duration}s")
+                
+                # Extract segment-specific audio from A-Roll
+                temp_audio = os.path.join(temp_dir, f"audio_{i}.aac")
+                
+                # If we have start_time, extract just the segment audio
+                if segment_start > 0 or segment_end > 0:
+                    cmd_audio = [
+                        "ffmpeg", "-y", "-i", aroll_path,
+                        "-ss", str(segment_start),  # Start time
+                        "-t", str(extract_duration),  # Duration to extract
+                        "-vn", "-c:a", "aac", "-b:a", "128k",
+                        temp_audio
+                    ]
+                else:
+                    # No timing info, extract the whole audio (fallback)
+                    cmd_audio = [
+                        "ffmpeg", "-y", "-i", aroll_path,
+                        "-t", str(extract_duration),  # Extract only the specified duration
+                        "-vn", "-c:a", "aac", "-b:a", "128k",
+                        temp_audio
+                    ]
+                
+                print(f"Extracting audio segment of {extract_duration}s duration")
                 subprocess.run(cmd_audio, check=True, capture_output=True)
                 
-                # Get audio duration using ffprobe
+                # Get actual audio duration using ffprobe
                 audio_duration_cmd = [
                     "ffprobe", "-v", "error", "-show_entries", "format=duration",
                     "-of", "default=noprint_wrappers=1:nokey=1", temp_audio
                 ]
                 audio_duration_result = subprocess.run(audio_duration_cmd, capture_output=True, text=True, check=True)
                 audio_duration = float(audio_duration_result.stdout.strip())
+                print(f"Extracted audio duration: {audio_duration}s (target: {extract_duration}s)")
                 
                 # Check if B-Roll is an image file
                 if is_image_file(broll_path):
                     print(f"B-Roll is an image file: {broll_path}")
-                    # Convert image to video with A-Roll audio duration
+                    
+                    # Use the segment duration for the image
+                    print(f"Creating image video with segment duration: {extract_duration}s")
+                    
+                    # Convert image to video with segment duration
                     temp_video = os.path.join(temp_dir, f"image_video_{i}.mp4")
-                    if image_to_video(broll_path, temp_video, duration=audio_duration, target_resolution=target_resolution):
+                    if image_to_video(broll_path, temp_video, duration=extract_duration, target_resolution=target_resolution):
                         # Now add the A-Roll audio to the video
                         cmd = [
                             "ffmpeg", "-y", 
-                            "-i", temp_video,  # Use the generated video
-                            "-i", temp_audio,  # Add A-Roll audio
-                            "-c:v", "copy",    # Copy video stream
+                            "-i", temp_video,
+                            "-i", temp_audio,
+                            "-map", "0:v:0",
+                            "-map", "1:a:0",
+                            "-c:v", "copy",
                             "-c:a", "aac", "-b:a", "128k",
-                            "-shortest",       # End when shortest input stream ends
-                            "-af", "afade=t=in:st=0:d=0.1,afade=t=out:st=" + str(audio_duration-0.1) + ":d=0.1",  # Add gentle fades
+                            "-shortest",  # Ensure output is only as long as shortest input
                             temp_output
                         ]
+                        print(f"Adding segment audio to image video")
                         subprocess.run(cmd, check=True, capture_output=True)
                         temp_videos.append(temp_output)
                     else:
                         print(f"Failed to convert image to video: {broll_path}")
                         continue
                 else:
-                    # Scale B-Roll and add A-Roll audio with precise timing
-                    cmd = [
-                        "ffmpeg", "-y", "-i", broll_path, "-i", temp_audio,
-                        "-vf", f"scale={target_resolution[0]}:{target_resolution[1]}:force_original_aspect_ratio=decrease,pad={target_resolution[0]}:{target_resolution[1]}:(ow-iw)/2:(oh-ih)/2",
-                        "-c:v", "libx264", "-preset", "medium", "-crf", "23",
-                        "-c:a", "aac", "-b:a", "128k",
-                        "-shortest",  # End when shortest input stream ends
-                        "-af", "afade=t=in:st=0:d=0.1,afade=t=out:st=" + str(audio_duration-0.1) + ":d=0.1",  # Add gentle fades
-                        temp_output
+                    # Get B-Roll video duration
+                    broll_duration_cmd = [
+                        "ffprobe", "-v", "error", "-show_entries", "format=duration",
+                        "-of", "default=noprint_wrappers=1:nokey=1", broll_path
                     ]
+                    broll_duration_result = subprocess.run(broll_duration_cmd, capture_output=True, text=True, check=True)
+                    broll_duration = float(broll_duration_result.stdout.strip())
+                    print(f"B-Roll video duration: {broll_duration} seconds")
                     
+                    # If B-Roll is shorter than audio, loop it
+                    if broll_duration < audio_duration:
+                        print(f"B-Roll ({broll_duration}s) is shorter than A-Roll audio ({audio_duration}s), looping B-Roll")
+                        # Create a temporary file with the B-Roll repeated
+                        temp_concat = os.path.join(temp_dir, f"concat_{i}.txt")
+                        loops_needed = int(audio_duration / broll_duration) + 1
+                        
+                        with open(temp_concat, 'w') as f:
+                            for _ in range(loops_needed):
+                                escaped_path = broll_path.replace("\\", "\\\\").replace("'", "\\'")
+                                f.write(f"file '{escaped_path}'\n")
+                        
+                        # Concatenate the B-Roll video
+                        temp_looped = os.path.join(temp_dir, f"looped_{i}.mp4")
+                        cmd_loop = [
+                            "ffmpeg", "-y",
+                            "-f", "concat",
+                            "-safe", "0",
+                            "-i", temp_concat,
+                            "-c", "copy",
+                            temp_looped
+                        ]
+                        subprocess.run(cmd_loop, check=True, capture_output=True)
+                        
+                        # Now trim to exact audio duration and add audio
+                        cmd = [
+                            "ffmpeg", "-y",
+                            "-i", temp_looped,
+                            "-i", temp_audio,
+                            "-map", "0:v:0",
+                            "-map", "1:a:0",
+                            "-t", str(audio_duration),  # Trim to audio duration
+                            "-c:v", "libx264", "-preset", "medium",
+                            "-c:a", "aac", "-b:a", "128k",
+                            "-shortest",  # Ensure output is only as long as shortest input
+                            temp_output
+                        ]
+                    else:
+                        # If B-Roll is longer than audio, trim it
+                        print(f"B-Roll ({broll_duration}s) is longer than or equal to A-Roll audio ({audio_duration}s), trimming B-Roll")
+                        cmd = [
+                            "ffmpeg", "-y",
+                            "-i", broll_path,
+                            "-i", temp_audio,
+                            "-map", "0:v:0",
+                            "-map", "1:a:0",
+                            "-t", str(audio_duration),  # Trim to audio duration
+                            "-c:v", "libx264", "-preset", "medium",
+                            "-c:a", "aac", "-b:a", "128k",
+                            "-shortest",  # Ensure output is only as long as shortest input
+                            temp_output
+                        ]
+                    
+                    # Execute the command
+                    print(f"Executing FFmpeg command: {' '.join(cmd)}")
                     subprocess.run(cmd, check=True, capture_output=True)
                     temp_videos.append(temp_output)
         

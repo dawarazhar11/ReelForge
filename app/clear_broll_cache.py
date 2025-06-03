@@ -133,15 +133,16 @@ def regenerate_assembly():
         # Import the direct assembly function
         from video_assembly_streamlit_fix import direct_assembly
         
-        print("\nRegenerating video assembly with latest B-Roll images...")
+        print("\nRegenerating video assembly with latest B-Roll images and smooth audio transitions...")
         project_path = "config/user_data/my_short_video"
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_name = f"fresh_assembly_{timestamp}"
+        output_name = f"smooth_assembly_{timestamp}"
         
         output_path = direct_assembly(project_path, output_name)
         
         if output_path:
             print(f"\n✅ Assembly complete! New video saved to: {output_path}")
+            print(f"The video now has smooth audio transitions between segments.")
             return True
         else:
             print("\n⚠️ Failed to generate new assembly.")

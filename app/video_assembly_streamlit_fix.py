@@ -226,48 +226,73 @@ def direct_assembly(project_path, output_name=None):
     segment_duration = total_duration / num_segments
     print(f"Dividing {total_duration}s into {num_segments} segments of {segment_duration:.2f}s each")
     
+    # Define audio crossfade duration (in seconds)
+    crossfade_duration = 0.3  # 300ms crossfade between segments
+    print(f"Using {crossfade_duration}s crossfade between audio segments to smooth transitions")
+    
     # Create temporary directory for processing
     with tempfile.TemporaryDirectory() as temp_dir:
         # Process segments
         segment_files = []
+        audio_files = []
+        
+        # First extract the full audio track for smoother transitions
+        full_audio_path = os.path.join(temp_dir, "full_audio.aac")
+        subprocess.run([
+            "ffmpeg", "-y",
+            "-i", main_aroll_path,
+            "-vn", "-c:a", "aac", "-b:a", "192k",
+            full_audio_path
+        ], check=True, capture_output=True)
         
         # First segment is A-Roll only
         first_segment_path = os.path.join(temp_dir, "segment_0.mp4")
+        # Extract with slight overlap for crossfade
+        segment_end = segment_duration + (crossfade_duration/2)
         subprocess.run([
             "ffmpeg", "-y",
             "-i", main_aroll_path,
             "-ss", "0",
-            "-t", str(segment_duration),
+            "-t", str(segment_end),
             "-c:v", "libx264", "-preset", "medium", "-crf", "23",
-            "-c:a", "aac", "-b:a", "128k",
+            "-c:a", "aac", "-b:a", "192k",
             first_segment_path
         ], check=True, capture_output=True)
         segment_files.append(first_segment_path)
         
         # Middle segments use B-Roll with A-Roll audio
         for i in range(1, num_segments - 1):
-            segment_start = i * segment_duration
-            segment_end = (i + 1) * segment_duration
+            # Calculate segment times with overlap for crossfading
+            segment_start = i * segment_duration - (crossfade_duration/2)
+            segment_end = (i + 1) * segment_duration + (crossfade_duration/2)
+            
+            # Ensure we don't go below 0 or beyond total duration
+            segment_start = max(0, segment_start)
+            segment_end = min(total_duration, segment_end)
+            
             current_duration = segment_end - segment_start
             
             # Get B-Roll image/video (cycling through available ones if needed)
             broll_idx = (i - 1) % len(broll_paths)
             broll_path = broll_paths[broll_idx]
             
-            # Extract audio segment from A-Roll
+            # Extract audio segment from A-Roll with overlap for crossfade
             audio_path = os.path.join(temp_dir, f"audio_{i}.aac")
             subprocess.run([
                 "ffmpeg", "-y",
                 "-i", main_aroll_path,
                 "-ss", str(segment_start),
                 "-t", str(current_duration),
-                "-vn", "-c:a", "aac", "-b:a", "128k",
+                "-vn", "-c:a", "aac", "-b:a", "192k",
                 audio_path
             ], check=True, capture_output=True)
+            audio_files.append(audio_path)
             
             # Process B-Roll content based on type
             broll_video_path = os.path.join(temp_dir, f"broll_{i}.mp4")
-            prepare_broll_content(broll_path, broll_video_path, current_duration)
+            # Use the exact A-Roll segment duration (without the crossfade overlap)
+            exact_segment_duration = min((i + 1) * segment_duration, total_duration) - (i * segment_duration)
+            prepare_broll_content(broll_path, broll_video_path, exact_segment_duration)
             
             # Combine B-Roll video with A-Roll audio
             segment_path = os.path.join(temp_dir, f"segment_{i}.mp4")
@@ -278,7 +303,7 @@ def direct_assembly(project_path, output_name=None):
                 "-map", "0:v:0",
                 "-map", "1:a:0",
                 "-c:v", "copy",
-                "-c:a", "aac", "-b:a", "128k",
+                "-c:a", "aac", "-b:a", "192k",
                 "-shortest",
                 segment_path
             ], check=True, capture_output=True)
@@ -288,8 +313,10 @@ def direct_assembly(project_path, output_name=None):
         # Last segment is A-Roll only
         last_idx = num_segments - 1
         last_segment_path = os.path.join(temp_dir, f"segment_{last_idx}.mp4")
-        last_segment_start = last_idx * segment_duration
-        last_segment_duration = total_duration - last_segment_start
+        # Extract with overlap for crossfade
+        last_segment_start = last_idx * segment_duration - (crossfade_duration/2)
+        last_segment_start = max(0, last_segment_start)
+        last_segment_duration = total_duration - (last_idx * segment_duration) + (crossfade_duration/2)
         
         subprocess.run([
             "ffmpeg", "-y",
@@ -297,38 +324,88 @@ def direct_assembly(project_path, output_name=None):
             "-ss", str(last_segment_start),
             "-t", str(last_segment_duration),
             "-c:v", "libx264", "-preset", "medium", "-crf", "23",
-            "-c:a", "aac", "-b:a", "128k",
+            "-c:a", "aac", "-b:a", "192k",
             last_segment_path
         ], check=True, capture_output=True)
         segment_files.append(last_segment_path)
         
-        # Create concat file
-        concat_file = os.path.join(temp_dir, "concat.txt")
-        with open(concat_file, 'w') as f:
-            for file_path in segment_files:
-                escaped_path = file_path.replace("\\", "\\\\").replace("'", "\\'")
-                f.write(f"file '{escaped_path}'\n")
-        
-        # Create output directory if needed
-        output_dir = os.path.join(app_root, "output")
-        os.makedirs(output_dir, exist_ok=True)
-        
-        # Set output path
-        if output_name is None:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_name = f"fixed_duration_video_{timestamp}"
-        
-        output_path = os.path.join(output_dir, f"{output_name}.mp4")
-        
-        # Concatenate all segments
-        subprocess.run([
-            "ffmpeg", "-y",
-            "-f", "concat",
-            "-safe", "0",
-            "-i", concat_file,
-            "-c", "copy",
-            output_path
-        ], check=True, capture_output=True)
+        # Create a complex filtergraph for crossfading
+        if num_segments > 1:
+            print("Creating smooth audio crossfades between segments...")
+            # Create a filter complex file for concatenation with crossfades
+            filter_complex_file = os.path.join(temp_dir, "filter_complex.txt")
+            
+            # Option 1: Create improved filter complex for direct concatenation with crossfades
+            filter_text = ""
+            for i, segment in enumerate(segment_files):
+                filter_text += f"[{i}:v]setpts=PTS-STARTPTS[v{i}];\n"
+                filter_text += f"[{i}:a]asetpts=PTS-STARTPTS[a{i}];\n"
+            
+            # Video concatenation (simple)
+            video_inputs = "".join(f"[v{i}]" for i in range(len(segment_files)))
+            filter_text += f"{video_inputs}concat=n={len(segment_files)}:v=1:a=0[v_out];\n"
+            
+            # Audio concatenation with crossfades
+            # First segment
+            filter_text += f"[a0]"
+            
+            # Middle segments with crossfades
+            for i in range(1, len(segment_files)):
+                # Apply crossfade between segments
+                filter_text += f"[a{i}]acrossfade=d={crossfade_duration}:c1=tri:c2=tri"
+                
+                # Add output label if it's not the last segment
+                if i < len(segment_files) - 1:
+                    filter_text += f"[a_tmp{i}];\n[a_tmp{i}]"
+            
+            # Final output label
+            filter_text += "[a_out]"
+            
+            # Write filter complex to file
+            with open(filter_complex_file, 'w') as f:
+                f.write(filter_text)
+            
+            # Create output directory if needed
+            output_dir = os.path.join(app_root, "output")
+            os.makedirs(output_dir, exist_ok=True)
+            
+            # Set output path
+            if output_name is None:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                output_name = f"fixed_duration_video_{timestamp}"
+            
+            output_path = os.path.join(output_dir, f"{output_name}.mp4")
+            
+            # Build ffmpeg input arguments
+            input_args = []
+            for segment in segment_files:
+                input_args.extend(["-i", segment])
+            
+            # Run ffmpeg with filter complex
+            ffmpeg_command = [
+                "ffmpeg", "-y",
+            ] + input_args + [
+                "-filter_complex_script", filter_complex_file,
+                "-map", "[v_out]",
+                "-map", "[a_out]",
+                "-c:v", "libx264", "-preset", "medium", "-crf", "23",
+                "-c:a", "aac", "-b:a", "192k",
+                output_path
+            ]
+            
+            subprocess.run(ffmpeg_command, check=True, capture_output=True)
+        else:
+            # If only one segment, just copy it to the output
+            output_dir = os.path.join(app_root, "output")
+            os.makedirs(output_dir, exist_ok=True)
+            
+            if output_name is None:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                output_name = f"fixed_duration_video_{timestamp}"
+            
+            output_path = os.path.join(output_dir, f"{output_name}.mp4")
+            
+            shutil.copy2(segment_files[0], output_path)
         
         # Check final duration
         try:
@@ -347,7 +424,7 @@ def direct_assembly(project_path, output_name=None):
         except Exception as e:
             print(f"Error checking final duration: {str(e)}")
         
-        print(f"Video successfully assembled: {output_path}")
+        print(f"Video successfully assembled with smooth audio transitions: {output_path}")
         return output_path
 
 if __name__ == "__main__":

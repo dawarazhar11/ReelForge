@@ -651,7 +651,7 @@ def get_aroll_filepath(segment_id, segment_data):
 def get_broll_filepath(segment_id, segment_data):
     """
     Get the filepath for a B-Roll segment, supporting different path formats
-    Always finds the most recent file by modification time
+    Always prioritizes videos over images, and finds the most recent files by modification time
     
     Args:
         segment_id: ID of the segment (e.g., 'segment_0')
@@ -660,8 +660,12 @@ def get_broll_filepath(segment_id, segment_data):
     Returns:
         str: Path to the B-Roll file if found, None otherwise
     """
-    # Track all matching files with their modification times
-    all_matching_files = []
+    # Track matching files with their modification times, separating videos and images
+    matching_videos = []
+    matching_images = []
+    
+    # Get content_type if available from the segment data
+    content_type = segment_data.get("content_type", None)
     
     # Check the file path in the content status
     if "file_path" in segment_data:
@@ -671,15 +675,27 @@ def get_broll_filepath(segment_id, segment_data):
         if not os.path.dirname(file_path):
             media_path = f"media/b-roll/{file_path}"
             if os.path.exists(media_path):
+                file_ext = os.path.splitext(media_path)[1].lower()
                 mod_time = os.path.getmtime(media_path)
-                all_matching_files.append((media_path, mod_time))
-                print(f"Found B-Roll file: {media_path} (modified: {datetime.fromtimestamp(mod_time).strftime('%Y-%m-%d %H:%M:%S')})")
+                
+                if file_ext in ['.mp4', '.mov', '.avi', '.webm']:
+                    matching_videos.append((media_path, mod_time))
+                    print(f"Found B-Roll video: {media_path} (modified: {datetime.fromtimestamp(mod_time).strftime('%Y-%m-%d %H:%M:%S')})")
+                elif file_ext in ['.png', '.jpg', '.jpeg']:
+                    matching_images.append((media_path, mod_time))
+                    print(f"Found B-Roll image: {media_path} (modified: {datetime.fromtimestamp(mod_time).strftime('%Y-%m-%d %H:%M:%S')})")
         
         # Check if the provided path exists directly
         if os.path.exists(file_path):
+            file_ext = os.path.splitext(file_path)[1].lower()
             mod_time = os.path.getmtime(file_path)
-            all_matching_files.append((file_path, mod_time))
-            print(f"Found B-Roll file: {file_path} (modified: {datetime.fromtimestamp(mod_time).strftime('%Y-%m-%d %H:%M:%S')})")
+            
+            if file_ext in ['.mp4', '.mov', '.avi', '.webm']:
+                matching_videos.append((file_path, mod_time))
+                print(f"Found B-Roll video: {file_path} (modified: {datetime.fromtimestamp(mod_time).strftime('%Y-%m-%d %H:%M:%S')})")
+            elif file_ext in ['.png', '.jpg', '.jpeg']:
+                matching_images.append((file_path, mod_time))
+                print(f"Found B-Roll image: {file_path} (modified: {datetime.fromtimestamp(mod_time).strftime('%Y-%m-%d %H:%M:%S')})")
     
     # Try alternative formats if the primary file path doesn't exist
     segment_num = segment_id.split('_')[-1]
@@ -707,38 +723,66 @@ def get_broll_filepath(segment_id, segment_data):
         # Common formats
         f"broll_segment_{segment_num}",
         f"fetched_broll_segment_{segment_num}",
-        # Additional patterns for images
+        f"broll_video_segment_{segment_num}",
+        # Additional patterns
         f"image_{segment_num}",
-        f"broll_{segment_num}"
+        f"broll_{segment_num}",
+        f"video_{segment_num}"
     ]
     
     # Try each pattern with each extension in each potential directory
     for directory in potential_dirs:
         if os.path.exists(directory):
-            for pattern in base_patterns:
-                # Check for files with timestamps (e.g., broll_segment_0_20250604_004344.png)
-                matching_files = []
-                for filename in os.listdir(directory):
-                    if pattern in filename and any(filename.endswith(ext) for ext in all_extensions):
-                        file_path = os.path.join(directory, filename)
-                        mod_time = os.path.getmtime(file_path)
-                        matching_files.append((file_path, mod_time))
-                
-                # Sort by modification time (newest first) and add to all_matching_files
-                matching_files.sort(key=lambda x: x[1], reverse=True)
-                all_matching_files.extend(matching_files)
+            for filename in os.listdir(directory):
+                if any(pattern in filename for pattern in base_patterns):
+                    file_path = os.path.join(directory, filename)
+                    file_ext = os.path.splitext(filename)[1].lower()
+                    mod_time = os.path.getmtime(file_path)
+                    
+                    # Categorize as video or image
+                    if file_ext in video_extensions:
+                        matching_videos.append((file_path, mod_time))
+                        print(f"Found B-Roll video by pattern: {filename}")
+                    elif file_ext in image_extensions:
+                        matching_images.append((file_path, mod_time))
+                        print(f"Found B-Roll image by pattern: {filename}")
     
-    # If we found any matching files, return the most recent one
-    if all_matching_files:
-        # Sort all files by modification time (newest first)
-        all_matching_files.sort(key=lambda x: x[1], reverse=True)
-        newest_file = all_matching_files[0][0]
-        mod_time = all_matching_files[0][1]
-        print(f"Using newest B-Roll file for {segment_id}: {newest_file} (modified: {datetime.fromtimestamp(mod_time).strftime('%Y-%m-%d %H:%M:%S')})")
-        
+    # Sort both lists by modification time (newest first)
+    matching_videos.sort(key=lambda x: x[1], reverse=True)
+    matching_images.sort(key=lambda x: x[1], reverse=True)
+    
+    # If content_type is specified, prioritize that type
+    if content_type == "video" and matching_videos:
+        newest_file = matching_videos[0][0]
+        mod_time = matching_videos[0][1]
+        print(f"Using newest B-Roll VIDEO for {segment_id}: {newest_file} (modified: {datetime.fromtimestamp(mod_time).strftime('%Y-%m-%d %H:%M:%S')})")
         # Update segment_data to use this file path
         segment_data["file_path"] = newest_file
-        
+        return newest_file
+    elif content_type == "image" and matching_images:
+        newest_file = matching_images[0][0]
+        mod_time = matching_images[0][1]
+        print(f"Using newest B-Roll IMAGE for {segment_id}: {newest_file} (modified: {datetime.fromtimestamp(mod_time).strftime('%Y-%m-%d %H:%M:%S')})")
+        # Update segment_data to use this file path
+        segment_data["file_path"] = newest_file
+        return newest_file
+    
+    # If no content_type specified or no match found for that type, prioritize videos over images
+    if matching_videos:
+        newest_file = matching_videos[0][0]
+        mod_time = matching_videos[0][1]
+        print(f"Using newest B-Roll VIDEO for {segment_id}: {newest_file} (modified: {datetime.fromtimestamp(mod_time).strftime('%Y-%m-%d %H:%M:%S')})")
+        # Update segment_data to use this file path
+        segment_data["file_path"] = newest_file
+        segment_data["content_type"] = "video"
+        return newest_file
+    elif matching_images:
+        newest_file = matching_images[0][0]
+        mod_time = matching_images[0][1]
+        print(f"Using newest B-Roll IMAGE for {segment_id}: {newest_file} (modified: {datetime.fromtimestamp(mod_time).strftime('%Y-%m-%d %H:%M:%S')})")
+        # Update segment_data to use this file path
+        segment_data["file_path"] = newest_file
+        segment_data["content_type"] = "image"
         return newest_file
     
     print(f"B-Roll file not found for {segment_id}")
@@ -1326,7 +1370,7 @@ def assemble_video():
     """
     if not MOVIEPY_AVAILABLE:
         st.error("MoviePy is not available. Installing required packages...")
-        st.info("Please run: `python utils/video/dependencies.py` to install required packages")
+        st.info("Please run: `pip install moviepy==1.0.3` in your virtual environment")
         return
 
     # If we're using Custom arrangement and already have a sequence, use it directly

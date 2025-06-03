@@ -29,6 +29,15 @@ def is_image_file(file_path):
     _, ext = os.path.splitext(file_path.lower())
     return ext in ['.png', '.jpg', '.jpeg']
 
+def is_video_file(file_path):
+    """Check if a file is a video (MP4, MOV, AVI, etc.)"""
+    if not file_path or not os.path.exists(file_path):
+        return False
+        
+    # Check file extension
+    _, ext = os.path.splitext(file_path.lower())
+    return ext in ['.mp4', '.mov', '.avi', '.webm']
+
 def image_to_video(image_path, output_path, duration=5.0, target_resolution=(1080, 1920)):
     """
     Convert an image to a video using ffmpeg with exact duration
@@ -62,6 +71,67 @@ def image_to_video(image_path, output_path, duration=5.0, target_resolution=(108
         print(f"Error converting image to video: {str(e)}")
         return False
 
+def resize_video(video_path, output_path, duration=None, target_resolution=(1080, 1920)):
+    """
+    Resize a video to the target resolution and optionally adjust its duration
+    
+    Args:
+        video_path: Path to the input video
+        output_path: Path to save the output video
+        duration: Optional duration to set (or None to keep original)
+        target_resolution: Target resolution (width, height)
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        # Build the ffmpeg command
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", video_path,
+            "-vf", f"scale={target_resolution[0]}:{target_resolution[1]}:force_original_aspect_ratio=decrease,pad={target_resolution[0]}:{target_resolution[1]}:(ow-iw)/2:(oh-ih)/2",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p"
+        ]
+        
+        # Add duration parameter if specified
+        if duration is not None:
+            cmd.extend(["-t", str(duration)])
+            print(f"Resizing video with exact duration: {duration}s")
+        else:
+            print(f"Resizing video keeping original duration")
+        
+        # Add output path
+        cmd.append(output_path)
+        
+        subprocess.run(cmd, check=True, capture_output=True)
+        return True
+    except Exception as e:
+        print(f"Error resizing video: {str(e)}")
+        return False
+
+def prepare_broll_content(broll_path, output_path, duration, target_resolution=(1080, 1920)):
+    """
+    Prepare B-Roll content (image or video) for assembly
+    
+    Args:
+        broll_path: Path to the B-Roll image or video
+        output_path: Path to save the processed video
+        duration: Desired duration in seconds
+        target_resolution: Target resolution (width, height)
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    if is_image_file(broll_path):
+        print(f"Processing B-Roll image: {os.path.basename(broll_path)}")
+        return image_to_video(broll_path, output_path, duration, target_resolution)
+    elif is_video_file(broll_path):
+        print(f"Processing B-Roll video: {os.path.basename(broll_path)}")
+        return resize_video(broll_path, output_path, duration, target_resolution)
+    else:
+        print(f"Unsupported B-Roll content type: {broll_path}")
+        return False
+
 def direct_assembly(project_path, output_name=None):
     """
     Directly assemble a video with proper B-Roll image durations
@@ -92,11 +162,11 @@ def direct_assembly(project_path, output_name=None):
         print(f"Error getting A-Roll duration: {str(e)}")
         return None
     
-    # Find B-Roll images
+    # Find B-Roll images and videos
     broll_dir = os.path.join(project_path, "media", "broll")
     broll_paths = []
     
-    # Search in multiple potential locations to find the most recent B-Roll images
+    # Search in multiple potential locations to find the most recent B-Roll content
     potential_broll_dirs = [
         os.path.join(project_path, "media", "broll"),
         os.path.join("media", "broll"),
@@ -104,32 +174,50 @@ def direct_assembly(project_path, output_name=None):
         os.path.join("config", "user_data", "my_short_video", "media", "broll")
     ]
     
-    # Find the most recent B-Roll images for each segment across all potential directories
+    # File extensions to check
+    video_extensions = ['.mp4', '.mov', '.avi', '.webm']
+    image_extensions = ['.png', '.jpg', '.jpeg']
+    
+    # Find the most recent B-Roll content for each segment across all potential directories
     for i in range(10):  # Look for up to 10 segments
         segment_pattern = f"broll_segment_{i}_"
         
-        all_matching_files = []
+        matching_videos = []
+        matching_images = []
         
         # Search across all potential directories
         for broll_dir in potential_broll_dirs:
             if os.path.exists(broll_dir):
                 for filename in os.listdir(broll_dir):
-                    if segment_pattern in filename and filename.endswith(('.png', '.jpg', '.jpeg')):
+                    if segment_pattern in filename:
                         file_path = os.path.join(broll_dir, filename)
+                        file_ext = os.path.splitext(filename)[1].lower()
                         # Get modification time for sorting
                         mod_time = os.path.getmtime(file_path)
-                        all_matching_files.append((file_path, mod_time))
+                        
+                        if file_ext in video_extensions:
+                            matching_videos.append((file_path, mod_time))
+                            print(f"Found B-Roll video for segment {i}: {filename}")
+                        elif file_ext in image_extensions:
+                            matching_images.append((file_path, mod_time))
+                            print(f"Found B-Roll image for segment {i}: {filename}")
         
-        # Sort all matching files by modification time (newest first)
-        all_matching_files.sort(key=lambda x: x[1], reverse=True)
+        # Sort by modification time (newest first)
+        matching_videos.sort(key=lambda x: x[1], reverse=True)
+        matching_images.sort(key=lambda x: x[1], reverse=True)
         
-        if all_matching_files:
-            newest_file = all_matching_files[0][0]
+        # Prioritize videos over images
+        if matching_videos:
+            newest_file = matching_videos[0][0]
             broll_paths.append(newest_file)
-            print(f"Found B-Roll image for segment {i}: {os.path.basename(newest_file)} (modified: {datetime.fromtimestamp(all_matching_files[0][1]).strftime('%Y-%m-%d %H:%M:%S')})")
+            print(f"Using B-Roll VIDEO for segment {i}: {os.path.basename(newest_file)} (modified: {datetime.fromtimestamp(matching_videos[0][1]).strftime('%Y-%m-%d %H:%M:%S')})")
+        elif matching_images:
+            newest_file = matching_images[0][0]
+            broll_paths.append(newest_file)
+            print(f"Using B-Roll IMAGE for segment {i}: {os.path.basename(newest_file)} (modified: {datetime.fromtimestamp(matching_images[0][1]).strftime('%Y-%m-%d %H:%M:%S')})")
     
     if not broll_paths:
-        print("No B-Roll images found in any of the potential directories.")
+        print("No B-Roll content found in any of the potential directories.")
         return None
     
     # Calculate segment durations - ensure segments are around 4 seconds
@@ -162,7 +250,7 @@ def direct_assembly(project_path, output_name=None):
             segment_end = (i + 1) * segment_duration
             current_duration = segment_end - segment_start
             
-            # Get B-Roll image (cycling through available ones if needed)
+            # Get B-Roll image/video (cycling through available ones if needed)
             broll_idx = (i - 1) % len(broll_paths)
             broll_path = broll_paths[broll_idx]
             
@@ -177,9 +265,9 @@ def direct_assembly(project_path, output_name=None):
                 audio_path
             ], check=True, capture_output=True)
             
-            # Convert B-Roll image to video with exact segment duration
+            # Process B-Roll content based on type
             broll_video_path = os.path.join(temp_dir, f"broll_{i}.mp4")
-            image_to_video(broll_path, broll_video_path, duration=current_duration)
+            prepare_broll_content(broll_path, broll_video_path, current_duration)
             
             # Combine B-Roll video with A-Roll audio
             segment_path = os.path.join(temp_dir, f"segment_{i}.mp4")

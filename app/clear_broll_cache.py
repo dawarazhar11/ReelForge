@@ -58,7 +58,7 @@ def clear_cache():
             
             # Update B-Roll status to use most recent files
             if "broll" in content_status:
-                # Find most recent B-Roll images
+                # Find most recent B-Roll images and videos
                 broll_dir = project_path / "media" / "broll"
                 potential_broll_dirs = [
                     project_path / "media" / "broll",
@@ -67,32 +67,59 @@ def clear_cache():
                     Path("config/user_data/my_short_video/media/broll")
                 ]
                 
+                # File extensions to look for
+                video_extensions = ['.mp4', '.mov', '.avi', '.webm']
+                image_extensions = ['.png', '.jpg', '.jpeg']
+                all_extensions = video_extensions + image_extensions
+                
                 for segment_id, segment_data in content_status["broll"].items():
                     segment_num = segment_id.split("_")[-1]
                     segment_pattern = f"broll_segment_{segment_num}_"
                     
-                    all_matching_files = []
+                    # Keep track of both videos and images
+                    matching_videos = []
+                    matching_images = []
+                    
                     for broll_dir in potential_broll_dirs:
                         if broll_dir.exists():
                             for filename in os.listdir(broll_dir):
-                                if segment_pattern in filename and filename.endswith(('.png', '.jpg', '.jpeg')):
+                                if segment_pattern in filename:
                                     file_path = os.path.join(broll_dir, filename)
+                                    file_ext = os.path.splitext(filename)[1].lower()
                                     mod_time = os.path.getmtime(file_path)
-                                    all_matching_files.append((file_path, mod_time))
+                                    
+                                    # Categorize as video or image
+                                    if file_ext in video_extensions:
+                                        matching_videos.append((file_path, mod_time))
+                                        print(f"Found B-Roll video: {filename}")
+                                    elif file_ext in image_extensions:
+                                        matching_images.append((file_path, mod_time))
+                                        print(f"Found B-Roll image: {filename}")
                     
-                    # Sort by modification time (newest first)
-                    all_matching_files.sort(key=lambda x: x[1], reverse=True)
+                    # Sort both lists by modification time (newest first)
+                    matching_videos.sort(key=lambda x: x[1], reverse=True)
+                    matching_images.sort(key=lambda x: x[1], reverse=True)
                     
-                    if all_matching_files:
-                        newest_file = all_matching_files[0][0]
+                    # Prioritize videos over images if available
+                    if matching_videos:
+                        newest_file = matching_videos[0][0]
                         segment_data["file_path"] = newest_file
-                        segment_data["timestamp"] = all_matching_files[0][1]
-                        print(f"Updated {segment_id} to use newest file: {newest_file}")
+                        segment_data["timestamp"] = matching_videos[0][1]
+                        segment_data["content_type"] = "video"
+                        print(f"Updated {segment_id} to use newest VIDEO: {newest_file} (modified: {datetime.fromtimestamp(matching_videos[0][1]).strftime('%Y-%m-%d %H:%M:%S')})")
+                    elif matching_images:
+                        newest_file = matching_images[0][0]
+                        segment_data["file_path"] = newest_file
+                        segment_data["timestamp"] = matching_images[0][1]
+                        segment_data["content_type"] = "image"
+                        print(f"Updated {segment_id} to use newest IMAGE: {newest_file} (modified: {datetime.fromtimestamp(matching_images[0][1]).strftime('%Y-%m-%d %H:%M:%S')})")
+                    else:
+                        print(f"No B-Roll content found for {segment_id}")
                 
                 # Save updated content status
                 with open(content_status_path, "w") as f:
                     json.dump(content_status, f, indent=2)
-                print("Saved updated content status with latest B-Roll image paths")
+                print("Saved updated content status with latest B-Roll content paths")
         except Exception as e:
             print(f"Error updating content status: {str(e)}")
     

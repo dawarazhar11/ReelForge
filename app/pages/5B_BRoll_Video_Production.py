@@ -185,6 +185,8 @@ if "batch_process_status" not in st.session_state:
         "prompt_ids": {},
         "errors": {}
     }
+if "max_broll_segments" not in st.session_state:
+    st.session_state.max_broll_segments = 999  # Default to process all segments
 
 # Function to load saved script and segments# Function to load saved script and segments (for B-Roll only)
 def load_script_data():
@@ -844,10 +846,20 @@ def save_media_content(content, segment_type, segment_id, file_extension):
 
 # Function for batch processing prompts
 def batch_process_broll_prompts():
-    """Submit all B-Roll prompts to the video server for processing"""
+    """Submit B-Roll prompts to the video server for processing, respecting the max_broll_segments limit"""
     broll_segments = [s for s in st.session_state.segments if s["type"] == "B-Roll"]
     prompt_ids = {}
     errors = {}
+    
+    # Apply segment limit
+    max_segments = min(st.session_state.max_broll_segments, len(broll_segments))
+    limited_broll_segments = broll_segments[:max_segments]
+    
+    # Show message about segment limit
+    if max_segments < len(broll_segments):
+        st.info(f"Processing {max_segments} out of {len(broll_segments)} B-Roll segments based on your limit setting.")
+    else:
+        st.info(f"Processing all {len(broll_segments)} B-Roll segments.")
     
     # Reset batch process status
     st.session_state.batch_process_status["submitted"] = True
@@ -858,13 +870,13 @@ def batch_process_broll_prompts():
     template_file = JSON_TEMPLATES["video"]
     
     # Debug information
-    print(f"Debug - Starting batch processing for {len(broll_segments)} B-Roll segments")
+    print(f"Debug - Starting batch processing for {len(limited_broll_segments)} of {len(broll_segments)} B-Roll segments")
     print(f"Debug - B-Roll prompts keys: {list(st.session_state.broll_prompts.keys())}")
     if "prompts" in st.session_state.broll_prompts:
         print(f"Debug - Prompts sub-keys: {list(st.session_state.broll_prompts['prompts'].keys())}")
     
-    # Process each B-Roll segment
-    for i, segment in enumerate(broll_segments):
+    # Process each B-Roll segment up to the limit
+    for i, segment in enumerate(limited_broll_segments):
         segment_id = f"segment_{i}"
         
         # Check if we have prompts for this segment
@@ -1205,1340 +1217,127 @@ if api_key in st.session_state.comfyui_job_history and st.session_state.comfyui_
                 "Prompt ID": job["prompt_id"],
                 "Status": job["status"],
                 "Time": job["timestamp"],
-                "Prompt": job["prompt_text"]
             })
         
-        # Display as a dataframe
-        st.dataframe(job_data, use_container_width=True)
+        # Display as a table
+        st.dataframe(job_data)
     
     with history_tab2:
-        # Show jobs with more details and copy buttons
-        for i, job in enumerate(st.session_state.comfyui_job_history[api_key]):
-            with st.expander(f"Job {i+1}: {job['prompt_id'][:10]}...", expanded=i==0):
-                col1, col2 = st.columns([3, 1])
+        # Show detailed view with more controls
+        for job in st.session_state.comfyui_job_history[api_key]:
+            with st.expander(f"Job: {job['prompt_id']}"):
+                st.write(f"Status: {job['status']}")
+                st.write(f"Time: {job['timestamp']}")
                 
-                with col1:
-                    st.markdown(f"**Prompt ID:** {job['prompt_id']}")
-                    st.markdown(f"**Status:** {job['status']}")
-                    st.markdown(f"**Timestamp:** {job['timestamp']}")
-                    if job['prompt_text']:
-                        st.markdown(f"**Prompt:** {job['prompt_text']}")
-                
-                with col2:
-                    # Add copy to clipboard button (uses JavaScript)
-                    st.markdown(
-                        f"""
-                        <button 
-                            onclick="navigator.clipboard.writeText('{job['prompt_id']}');alert('Copied ID to clipboard!');" 
-                            style="background-color:#4CAF50;color:white;padding:10px;border:none;border-radius:5px;cursor:pointer;width:100%;">
-                            📋 Copy ID
-                        </button>
-                        """,
-                        unsafe_allow_html=True
-                    )
-                    
-                    # Add button to directly apply this ID
-                    if st.button(f"Apply ID", key=f"apply_btn_{i}", use_container_width=True):
-                        st.session_state.selected_prompt_id = job['prompt_id']
-                        st.rerun()
-                
-                # Show outputs if available
-                if job['outputs']:
-                    st.markdown("**Outputs:**")
-                    # Extract output node info
-                    for node_id, output in job['outputs'].items():
-                        if "images" in output:
-                            for img in output["images"]:
-                                st.markdown(f"- {img.get('filename', 'Unknown file')}")
-                        elif "gifs" in output or "videos" in output:
-                            media = output.get("videos", output.get("gifs", []))
-                            for vid in media:
-                                st.markdown(f"- {vid.get('filename', 'Unknown file')}")
-    
-    # Add a section to apply selected ID to segments
-    st.markdown("### Apply Selected ID to Segments")
-    st.markdown("Select a prompt ID from above and apply it to a specific segment.")
-    
-    # Prompt ID input with improved default
-    default_id = st.session_state.get("selected_prompt_id", "")
-    prompt_id = st.text_input("Enter Prompt ID:", value=default_id, key="prompt_id_input")
-    
-    # Select segment type
-    segment_type = st.radio("Select segment type:", ["A-Roll", "B-Roll"], horizontal=True)
-    
-    # Get segments of selected type
-    segments = [s for s in st.session_state.segments if isinstance(s, dict) and s.get("type") == segment_type]
-    segment_options = [f"Segment {i+1}: {s.get('content', '')[:50]}..." for i, s in enumerate(segments)]
-    
-    if segment_options:
-        selected_segment = st.selectbox("Select segment to apply ID:", options=segment_options)
-        segment_index = segment_options.index(selected_segment)
-        
-        if st.button("Apply ID to Selected Segment", type="primary"):
-            segment_id = f"segment_{segment_index}"
-            if segment_type == "A-Roll":
-                st.session_state.aroll_fetch_ids[segment_id] = prompt_id
-            else:
-                st.session_state.broll_fetch_ids[segment_id] = prompt_id
-            
-            st.success(f"Applied prompt ID {prompt_id} to {segment_type} {segment_id}")
-            st.rerun()
-    else:
-        st.warning(f"No {segment_type} segments found. Please complete the Script Segmentation step first.")
-else:
-    st.info(f"No job history fetched yet from {api_selection}. Click 'Fetch Job History' to retrieve job IDs.")
+                # Add button to copy ID
+                if st.button(f"Copy ID: {job['prompt_id'][:8]}...", key=f"copy_{job['prompt_id']}"):
+                    st.success(f"Copied prompt ID: {job['prompt_id']}")
+                    # Add to clipboard (as best we can in Streamlit)
+                    st.write(f"<textarea id='clipboard_{job['prompt_id']}' style='position:absolute;left:-9999px'>{job['prompt_id']}</textarea>", unsafe_allow_html=True)
+                    st.write(f"<script>document.getElementById('clipboard_{job['prompt_id']}').select();document.execCommand('copy');</script>", unsafe_allow_html=True)
 
+# Setup batch processing
+
+# B-Roll Processing Controls
 st.markdown("---")
+st.subheader("🔢 B-Roll Processing Controls")
+st.markdown("Control how many B-Roll segments will be processed when you generate content.")
 
-col1, col2 = st.columns(2)
+# Count total B-Roll segments
+broll_segments = [s for s in st.session_state.segments if s.get("type") == "B-Roll"]
+total_broll_segments = len(broll_segments)
 
-with col1:
-    st.markdown("#### A-Roll Options")
-    st.info("A-Roll segments are the parts where you appear on camera.")
-    st.markdown("For this prototype, A-Roll generation is simulated.")
-    
-    # A-Roll ID fetch inputs
-    st.markdown("##### Fetch Existing A-Roll by ID")
-    st.caption("Optional: Enter IDs to use existing A-Roll content")
-    
-    for i, segment in enumerate(aroll_segments):
-        segment_id = f"segment_{i}"
-        fetch_id = st.text_input(
-            f"A-Roll ID for Segment {i+1}",
-            value=st.session_state.aroll_fetch_ids.get(segment_id, ""),
-            key=f"aroll_id_{segment_id}"
-        )
-        st.session_state.aroll_fetch_ids[segment_id] = fetch_id
+# Create columns for the controls
+controls_col1, controls_col2 = st.columns([3, 1])
 
-with col2:
-    st.markdown("#### B-Roll Options")
-    broll_type = st.session_state.broll_prompts.get("broll_type", "mixed")
-    st.info(f"B-Roll type: **{broll_type}**")
-    
-    # Add workflow selection for image generation
-    st.markdown("##### ComfyUI Workflow Selection")
-    workflow_options = {
-        "default": "Default Image Workflow (image_homepc.json)",
-        "lora": "LoRA Enhanced Workflow (lora.json)",
-        "flux": "Flux Dev Checkpoint (flux_dev_checkpoint.json)"
-    }
-    
-    selected_workflow = st.selectbox(
-        "Select workflow for image generation:",
-        options=list(workflow_options.keys()),
-        format_func=lambda x: workflow_options[x],
-        index=list(workflow_options.keys()).index(st.session_state.workflow_selection["image"]),
-        key="workflow_selector"
+with controls_col1:
+    # Add slider to control max segments to process
+    st.slider(
+        "Maximum B-Roll Segments to Process",
+        min_value=1,
+        max_value=max(1, total_broll_segments),
+        value=min(3, total_broll_segments) if total_broll_segments > 0 else 1,  # Default to 3 or less if fewer segments exist
+        step=1,
+        key="max_broll_segments",
+        help="Limit the number of B-Roll segments that will be processed. This is useful if you only want to generate a few segments at a time."
     )
-    st.session_state.workflow_selection["image"] = selected_workflow
     
-    # Show info about the selected workflow
-    if selected_workflow == "default":
-        st.info("Default workflow using standard Stable Diffusion image generation.")
-    elif selected_workflow == "lora":
-        st.info("LoRA workflow adds the flux-chatgpt-ghibli-lora for stylized image generation.")
-    elif selected_workflow == "flux":
-        st.info("Flux Dev Checkpoint workflow uses newer Flux models which may better handle complex prompts.")
+    # Add informational message
+    if total_broll_segments > 0 and st.session_state.max_broll_segments < total_broll_segments:
+        st.info(f"Only the first {st.session_state.max_broll_segments} of {total_broll_segments} B-Roll segments will be processed.")
     
-    # Add note about video generation
-    st.caption("Note: Video generation always uses the standard video workflow (wan.json)")
-    
-    # Add manual upload option
-    st.markdown("##### Content Generation Method")
-    manual_upload = st.radio(
-        "How would you like to handle B-Roll content?",
-        options=["Automatic Generation", "Manual Upload"],
-        index=1 if st.session_state.manual_upload else 0,
-        key="manual_upload_radio"
-    )
-    st.session_state.manual_upload = (manual_upload == "Manual Upload")
-    
-    if st.session_state.manual_upload:
-        st.info("You've selected manual upload. You can upload your own B-Roll content or batch process prompts to download later.")
-        
-        batch_col1, batch_col2 = st.columns([2,1])
-        
-        with batch_col1:
-            # Add information about batch processing
-            st.markdown("##### Batch Process B-Roll Prompts")
-            st.markdown("""
-            Submit all B-Roll prompts to the video server for processing. This will:
-            - Send all prompts to the ComfyUI Video Server
-            - Track job progress for each segment
-            - Allow you to fetch the generated content later
-            """)
-        
-        with batch_col2:
-            # Add button to batch process all prompts
-            if st.button("🚀 Submit All B-Roll Prompts", type="primary", use_container_width=True):
-                with st.spinner("Submitting prompts to video server..."):
-                    prompt_ids, errors = batch_process_broll_prompts()
-                    if prompt_ids:
-                        st.success(f"Successfully submitted {len(prompt_ids)} prompts to video server!")
-                    if errors:
-                        st.error(f"Encountered {len(errors)} errors during submission.")
-                    st.rerun()
-        
-        # Display batch process status
-        if st.session_state.batch_process_status["submitted"]:
-            st.markdown("##### Batch Submission Results")
-            prompt_ids = st.session_state.batch_process_status["prompt_ids"]
-            errors = st.session_state.batch_process_status["errors"]
-            
-            tab1, tab2 = st.tabs(["Submitted Jobs", "Errors"])
-            
-            with tab1:
-                if prompt_ids:
-                    st.success(f"Successfully submitted {len(prompt_ids)} jobs to the video server")
-                    
-                    # Create a table of job IDs
-                    job_data = []
-                    for segment_id, prompt_id in prompt_ids.items():
-                        segment_num = segment_id.split('_')[1]
-                        
-                        # Get the prompt text if available
-                        prompt_text = "No prompt available"
-                        if "prompts" in st.session_state.broll_prompts and segment_id in st.session_state.broll_prompts["prompts"]:
-                            prompt_text = st.session_state.broll_prompts["prompts"][segment_id].get("prompt", "No prompt available")
-                            if len(prompt_text) > 50:
-                                prompt_text = prompt_text[:50] + "..."
-                                
-                        job_data.append({
-                            "Segment": f"Segment {segment_num}",
-                            "Prompt ID": prompt_id,
-                            "Prompt": prompt_text
-                        })
-                    
-                    # Display as a dataframe
-                    st.dataframe(job_data, use_container_width=True)
-                    
-                    # Add a note about how to use these IDs
-                    st.info("These prompt IDs can be used to fetch the generated content later. You can copy them for future reference.")
-                    
-                    # Add a check status button
-                    if st.button("🔄 Check Job Status", key="check_batch_status"):
-                        st.info("This would check the status of all submitted jobs. This feature is still under development.")
-                else:
-                    st.info("No jobs were submitted successfully.")
-            
-            with tab2:
-                if errors:
-                    st.error(f"Encountered {len(errors)} errors during submission")
-                    
-                    # Create a table of errors
-                    error_data = []
-                    for segment_id, error_msg in errors.items():
-                        segment_num = segment_id.split('_')[1]
-                        error_data.append({
-                            "Segment": f"Segment {segment_num}",
-                            "Error": error_msg
-                        })
-                    
-                    # Display as a dataframe
-                    st.dataframe(error_data, use_container_width=True)
-                else:
-                    st.success("No errors encountered during batch submission.")
-    else:
-        # B-Roll ID fetch inputs when not using manual upload
-        st.markdown("##### Fetch Existing B-Roll by ID")
-        st.markdown("""
-        <style>
-        .stTextInput > div > div > input {
-            background-color: #f0f8ff;
-        }
-        </style>
-        """, unsafe_allow_html=True)
-        
-        # Force cache invalidation warning
-        st.warning("⚠️ **IMPORTANT**: If you still see old IDs below, please clear your browser cache and refresh the page.")
-        
-        # Completely new implementation using unique IDs
-        broll_ids = {}
-        # Default IDs for the first 3 segments
-        default_ids = {
-            "segment_0": "ca26f439-3be6-4897-9e8a-d56448f4bb9a",
-            "segment_1": "15027251-6c76-4aee-b5d1-adddfa591257", 
-            "segment_2": "8f34773a-a113-494b-be8a-e5ecd241a8a4"
-        }
-        
-        # Ensure broll_ids has entries for all segments
-        for i, segment in enumerate(broll_segments):
-            segment_id = f"segment_{i}"
-            # First try to get from session state, then from defaults, then empty string
-            broll_ids[segment_id] = st.session_state.broll_fetch_ids.get(
-                segment_id, 
-                default_ids.get(segment_id, "")
-            )
-        
-        # Use current timestamp for truly unique keys
-        timestamp = int(time.time())
-        
-        for i, segment in enumerate(broll_segments):
-            segment_id = f"segment_{i}"
-            unique_key = f"broll_id_new_{segment_id}_{timestamp}_{i}"
-            
-            col1, col2 = st.columns([4, 1])
-            with col1:
-                b_roll_id = st.text_input(
-                f"B-Roll ID for Segment {i+1}",
-                    value=broll_ids[segment_id],
-                    key=unique_key
-                )
-            with col2:
-                if st.button(f"Reset", key=f"reset_btn_{segment_id}_{timestamp}"):
-                    # This will be handled on the next rerun
-                    st.session_state[unique_key] = broll_ids[segment_id]
-                    st.rerun()
-                    
-            # Store in session state
-            st.session_state.broll_fetch_ids[segment_id] = b_roll_id
+with controls_col2:
+    # Add a button to process all segments
+    if st.button("Process All", key="process_all_button"):
+        st.session_state.max_broll_segments = total_broll_segments
+        st.success(f"Set to process all {total_broll_segments} segments")
+        st.rerun()
 
-# After the B-Roll ID input sections, add a Fetch Content button
+# Add ComfyUI job history section
 st.markdown("---")
-st.subheader("Fetch Existing B-Roll Content")
-st.markdown("Use this button to fetch B-Roll content using the IDs provided above without generating new content.")
+st.subheader("🔍 ComfyUI Job History")
+st.markdown("Fetch recent job IDs from ComfyUI to reuse existing content.")
 
 fetch_col1, fetch_col2 = st.columns([3, 1])
 
 with fetch_col1:
-    st.markdown("""
-    This will:
-    - Attempt to fetch B-Roll content using the IDs
-    - Update the content status with the fetched content
-    - Skip any IDs that are empty or invalid
-    """)
-
+    api_selection = st.radio(
+        "Select ComfyUI API:",
+        options=["Image API", "Video API"],
+        horizontal=True,
+        key="comfyui_api_selection"
+    )
+    api_url = COMFYUI_IMAGE_API_URL if api_selection == "Image API" else COMFYUI_VIDEO_API_URL
+    
 with fetch_col2:
-    if st.button("🔄 Fetch B-Roll Content", type="primary", use_container_width=True):
-        with st.spinner("Fetching content from provided IDs..."):
-            fetch_success = False
-            
-            # Count the number of IDs we have
-            broll_id_count = sum(1 for id in st.session_state.broll_fetch_ids.values() if id)
-            
-            st.info(f"Found {broll_id_count} B-Roll IDs to fetch")
-                
-            # Process B-Roll IDs
-            for segment_id, prompt_id in st.session_state.broll_fetch_ids.items():
-                if not prompt_id:
-                    continue
-                
-                # Set status to "fetching" to show progress
-                st.session_state.content_status["broll"][segment_id] = {
-                    "status": "fetching",
-                    "prompt_id": prompt_id,
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                }
-                
-                # Get the appropriate API URL - assuming video API
-                api_url = COMFYUI_VIDEO_API_URL
-                
-                # Fetch the content
-                result = fetch_comfyui_content_by_id(api_url, prompt_id)
-                
-                if result["status"] == "success":
-                    # Determine file extension based on content type
-                    content_type = result.get("type", "image")
-                    file_ext = "mp4" if content_type == "video" else "png"
-                    
-                    # Save the fetched content
-                    file_path = save_media_content(
-                        result["content"], 
-                        "broll",
-                        segment_id,
-                        file_ext
-                    )
-                    
-                    st.session_state.content_status["broll"][segment_id] = {
-                        "status": "complete",
-                        "file_path": file_path,
-                        "prompt_id": prompt_id,
-                        "content_type": content_type,
-                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    }
-                    fetch_success = True
-                elif result["status"] == "processing":
-                    # Content is still being generated
-                    st.session_state.content_status["broll"][segment_id] = {
-                        "status": "waiting",
-                        "message": "ComfyUI job still processing. Try again later.",
-                        "prompt_id": prompt_id,
-                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    }
-                else:
-                    # Error fetching content
-                    st.session_state.content_status["broll"][segment_id] = {
-                        "status": "error",
-                        "message": result.get("message", "Unknown error fetching content"),
-                        "prompt_id": prompt_id,
-                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    }
-            
-            # Save the updated content status
-            save_content_status()
-            
-            if fetch_success:
-                st.success("Successfully fetched content from provided IDs!")
-            else:
-                st.warning("No content was fetched. Please check your IDs and try again.")
-            
-            st.rerun()
+    history_limit = st.number_input("Max results:", min_value=5, max_value=50, value=20, step=5)
+    fetch_button = st.button("🔄 Fetch Job History", type="primary", use_container_width=True)
 
-# Generate content section
-st.markdown("---")
-st.subheader("Generate Content")
-st.markdown("Choose which type of content to generate:")
+# Initialize job history in session state if not present
+if "comfyui_job_history" not in st.session_state:
+    st.session_state.comfyui_job_history = {"image": [], "video": []}
 
-if st.session_state.parallel_tasks["running"]:
-    progress_value = st.session_state.parallel_tasks["completed"] / max(1, st.session_state.parallel_tasks["total"])
-    st.progress(progress_value)
-    st.info(f"Generating content... {st.session_state.parallel_tasks['completed']} of {st.session_state.parallel_tasks['total']} tasks completed")
-    
-    # Refresh the page every few seconds to update progress
-    st.markdown("""
-    <meta http-equiv="refresh" content="3">
-    """, unsafe_allow_html=True)
-else:
-    # Create two columns for separate generation buttons
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("### A-Roll Content")
-        st.markdown("Generate on-camera talking head video content")
-        
-        if st.button("🎬 Generate A-Roll Content", type="primary", key="generate_aroll", use_container_width=True):
-            # Capture all required data before starting the thread
-            temp_segments = st.session_state.segments.copy() if hasattr(st.session_state, 'segments') and st.session_state.segments else []
-            temp_aroll_fetch_ids = st.session_state.aroll_fetch_ids.copy() if hasattr(st.session_state, 'aroll_fetch_ids') and st.session_state.aroll_fetch_ids else {}
-            
-            # Print debug info
-            print(f"Debug - Starting A-Roll content generation")
-            
-            # Check if segments is empty
-            if not temp_segments:
-                st.error("No segments found. Please ensure you have completed the Script Segmentation step.")
-                st.stop()
-            
-                        # Mark as running before starting the thread
-            st.session_state.parallel_tasks["running"] = True
-                        
-            # Start the A-Roll content generation in a separate thread
-            thread = threading.Thread(
-                target=generate_aroll_content, 
-                args=(temp_segments, temp_aroll_fetch_ids)
-            )
-            thread.daemon = True
-            thread.start()
-                        
-            # Refresh the page to show progress
-            st.rerun()
-    
-    with col2:
-        st.markdown("### B-Roll Content")
-        st.markdown("Generate visual content based on prompts")
-        
-        if st.session_state.manual_upload:
-            st.info("You've selected manual upload mode. Use the batch processing option or upload files manually.")
-            
-            if st.button("📤 Start Batch Processing", type="primary", key="batch_process", use_container_width=True):
-                with st.spinner("Submitting prompts to video server..."):
-                    prompt_ids, errors = batch_process_broll_prompts()
-                    if prompt_ids:
-                        st.success(f"Successfully submitted {len(prompt_ids)} prompts to video server!")
-                    if errors:
-                        st.error(f"Encountered {len(errors)} errors during submission.")
-                    st.rerun()
-        else:
-            # Replace the original button with our new sequential implementation
-            comfyui_helpers.render_broll_generation_section(unique_key="col2", project_path=project_path, save_function=save_content_status)
-    
-    # Still provide an option for parallel generation
-    st.markdown("### Generate All B-Roll Content")
-    st.info("⚠️ Note: For A-Roll (talking head) generation, please use the 'A-Roll Transcription' page.")
-    if st.button("🚀 Generate All B-Roll Content", key="parallel_generation", help="Generate B-Roll content for all segments"):
-        # Capture all required data before starting the thread
-        temp_segments = st.session_state.segments.copy() if hasattr(st.session_state, 'segments') and st.session_state.segments else []
-        temp_broll_prompts = st.session_state.broll_prompts.copy() if hasattr(st.session_state, 'broll_prompts') and st.session_state.broll_prompts else {}
-        temp_manual_upload = st.session_state.manual_upload if hasattr(st.session_state, 'manual_upload') else False
-        temp_broll_fetch_ids = st.session_state.broll_fetch_ids.copy() if hasattr(st.session_state, 'broll_fetch_ids') and st.session_state.broll_fetch_ids else {}
-        temp_workflow_selection = st.session_state.workflow_selection.copy() if hasattr(st.session_state, 'workflow_selection') and st.session_state.workflow_selection else {"image": "default"}
-        
-        # Print debug info
-        print(f"Debug - Starting B-Roll content generation with {len(temp_segments)} segments")
-        if len(temp_segments) > 0:
-            # Log segment types
-            b_roll_count = len([s for s in temp_segments if isinstance(s, dict) and s.get("type") == "B-Roll"])
-            print(f"Debug - Found {b_roll_count} B-Roll segments")
-        
-        # Check if segments is empty
-        if not temp_segments:
-            st.error("No segments found. Please ensure you have completed the Script Segmentation step.")
-            st.stop()
-        
-        # Mark as running before starting the thread
-        st.session_state.parallel_tasks["running"] = True
-        
-        # Start the content generation in a separate thread with captured data
-        thread = threading.Thread(
-            target=generate_content_parallel, 
-            args=(temp_segments, temp_broll_prompts, temp_manual_upload, temp_broll_fetch_ids, temp_workflow_selection)
-        )
-        thread.daemon = True
-        thread.start()
-        
-        # Refresh the page to show progress
-        st.rerun()
-
-# Display generation status
-if "aroll" in st.session_state.content_status and "broll" in st.session_state.content_status:
-    st.markdown("---")
-    st.subheader("Content Status")
-    
-    # Create tabs for A-Roll and B-Roll
-    aroll_tab, broll_tab = st.tabs(["A-Roll Status", "B-Roll Status"])
-    
-    with aroll_tab:
-        if st.session_state.content_status["aroll"]:
-            for i, segment in enumerate(aroll_segments):
-                segment_id = f"segment_{i}"
-                if segment_id in st.session_state.content_status["aroll"]:
-                    status = st.session_state.content_status["aroll"][segment_id]
-                    
-                    with st.expander(f"A-Roll Segment {i+1}", expanded=True):
-                        st.markdown(f"**Segment Text:** {segment['content'][:100]}...")
-                        st.markdown(f"**Status:** {status['status']}")
-                        
-                        if status['status'] == "complete":
-                            st.markdown(f"**File:** {status['file_path']}")
-                            st.markdown(f"**Generated:** {status['timestamp']}")
-                        elif status['status'] == "error":
-                            st.error(f"Error: {status.get('message', 'Unknown error')}")
-        else:
-            st.info("No A-Roll content has been generated yet.")
-    
-    with broll_tab:
-        if st.session_state.content_status["broll"]:
-            for i, segment in enumerate(broll_segments):
-                segment_id = f"segment_{i}"
-                if segment_id in st.session_state.content_status["broll"]:
-                    status = st.session_state.content_status["broll"][segment_id]
-                    
-                    with st.expander(f"B-Roll Segment {i+1}", expanded=True):
-                        # Display prompt info
-                        if "prompts" in st.session_state.broll_prompts and segment_id in st.session_state.broll_prompts["prompts"]:
-                            prompt_data = st.session_state.broll_prompts["prompts"][segment_id]
-                            st.markdown(f"**Prompt:** {prompt_data.get('prompt', 'No prompt available')}")
-                            st.markdown(f"**Expected Content Type:** {'Video' if prompt_data.get('is_video', False) else 'Image'}")
-                        else:
-                            st.warning("No prompt available for this segment. Please create a B-Roll prompt first.")
-                        
-                        # Display status and result
-                        if status['status'] == "complete":
-                            st.markdown(f"**Status:** ✅ Completed")
-                            st.markdown(f"**File:** {status['file_path']}")
-                            st.markdown(f"**Generated:** {status['timestamp']}")
-                        elif status['status'] == "error":
-                            st.error(f"**Status:** ❌ Error")
-                            st.error(f"**Error:** {status.get('message', 'Unknown error')}")
-                        elif status['status'] == "processing":
-                            st.info(f"**Status:** ⚙️ Processing")
-                            st.info(f"**Message:** {status.get('message', 'Processing...')}")
-                        elif status['status'] == "waiting":
-                            st.info(f"**Status:** ⏳ Waiting")
-                            st.info(f"**Message:** {status.get('message', 'Waiting for ComfyUI...')}")
-                        else:
-                            st.info(f"**Status:** ℹ️ {status['status']}")
-                            
-                        # Manual upload option
-                        if st.session_state.manual_upload:
-                            if "prompts" in st.session_state.broll_prompts and segment_id in st.session_state.broll_prompts["prompts"]:
-                                prompt_data = st.session_state.broll_prompts["prompts"][segment_id]
-                                expected_type = "Video" if prompt_data.get('is_video', False) else "Image"
-                            else:
-                                expected_type = "Image"  # Default to image if no prompt data
-                            
-                            upload_col1, upload_col2 = st.columns([2, 1])
-                            
-                            with upload_col1:
-                                # Allow either video or image files regardless of expected type
-                                uploaded_file = st.file_uploader(
-                                    f"Upload content for B-Roll Segment {i+1}",
-                                    type=["mp4", "mov", "webm", "png", "jpg", "jpeg", "webp"],
-                                    key=f"uploaded_file_{segment_id}"
-                                )
-                                
-                                st.caption(f"Expected content type: {expected_type}, but you can upload any supported format")
-                            
-                            with upload_col2:
-                                if uploaded_file is not None:
-                                    # Determine file type from extension
-                                    file_ext = uploaded_file.name.split(".")[-1].lower()
-                                    is_video = file_ext in ["mp4", "mov", "webm"]
-                                    
-                                    # Save button
-                                    if st.button(f"💾 Save to Project", key=f"save_file_{segment_id}", type="primary"):
-                                        try:
-                                            # Create directory if it doesn't exist
-                                            media_dir = project_path / "media" / "broll"
-                                            media_dir.mkdir(parents=True, exist_ok=True)
-                                            
-                                            # Generate filename
-                                            filename = f"manual_broll_{segment_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{file_ext}"
-                                            file_path = media_dir / filename
-                                            
-                                            # Save the file
-                                            with open(file_path, "wb") as f:
-                                                f.write(uploaded_file.getbuffer())
-                                            
-                                            # Update status
-                                            st.session_state.content_status["broll"][segment_id] = {
-                                                "status": "complete",
-                                                "file_path": str(file_path),
-                                                "type": "manual",
-                                                "content_type": "video" if is_video else "image",
-                                                "expected_type": "video" if prompt_data.get('is_video', False) else "image",
-                                                "type_mismatch": (is_video != prompt_data.get('is_video', False)),
-                                                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                                            }
-                                            
-                                            save_content_status()
-                                            st.success(f"Saved file to {file_path}")
-                                            st.rerun()
-                                        except Exception as e:
-                                            st.error(f"Error saving file: {str(e)}")
-                            
-                            # Preview the file below the columns
-                            if uploaded_file is not None:
-                                file_ext = uploaded_file.name.split(".")[-1].lower()
-                                is_video = file_ext in ["mp4", "mov", "webm"]
-                                
-                                st.markdown("##### Content Preview")
-                                
-                                # Add file info
-                                uploaded_size = len(uploaded_file.getvalue()) / (1024 * 1024)  # Convert to MB
-                                st.caption(f"Filename: {uploaded_file.name} ({uploaded_size:.2f} MB)")
-                                
-                                # Preview based on file type
-                                if is_video:
-                                    st.video(uploaded_file)
-                                else:
-                                    st.image(uploaded_file, caption=f"Uploaded image for Segment {i+1}")
-                                
-                                # Save to session state
-                                st.session_state.uploaded_files[segment_id] = uploaded_file
-                        
-                        # Display status info if available
-                        if segment_id in st.session_state.content_status["broll"]:
-                            status = st.session_state.content_status["broll"][segment_id]
-                            
-                            status_text = status['status']
-                            
-                            # Add icon based on status
-                            if status_text == "complete":
-                                status_icon = "✅"
-                            elif status_text == "error":
-                                status_icon = "❌"
-                            elif status_text == "fetching":
-                                status_icon = "🔄"
-                            elif status_text == "processing":
-                                status_icon = "⚙️"
-                            elif status_text == "waiting":
-                                status_icon = "⏳"
-                            else:
-                                status_icon = "ℹ️"
-                                
-                            st.markdown(f"**Status:** {status_icon} {status_text.capitalize()}")
-                            
-                            # Display Prompt ID information if available
-                            if 'prompt_id' in status:
-                                st.markdown(f"**Prompt ID:** `{status['prompt_id']}`")
-                                
-                                # Add a button to retry fetching if it's in waiting status
-                                if status_text == "waiting" and st.button(f"Retry Fetch for Segment {i+1}", key=f"retry_fetch_{segment_id}"):
-                                    st.info("Will try fetching again on next generation run")
-                                    st.rerun()
-                        
-                            if status_text == "complete":
-                                st.markdown(f"**Generated:** {status['timestamp']}")
-                                st.markdown(f"**File:** {status['file_path']}")
-                                
-                                # Show type mismatch warning if needed
-                                if status.get('type_mismatch', False):
-                                    st.warning(f"⚠️ Content type mismatch: Expected {status.get('expected_type', 'unknown')}, got {status.get('content_type', 'unknown')}")
-                                
-                                # If available, display a preview
-                                # (For a real implementation, you'd display the actual file)
-                                file_path = status['file_path']
-                                if file_path.endswith(".mp4"):
-                                    st.info("Video preview would appear here in the actual implementation")
-                                else:
-                                    st.info("Image preview would appear here in the actual implementation")
-                                    
-                            elif status_text == "error":
-                                st.error(f"Error: {status.get('message', 'Unknown error')}")
-                                
-                                # Add a button to clear the error and try again
-                                if st.button(f"Clear Error for Segment {i+1}", key=f"clear_error_{segment_id}"):
-                                    # Remove the status entry to allow retrying
-                                    if segment_id in st.session_state.content_status["broll"]:
-                                        del st.session_state.content_status["broll"][segment_id]
-                                    st.rerun()
-                                
-                            elif status_text in ["fetching", "waiting", "processing"]:
-                                st.info(status.get('message', f"Content is being {status_text}..."))
-                                
-                                # Add a cancel button for in-progress operations
-                                if st.button(f"Cancel for Segment {i+1}", key=f"cancel_{segment_id}"):
-                                    # Remove the fetch ID and status to start fresh
-                                    if segment_id in st.session_state.broll_fetch_ids:
-                                        st.session_state.broll_fetch_ids[segment_id] = ""
-                                    if segment_id in st.session_state.content_status["broll"]:
-                                        del st.session_state.content_status["broll"][segment_id]
-                                    st.rerun()
-        else:
-            st.info("No B-Roll content has been generated yet.")
-
-# If all content is generated, show continue button
-if (not st.session_state.parallel_tasks["running"] and 
-    "aroll" in st.session_state.content_status and 
-    "broll" in st.session_state.content_status and
-    st.session_state.content_status["aroll"] and 
-    st.session_state.content_status["broll"]):
-    
-    # Check if all segments have content generated
-    aroll_complete = all(status.get("status") == "complete" 
-                        for status in st.session_state.content_status["aroll"].values())
-    
-    broll_segments_with_prompts = [f"segment_{i}" for i, _ in enumerate(broll_segments)]
-    broll_complete = all(status.get("status") == "complete"
-                        for segment_id, status in st.session_state.content_status["broll"].items()
-                        if segment_id in broll_segments_with_prompts)
-    
-    if aroll_complete and broll_complete:
-        st.success("All content has been successfully generated! You can now proceed to video assembly.")
-        mark_step_complete("step_5")
-    else:
-        # Show which segments need attention
-        segments_with_issues = []
-        
-        for i, segment in enumerate(aroll_segments):
-            segment_id = f"segment_{i}"
-            if segment_id in st.session_state.content_status["aroll"]:
-                status = st.session_state.content_status["aroll"][segment_id]
-                if status.get("status") != "complete":
-                    segments_with_issues.append(f"A-Roll Segment {i+1}")
-        
-        for i, segment in enumerate(broll_segments):
-            segment_id = f"segment_{i}"
-            if segment_id in st.session_state.content_status["broll"]:
-                status = st.session_state.content_status["broll"][segment_id]
-                if status.get("status") != "complete":
-                    segments_with_issues.append(f"B-Roll Segment {i+1}")
-        
-        st.warning(f"Some segments need attention: {', '.join(segments_with_issues)}")
-
-# Navigation buttons
-st.markdown("---")
-render_step_navigation(
-    current_step=6,
-    prev_step_path="pages/4_BRoll_Prompts.py",
-    next_step_path="pages/6_Video_Assembly.py"
-)
-
-# Debug section (hidden by default)
-with st.expander("Debug Information", expanded=False):
-    st.markdown("### Session State Debug")
-    
-    st.markdown("#### Segments Information")
-    segments = st.session_state.segments if hasattr(st.session_state, 'segments') else []
-    st.write(f"Total segments: {len(segments)}")
-    
-    # Count segment types
-    a_roll_segments = [s for s in segments if isinstance(s, dict) and s.get("type") == "A-Roll"]
-    b_roll_segments = [s for s in segments if isinstance(s, dict) and s.get("type") == "B-Roll"]
-    invalid_segments = [s for s in segments if not isinstance(s, dict) or "type" not in s or s.get("type") not in ["A-Roll", "B-Roll"]]
-    
-    st.write(f"A-Roll segments: {len(a_roll_segments)}")
-    st.write(f"B-Roll segments: {len(b_roll_segments)}")
-    st.write(f"Invalid segments: {len(invalid_segments)}")
-    
-    if st.button("Show Full Segments Data"):
-        st.json(segments)
-    
-    st.markdown("#### B-Roll Prompts Information")
-    prompts = st.session_state.broll_prompts if hasattr(st.session_state, 'broll_prompts') else {}
-    st.write(f"B-Roll prompts object type: {type(prompts).__name__}")
-    
-    if isinstance(prompts, dict):
-        if "prompts" in prompts:
-            prompt_count = len(prompts.get("prompts", {}))
-            st.write(f"Number of individual prompts: {prompt_count}")
-        else:
-            st.write("No 'prompts' key found in broll_prompts")
-    
-    if st.button("Show Full B-Roll Prompts Data"):
-        st.json(prompts)
-    
-    st.markdown("#### Project Path")
-    st.write(f"Project path: {project_path}")
-    
-    # Button to check if files exist
-    if st.button("Check Project Files"):
-        script_file = project_path / "script.json"
-        prompts_file = project_path / "broll_prompts.json"
-        
-        st.write(f"script.json exists: {script_file.exists()}")
-        st.write(f"broll_prompts.json exists: {prompts_file.exists()}")
-        
-        if script_file.exists():
-            try:
-                with open(script_file, "r") as f:
-                    script_data = json.load(f)
-                    st.write(f"script.json is valid JSON: True")
-                    st.write(f"script.json has 'segments' key: {'segments' in script_data}")
-                    if 'segments' in script_data:
-                        st.write(f"Number of segments in file: {len(script_data['segments'])}")
-            except json.JSONDecodeError:
-                st.write(f"script.json is valid JSON: False")
-            except Exception as e:
-                st.write(f"Error reading script.json: {str(e)}")
-        
-        if prompts_file.exists():
-            try:
-                with open(prompts_file, "r") as f:
-                    prompts_data = json.load(f)
-                    st.write(f"broll_prompts.json is valid JSON: True")
-                    st.write(f"broll_prompts.json has 'prompts' key: {'prompts' in prompts_data}")
-                    if 'prompts' in prompts_data:
-                        st.write(f"Number of prompts in file: {len(prompts_data['prompts'])}")
-            except json.JSONDecodeError:
-                st.write(f"broll_prompts.json is valid JSON: False")
-            except Exception as e:
-                st.write(f"Error reading broll_prompts.json: {str(e)}")
-    
-    # Refresh button
-    if st.button("Reload Page Data"):
-        _ = load_script_data()
-        _ = load_broll_prompts()
-        _ = load_content_status()
-        st.rerun() 
-
-# Add this function to allow clearing cached IDs
-def clear_fetch_ids():
-    """Clear cached IDs for A-Roll and B-Roll content"""
-    if "aroll_fetch_ids" in st.session_state:
-        st.session_state.aroll_fetch_ids = {}
-    if "broll_fetch_ids" in st.session_state:
-        st.session_state.broll_fetch_ids = {}
-    st.success("✅ Content cache cleared successfully. New content will be generated on the next run.")
-    
-    # Also clear any active tracking
-    if "active_trackers" in st.session_state:
-        st.session_state.active_trackers = []
-
-# Add a new UI section for cache management
-with st.expander("🧹 Cache Management"):
-    st.markdown("""
-    ### Clear Content Cache
-    
-    If you're experiencing issues with content generation, or if you want to force regeneration of all content,
-    you can clear the cached content IDs here.
-    
-    **Note:** This won't delete any previously generated files, but will ensure new content is generated
-    the next time you run the generation process.
-    """)
-    
-    if st.button("🗑️ Clear Content Cache", key="clear_cache"):
-        clear_fetch_ids()
-
-# Load workflow files
-def load_workflow(workflow_type="video"):
-    """Load workflow from JSON file"""
-    try:
-        # Get the application root directory
-        app_dir = Path(__file__).parent.parent.absolute()
-        
-        if workflow_type == "video":
-            workflow_file = "wan.json"
-            fallback_file = "video_workflow.json"
-        else:
-            workflow_file = "image_homepc.json"
-            fallback_file = "image_workflow.json"
-        
-        # Check multiple locations for the workflow file
-        possible_paths = [
-            Path(workflow_file),                   # Current directory
-            app_dir / workflow_file,               # Application directory
-            app_dir / "app" / workflow_file,       # App subdirectory
-            app_dir / "workflows" / workflow_file, # Workflows subdirectory
-            Path(__file__).parent / workflow_file,  # Parent directory (pages directory)
-            Path(__file__).parent / "workflows" / workflow_file,  # Workflows in pages directory
-            Path(os.getcwd()) / workflow_file,     # Current working directory
-            Path(os.getcwd()) / "workflows" / workflow_file,  # Workflows in current working directory
-            Path("/Users/dawarazhar/Desktop/AI-Money-Printer-Shorts/app") / workflow_file,  # Absolute app path
-            Path("/Users/dawarazhar/Desktop/AI-Money-Printer-Shorts") / workflow_file,      # Project root
-            Path("/Users/dawarazhar/Desktop/AI-Money-Printer-Shorts/app/workflows") / workflow_file,  # App workflows folder
-        ]
-        
-        # Also check fallback file
-        fallback_paths = [path.parent / fallback_file for path in possible_paths]
-        possible_paths.extend(fallback_paths)
-        
-        # Try each possible path
-        for path in possible_paths:
-            if path.exists():
-                with open(path, "r") as f:
-                    workflow = json.load(f)
-                    print(f"✅ Loaded {workflow_type} workflow from {path} with {len(workflow)} nodes")
-                    return workflow
-        
-        # If we get here, file wasn't found - create a basic workflow template
-        if workflow_type == "image":
-            # Create a basic image workflow as fallback
-            basic_workflow = {
-                "1": {"class_type": "CLIPTextEncode", "inputs": {"text": ""}},
-                "2": {"class_type": "CLIPTextEncode", "inputs": {"text": ""}},
-                "3": {"class_type": "EmptyLatentImage", "inputs": {"width": 1080, "height": 1920}},
-                "4": {"class_type": "KSampler", "inputs": {"seed": 12345}}
-            }
-            print(f"⚠️ Created basic {workflow_type} workflow template as fallback")
-            return basic_workflow
-        else:
-            raise FileNotFoundError(f"Workflow file {workflow_file} not found in any of the expected locations")
-            
-    except Exception as e:
-        st.error(f"Failed to load workflow file: {str(e)}")
-        
-        # Create a basic fallback workflow
-        if workflow_type == "image":
-            basic_workflow = {
-                "1": {"class_type": "CLIPTextEncode", "inputs": {"text": ""}},
-                "2": {"class_type": "CLIPTextEncode", "inputs": {"text": ""}},
-                "3": {"class_type": "EmptyLatentImage", "inputs": {"width": 1080, "height": 1920}},
-                "4": {"class_type": "KSampler", "inputs": {"seed": 12345}}
-            }
-            print(f"⚠️ Created basic {workflow_type} workflow template as fallback after error")
-            return basic_workflow
-        return None
-
-# Function to modify workflow with custom parameters
-def modify_workflow(workflow, params):
-    """Modify the loaded workflow JSON with custom parameters"""
-    try:
-        if workflow is None:
-            return None
-            
-        # Create a deep copy to avoid modifying the original
-        modified_workflow = workflow.copy()
-        
-        # Find text input nodes (for prompt) - search for nodes with CLIPTextEncode class_type
-        text_nodes = [k for k in modified_workflow.keys() 
-                     if "class_type" in modified_workflow[k] and 
-                     modified_workflow[k]["class_type"] == "CLIPTextEncode"]
-        
-        # Find negative text nodes - typically the second CLIPTextEncode node
-        if len(text_nodes) >= 2:
-            # First node for positive prompt, second for negative
-            pos_node_id = text_nodes[0]
-            neg_node_id = text_nodes[1]
-            
-            # Set prompts
-            if "inputs" in modified_workflow[pos_node_id]:
-                modified_workflow[pos_node_id]["inputs"]["text"] = params.get("prompt", "")
-                print(f"Set prompt in node {pos_node_id}")
-                
-            if "inputs" in modified_workflow[neg_node_id]:
-                modified_workflow[neg_node_id]["inputs"]["text"] = params.get("negative_prompt", "")
-                print(f"Set negative prompt in node {neg_node_id}")
-        
-        # Find empty latent image nodes for dimensions
-        latent_nodes = [k for k in modified_workflow.keys() 
-                       if "class_type" in modified_workflow[k] and 
-                       (modified_workflow[k]["class_type"] == "EmptyLatentImage" or
-                        modified_workflow[k]["class_type"] == "EmptyLatentVideo")]
-        
-        if latent_nodes:
-            latent_node_id = latent_nodes[0]
-            if "inputs" in modified_workflow[latent_node_id]:
-                if "width" in modified_workflow[latent_node_id]["inputs"]:
-                    modified_workflow[latent_node_id]["inputs"]["width"] = params.get("width", 1080)
-                if "height" in modified_workflow[latent_node_id]["inputs"]:
-                    modified_workflow[latent_node_id]["inputs"]["height"] = params.get("height", 1920)
-                print(f"Set dimensions in node {latent_node_id}")
-        
-        # Find sampler nodes for seed
-        sampler_nodes = [k for k in modified_workflow.keys() 
-                        if "class_type" in modified_workflow[k] and 
-                        ("KSampler" in modified_workflow[k]["class_type"] or 
-                         "SamplerAdvanced" in modified_workflow[k]["class_type"])]
-        
-        if sampler_nodes:
-            sampler_node_id = sampler_nodes[0]
-            if "inputs" in modified_workflow[sampler_node_id] and "seed" in modified_workflow[sampler_node_id]["inputs"]:
-                modified_workflow[sampler_node_id]["inputs"]["seed"] = params.get("seed", random.randint(1, 999999999))
-                print(f"Set seed in node {sampler_node_id}")
-        
-        return modified_workflow
-        
-    except Exception as e:
-        print(f"Error modifying workflow: {str(e)}")
-        return None
-
-# Function to fetch content by prompt ID
-def fetch_content_by_id(prompt_id, api_url):
-    """Fetch content from ComfyUI using prompt ID"""
-    try:
-        # First check history
-        history_url = f"{api_url}/history/{prompt_id}"
-        history_response = requests.get(history_url, timeout=10)
-        
-        if history_response.status_code != 200:
-            return {
-                "status": "error",
-                "message": f"Error fetching history: {history_response.status_code}"
-            }
-        
-        job_data = history_response.json()
-        
-        # Check if job exists
-        if prompt_id not in job_data:
-            return {
-                "status": "error",
-                "message": "Prompt ID not found in history"
-            }
-        
-        # Get job info
-        job_info = job_data[prompt_id]
-        
-        # Check if job completed
-        outputs = job_info.get("outputs", {})
-        if not outputs:
-            return {
-                "status": "processing",
-                "message": "Job still processing"
-            }
-        
-        # Find output file
-        for node_id, node_data in outputs.items():
-            # Check for images
-            if "images" in node_data:
-                for image_data in node_data["images"]:
-                    filename = image_data.get("filename", "")
-                    
-                    if filename:
-                        # Download file
-                        file_url = f"{api_url}/view?filename={filename}"
-                        content_response = requests.get(file_url, timeout=30)
-                        
-                        if content_response.status_code == 200:
-                            return {
-                                "status": "success",
-                                "content": content_response.content,
-                                "filename": filename,
-                                "type": "image"
-                            }
-            
-            # Check for videos
-            for media_type in ["videos", "gifs"]:
-                if media_type in node_data:
-                    for media_item in node_data[media_type]:
-                        filename = media_item.get("filename", "")
-                        
-                        if filename:
-                            # Download file
-                            file_url = f"{api_url}/view?filename={filename}"
-                            content_response = requests.get(file_url, timeout=60)
-                            
-                            if content_response.status_code == 200:
-                                return {
-                                    "status": "success",
-                                    "content": content_response.content,
-                                    "filename": filename,
-                                    "type": "video"
-                                }
-        
-        # If we get here, try looking for AnimateDiff pattern files
-        possible_files = [f"animation_{i:05d}.mp4" for i in range(1, 10)]
-        for filename in possible_files:
-            file_url = f"{api_url}/view?filename={filename}"
-            try:
-                response = requests.head(file_url, timeout=5)
-                if response.status_code == 200:
-                    content_response = requests.get(file_url, timeout=60)
-                    if content_response.status_code == 200:
-                        return {
-                            "status": "success",
-                            "content": content_response.content,
-                            "filename": filename,
-                            "type": "video"
-                        }
-            except Exception as e:
-                print(f"Error checking alternative file {filename}: {str(e)}")
-        
-        return {
-            "status": "error",
-            "message": "No output file found"
-        }
-    
-    except Exception as e:
-        st.error(f"Error fetching content: {str(e)}")
-        return {
-            "status": "error",
-            "message": f"Error fetching content: {str(e)}"
-        }
-
-# Function to periodically fetch content until it's available
-def periodic_content_fetch(prompt_id, api_url, max_attempts=30, interval=3):
-    """Periodically fetch content by prompt ID until it's available or max attempts reached"""
-    status_placeholder = st.empty()
-    status_placeholder.info(f"⏳ Waiting for content generation to complete (ID: {prompt_id})...")
-    
-    for attempt in range(1, max_attempts + 1):
-        status_placeholder.text(f"Fetch attempt {attempt}/{max_attempts}...")
-        
-        # Try to fetch content
-        result = fetch_content_by_id(prompt_id, api_url)
+# Handle fetch button click
+if fetch_button:
+    with st.spinner(f"Fetching job history from {api_selection}..."):
+        api_key = "image" if api_selection == "Image API" else "video"
+        result = fetch_comfyui_job_history(api_url, limit=history_limit)
         
         if result["status"] == "success":
-            status_placeholder.success("✅ Content successfully generated!")
-            return result
-        elif result["status"] == "error" and "not found" in result.get("message", "").lower():
-            # If prompt ID is not found, stop trying
-            status_placeholder.error("❌ Prompt ID not found")
-            return result
-        
-        # Wait before trying again
-        time.sleep(interval)
-    
-    # If we reached max attempts
-    status_placeholder.error("❌ Timed out waiting for content")
-    return {
-        "status": "error",
-        "message": f"Timed out after {max_attempts} attempts"
-    }
+            st.session_state.comfyui_job_history[api_key] = result["data"]
+            st.success(f"Successfully fetched {len(result['data'])} jobs from {api_selection}")
+        else:
+            st.error(f"Error fetching job history: {result.get('message', 'Unknown error')}")
 
-# Function to save media content to file
-def save_media_content(content, segment_type, segment_id, file_extension):
-    """Save media content to a file"""
-    # Create directories if they don't exist
-    media_dir = project_path / "media" / segment_type
-    media_dir.mkdir(parents=True, exist_ok=True)
+# Display job history
+api_key = "image" if api_selection == "Image API" else "video"
+if api_key in st.session_state.comfyui_job_history and st.session_state.comfyui_job_history[api_key]:
+    # Add tabs for different view options
+    history_tab1, history_tab2 = st.tabs(["Table View", "Detail View"])
     
-    # Generate filename
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"{segment_type}_{segment_id}_{timestamp}.{file_extension}"
-    
-    # Save file
-    file_path = media_dir / filename
-    with open(file_path, "wb") as f:
-        f.write(content)
-    
-    # Return relative path from project directory
-    return str(file_path)
-
-# Function to generate B-Roll sequentially
-def generate_broll_sequentially(segments_data, api_url=None):
-    """Generate B-Roll content sequentially with proper tracking"""
-    if api_url is None:
-        api_url = "http://100.115.243.42:8000"
-    
-    # Track progress
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    
-    # Store results
-    results = {}
-    total_segments = len(segments_data)
-    
-    # Process each segment
-    for idx, (segment_id, segment_data) in enumerate(segments_data.items()):
-        # Update progress
-        progress_value = idx / total_segments
-        progress_bar.progress(progress_value)
-        status_text.text(f"Processing segment {idx+1}/{total_segments}: {segment_id}")
+    with history_tab1:
+        # Create a dataframe from job history
+        job_data = []
+        for job in st.session_state.comfyui_job_history[api_key]:
+            job_data.append({
+                "Prompt ID": job["prompt_id"],
+                "Status": job["status"],
+                "Time": job["timestamp"],
+            })
         
-        # Create segment container for output
-        segment_container = st.container()
-        
-        with segment_container:
-            st.subheader(f"Segment {segment_id}")
-            
-            # Check if is_video flag exists, default to True for B-Roll
-            is_video = segment_data.get("is_video", True)
-            content_type = "video" if is_video else "image"
-            
-            # Create client ID for tracking
-            client_id = f"streamlit_broll_{segment_id}_{int(time.time())}"
-            
-            # Load workflow
-            workflow = load_workflow("video" if is_video else "image")
-            if workflow is None:
-                st.error(f"Failed to load workflow for {segment_id}")
-                results[segment_id] = {"status": "error", "message": "Failed to load workflow"}
-                continue
-                
-            # Get parameters
-            params = {
-                "prompt": segment_data.get("prompt", ""),
-                "negative_prompt": segment_data.get("negative_prompt", "ugly, blurry, low quality, deformed"),
-                "width": 1080,
-                "height": 1920,
-                "seed": random.randint(1, 999999999)
-            }
-            
-            # Modify workflow
-            modified_workflow = modify_workflow(workflow, params)
-            if modified_workflow is None:
-                st.error(f"Failed to modify workflow for {segment_id}")
-                results[segment_id] = {"status": "error", "message": "Failed to modify workflow"}
-                continue
-            
-            # Submit job
-            st.info(f"Submitting {content_type} generation job")
-            result = comfyui_api.queue_prompt(modified_workflow, client_id, api_url)
-            
-            # Check result
-            if result["status_code"] != 200 or not result.get("prompt_id"):
-                st.error(f"Failed to submit job: {result.get('error', 'Unknown error')}")
-                results[segment_id] = {"status": "error", "message": f"Job submission failed: {result.get('error', 'Unknown error')}"}
-                continue
-                
-            prompt_id = result["prompt_id"]
-            st.info(f"Job submitted with ID: {prompt_id}")
-            
-            # Store the prompt ID
-            if "broll_fetch_ids" not in st.session_state:
-                st.session_state.broll_fetch_ids = {}
-            st.session_state.broll_fetch_ids[segment_id] = prompt_id
-            
-            # Fetch content
-            st.info("Waiting for content generation to complete...")
-            fetch_result = periodic_content_fetch(prompt_id, api_url)
-            
-            if fetch_result["status"] == "success":
-                # Save content
-                content = fetch_result["content"]
-                file_ext = "mp4" if is_video else "png"
-                file_path = save_media_content(content, "broll", segment_id, file_ext)
-                
-                # Update status
-                st.session_state.content_status["broll"][segment_id] = {
-                    "status": "complete",
-                    "file_path": file_path,
-                    "prompt_id": prompt_id,
-                    "content_type": content_type,
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                }
-                
-                # Display result
-                st.success(f"Successfully generated {content_type} for segment {segment_id}")
-                if is_video:
-                    st.video(file_path)
-                else:
-                    st.image(file_path)
-                    
-                results[segment_id] = {
-                    "status": "success", 
-                    "file_path": file_path,
-                    "prompt_id": prompt_id
-                }
-            else:
-                # Try direct download for AnimateDiff patterns
-                if is_video:
-                    downloaded = False
-                    possible_files = [f"animation_{i:05d}.mp4" for i in range(1, 10)]
-                    
-                    for filename in possible_files:
-                        file_url = f"{api_url}/view?filename={filename}"
-                        try:
-                            response = requests.head(file_url, timeout=5)
-                            if response.status_code == 200:
-                                content_response = requests.get(file_url, timeout=60)
-                                if content_response.status_code == 200:
-                                    # Save file
-                                    file_path = save_media_content(content_response.content, "broll", segment_id, "mp4")
-                                    
-                                    # Update status
-                                    st.session_state.content_status["broll"][segment_id] = {
-                                        "status": "complete",
-                                        "file_path": file_path,
-                                        "prompt_id": prompt_id,
-                                        "content_type": "video",
-                                        "filename": filename,
-                                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                                    }
-                                    
-                                    st.success(f"Found and downloaded video from pattern {filename}")
-                                    st.video(file_path)
-                                    
-                                    results[segment_id] = {
-                                        "status": "success", 
-                                        "file_path": file_path,
-                                        "prompt_id": prompt_id
-                                    }
-                                    downloaded = True
-                                    break
-                        except Exception as e:
-                            st.warning(f"Error checking file {filename}: {str(e)}")
-                
-                    if not downloaded:
-                        st.error(f"Failed to generate content: {fetch_result.get('message', 'Unknown error')}")
-                        results[segment_id] = {"status": "error", "message": fetch_result.get('message', 'Content generation failed')}
-                else:
-                    st.error(f"Failed to generate content: {fetch_result.get('message', 'Unknown error')}")
-                    results[segment_id] = {"status": "error", "message": fetch_result.get('message', 'Content generation failed')}
-            
-            # Add a separator between segments
-            st.divider()
-            
-            # Wait a bit before next job to give ComfyUI time to recover
-            if idx < total_segments - 1:
-                time.sleep(3)
+        # Display as a table
+        st.dataframe(job_data)
     
-    # Update final progress
-    progress_bar.progress(1.0)
-    status_text.text(f"Completed processing {total_segments} segments!")
-    
-    return results
-
-# Define the B-Roll generation UI function
-def render_broll_generation_section(unique_key="main"):
-    """Render the B-Roll generation section with a single 'Generate All B-Roll' button
-    
-    Args:
-        unique_key: A unique identifier to append to widget keys to avoid duplicates
-    """
-    # Create a single column for B-roll generation (removing the two-column approach)
-    broll_gen_col = st.container()
-    
-    with broll_gen_col:
-        if st.button("🎨 Generate All B-Roll", type="primary", key=f"generate_broll_{unique_key}", use_container_width=True):
-            # Capture all required data before starting the thread
-            temp_segments = st.session_state.segments.copy() if hasattr(st.session_state, 'segments') and st.session_state.segments else []
-            temp_broll_prompts = st.session_state.broll_prompts.copy() if hasattr(st.session_state, 'broll_prompts') else {'prompts': {}}
-            
-            # Check if we have B-roll segments to process
-            broll_segments = {}
-            for i, seg in enumerate(temp_segments):
-                segment_id = f"segment_{i}"
-                if segment_id in temp_broll_prompts.get('prompts', {}):
-                    broll_segments[segment_id] = temp_broll_prompts['prompts'][segment_id]
-            
-            if not broll_segments:
-                st.error("No B-roll segments to process. Please create segments first.")
-            else:
-                # Generate B-roll sequentially
-                st.subheader("B-Roll Generation in Progress")
-                result = generate_broll_sequentially(broll_segments)
+    with history_tab2:
+        # Show detailed view with more controls
+        for job in st.session_state.comfyui_job_history[api_key]:
+            with st.expander(f"Job: {job['prompt_id']}"):
+                st.write(f"Status: {job['status']}")
+                st.write(f"Time: {job['timestamp']}")
                 
-                # Save updated content status
-                save_content_status()
-                
-                # Show summary
-                success_count = sum(1 for r in result.values() if r.get('status') == 'success')
-                st.success(f"Completed B-roll generation: {success_count} successful out of {len(broll_segments)} segments.")
-                
-                # Mark step as complete if all segments succeeded
-                if success_count == len(broll_segments):
-                    mark_step_complete('content_production')
-                    st.balloons()  # Add some fun!
+                # Add button to copy ID
+                if st.button(f"Copy ID: {job['prompt_id'][:8]}...", key=f"copy_{job['prompt_id']}"):
+                    st.success(f"Copied prompt ID: {job['prompt_id']}")
+                    # Add to clipboard (as best we can in Streamlit)
+                    st.write(f"<textarea id='clipboard_{job['prompt_id']}' style='position:absolute;left:-9999px'>{job['prompt_id']}</textarea>", unsafe_allow_html=True)
+                    st.write(f"<script>document.getElementById('clipboard_{job['prompt_id']}').select();document.execCommand('copy');</script>", unsafe_allow_html=True)

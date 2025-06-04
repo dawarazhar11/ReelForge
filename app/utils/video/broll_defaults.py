@@ -35,6 +35,11 @@ def apply_default_broll_ids(content_status):
     if "broll" not in content_status:
         content_status["broll"] = {}
     
+    # Check if we already have B-roll segments set up
+    if len(content_status["broll"]) > 0:
+        print("B-Roll segments already exist in content_status.json. Preserving existing segments.")
+        return False
+    
     # Apply default IDs to each B-Roll segment
     for i, broll_id in enumerate(DEFAULT_BROLL_IDS):
         segment_id = f"segment_{i}"

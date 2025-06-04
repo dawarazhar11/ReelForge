@@ -374,22 +374,170 @@ def load_content_status():
         "broll": {}
     }
     
+    # First load script.json to determine the correct number of B-roll segments
+    script_file = project_path / "script.json"
+    script_data = None
+    broll_segments = []
+    broll_segment_count = 0
+    
+    if script_file.exists():
+        try:
+            with open(script_file, "r") as f:
+                script_data = json.load(f)
+                broll_segments = [s for s in script_data.get("segments", []) if s.get("type") == "B-Roll"]
+                broll_segment_count = len(broll_segments)
+                print(f"Script has {broll_segment_count} B-Roll segments")
+                
+                # Check if percentage-based generation is used
+                if "broll_percentage" in script_data:
+                    percentage = script_data["broll_percentage"]
+                    print(f"Using percentage-based B-Roll generation: {percentage}%")
+                    
+                # Check if version info exists
+                if "version" in script_data:
+                    print(f"Script version: {script_data['version']}")
+        except Exception as e:
+            print(f"Error reading script file: {str(e)}")
+    
     # Load B-roll status
     broll_status_file = project_path / "content_status.json"
     print(f"Checking B-Roll status file at: {broll_status_file}")
+    broll_data = {}
+    
     if broll_status_file.exists():
         try:
             with open(broll_status_file, "r") as f:
                 broll_data = json.load(f)
                 if "broll" in broll_data:
                     content_status["broll"] = broll_data["broll"]
-                    print(f"Loaded {len(broll_data['broll'])} B-Roll segments")
+                    content_broll_count = len(broll_data["broll"])
+                    print(f"Loaded {content_broll_count} B-Roll segments")
+                    
+                    # Check if content_status.json matches script.json
+                    if script_data and content_broll_count != broll_segment_count:
+                        print(f"WARNING: Mismatch between script.json ({broll_segment_count} B-Roll segments) and content_status.json ({content_broll_count} B-Roll segments)")
+                        print("Adjusting content_status.json to match script.json...")
+                        
+                        # Create new B-roll status matching script.json
+                        new_broll_status = {}
+                        for i in range(broll_segment_count):
+                            segment_id = f"segment_{i}"
+                            # Copy existing data if available, otherwise create empty entry
+                            if "broll" in broll_data and segment_id in broll_data["broll"]:
+                                new_broll_status[segment_id] = broll_data["broll"][segment_id]
+                            else:
+                                new_broll_status[segment_id] = {
+                                    "status": "not_started",
+                                    "asset_paths": [],
+                                    "selected_asset": None
+                                }
+                        
+                        # Update content status
+                        content_status["broll"] = new_broll_status
+                        print(f"Updated B-Roll segment count to {len(new_broll_status)}")
+                        
+                        # Save the updated content status
+                        broll_data["broll"] = new_broll_status
+                        broll_data["broll_segment_count"] = broll_segment_count
+                        broll_data["synced_with_script"] = True
+                        broll_data["last_updated"] = time.time()
+                        
+                        try:
+                            with open(broll_status_file, "w") as f:
+                                json.dump(broll_data, f, indent=2)
+                            print("Saved updated content_status.json")
+                            
+                            # Update global content_status variable in session state to ensure consistency
+                            if "content_status" in st.session_state:
+                                st.session_state.content_status["broll"] = new_broll_status
+                                st.session_state.content_status["broll_segment_count"] = broll_segment_count
+                                st.session_state.content_status["synced_with_script"] = True
+                                st.session_state.content_status["last_updated"] = time.time()
+                                print("Updated session state with synchronized content status")
+                        except Exception as e:
+                            print(f"Error saving updated content_status.json: {str(e)}")
                 else:
                     print("No 'broll' key found in content_status.json")
+                    
+                    # If script data is available, create B-roll entries
+                    if script_data:
+                        new_broll_status = {}
+                        for i in range(broll_segment_count):
+                            new_broll_status[f"segment_{i}"] = {
+                                "status": "not_started",
+                                "asset_paths": [],
+                                "selected_asset": None
+                            }
+                        content_status["broll"] = new_broll_status
+                        print(f"Created {len(new_broll_status)} B-Roll entries based on script.json")
+                        
+                        # Save the updated content status
+                        broll_data["broll"] = new_broll_status
+                        broll_data["broll_segment_count"] = broll_segment_count
+                        try:
+                            with open(broll_status_file, "w") as f:
+                                json.dump(broll_data, f, indent=2)
+                            print("Saved new content_status.json with B-roll entries")
+                        except Exception as e:
+                            print(f"Error saving new content_status.json: {str(e)}")
         except (json.JSONDecodeError, IOError) as e:
             print(f"Error loading B-Roll status: {str(e)}")
+            
+            # If script data is available, create a new content_status.json
+            if script_data:
+                new_broll_status = {}
+                for i in range(broll_segment_count):
+                    new_broll_status[f"segment_{i}"] = {
+                        "status": "not_started",
+                        "asset_paths": [],
+                        "selected_asset": None
+                    }
+                content_status["broll"] = new_broll_status
+                print(f"Created {len(new_broll_status)} B-Roll entries based on script.json")
+                
+                # Create new content status file
+                new_content_status = {
+                    "broll": new_broll_status,
+                    "broll_segment_count": broll_segment_count,
+                    "created_from_script": True,
+                    "timestamp": time.time()
+                }
+                try:
+                    with open(broll_status_file, "w") as f:
+                        json.dump(new_content_status, f, indent=2)
+                    print("Created new content_status.json from script.json")
+                except Exception as e:
+                    print(f"Error creating new content_status.json: {str(e)}")
     else:
         print(f"B-Roll status file not found at {broll_status_file}")
+        
+        # If script data is available, create a new content_status.json
+        if script_data:
+            new_broll_status = {}
+            for i in range(broll_segment_count):
+                new_broll_status[f"segment_{i}"] = {
+                    "status": "not_started",
+                    "asset_paths": [],
+                    "selected_asset": None
+                }
+            content_status["broll"] = new_broll_status
+            print(f"Created {len(new_broll_status)} B-Roll entries based on script.json")
+            
+            # Create new content status file
+            new_content_status = {
+                "broll": new_broll_status,
+                "broll_segment_count": broll_segment_count,
+                "created_from_script": True,
+                "timestamp": time.time()
+            }
+            try:
+                # Ensure parent directory exists
+                broll_status_file.parent.mkdir(parents=True, exist_ok=True)
+                with open(broll_status_file, "w") as f:
+                    json.dump(new_content_status, f, indent=2)
+                print("Created new content_status.json from script.json")
+            except Exception as e:
+                print(f"Error creating new content_status.json: {str(e)}")
     
     # Load A-roll status - try multiple potential paths
     aroll_status_files = [
@@ -815,8 +963,31 @@ def create_assembly_sequence():
     # Get the script segments
     script_segments = load_segments()
     aroll_script_segments = [s for s in script_segments if isinstance(s, dict) and s.get("type") == "A-Roll"]
+    broll_script_segments = [s for s in script_segments if isinstance(s, dict) and s.get("type") == "B-Roll"]
+    
+    # Debug information about B-roll segments in script.json
+    print(f"Found {len(broll_script_segments)} B-Roll segments in script.json")
+    
+    # Check if we have a discrepancy between script.json B-roll count and content_status B-roll count
+    if len(broll_script_segments) != len(broll_segments):
+        print(f"WARNING: Mismatch between script.json B-roll count ({len(broll_script_segments)}) and content_status.json B-roll count ({len(broll_segments)})")
+        print("This could indicate a synchronization issue that needs to be fixed.")
+        
+        # Check if we have percentage-based B-roll in script.json
+        script_file = project_path / "script.json"
+        if script_file.exists():
+            try:
+                with open(script_file, "r") as f:
+                    script_data = json.load(f)
+                    if "broll_percentage" in script_data:
+                        broll_percentage = script_data["broll_percentage"]
+                        print(f"Script has percentage-based B-roll setting: {broll_percentage}%")
+                        print("This should be respected over any default B-roll settings")
+            except Exception as e:
+                print(f"Error reading script.json: {str(e)}")
     
     print(f"Found {len(aroll_script_segments)} A-Roll segments in script.json")
+    
     for i, segment in enumerate(aroll_script_segments):
         segment_id = segment.get("segment_id", f"segment_{i}")
         file_path = segment.get("file_path", "Not found")
@@ -2283,12 +2454,24 @@ if "content_status" not in st.session_state:
     if content_status:
         st.session_state.content_status = content_status
         
-        # Apply default B-roll IDs to content status
-        if apply_default_broll_ids(st.session_state.content_status):
-            save_content_status()  # Save if changes were made
-            
-        # Update session state with default B-roll IDs
-        update_session_state_with_defaults(st.session_state)
+        # Only apply default B-roll IDs if no B-roll segments exist
+        # This ensures percentage-based B-roll settings are preserved
+        if "broll" not in st.session_state.content_status or len(st.session_state.content_status["broll"]) == 0:
+            print("No B-roll segments found, applying defaults")
+            if apply_default_broll_ids(st.session_state.content_status):
+                # Save if changes were made
+                try:
+                    broll_status_file = project_path / "content_status.json"
+                    with open(broll_status_file, "w") as f:
+                        json.dump(st.session_state.content_status, f, indent=2)
+                    print("Saved content_status.json with default B-roll IDs")
+                except Exception as e:
+                    print(f"Error saving content_status.json: {str(e)}")
+                
+            # Update session state with default B-roll IDs
+            update_session_state_with_defaults(st.session_state)
+        else:
+            print(f"Preserving existing {len(st.session_state.content_status['broll'])} B-roll segments")
     else:
         st.session_state.content_status = {"aroll": {}, "broll": {}}
 

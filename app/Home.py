@@ -1,6 +1,133 @@
 import streamlit as st
 import os
+import json
+import shutil
 from pathlib import Path
+import time
+
+# Function to clear cache and reset session state
+def clear_app_cache():
+    """
+    Clear the application cache and reset any leftover data from previous sessions.
+    This ensures a clean state when starting the application.
+    """
+    # Get list of all projects in user_data directory
+    user_data_path = Path("config/user_data")
+    if not user_data_path.exists():
+        return
+    
+    projects = [d for d in user_data_path.iterdir() if d.is_dir()]
+    
+    for project_dir in projects:
+        # Clear B-roll prompts files which might be cached
+        broll_prompts_path = project_dir / "broll_prompts.json"
+        if broll_prompts_path.exists():
+            try:
+                # Instead of deleting, back it up with timestamp
+                backup_path = project_dir / f"broll_prompts.json.bak.{int(time.time())}"
+                shutil.copy(broll_prompts_path, backup_path)
+                os.remove(broll_prompts_path)
+                print(f"Cleared cached B-roll prompts file: {broll_prompts_path}")
+            except Exception as e:
+                print(f"Error clearing B-roll prompts: {str(e)}")
+        
+        # Check script.json file and add version information if missing
+        script_path = project_dir / "script.json"
+        if script_path.exists():
+            try:
+                with open(script_path, "r") as f:
+                    script_data = json.load(f)
+                
+                # Check if version info is missing, add it if needed
+                if "version" not in script_data:
+                    script_data["version"] = "2.0"
+                    script_data["last_cleaned"] = time.time()
+                    
+                    # Count B-roll and A-roll segments if available
+                    if "segments" in script_data:
+                        broll_segments = [s for s in script_data["segments"] if s.get("type") == "B-Roll"]
+                        aroll_segments = [s for s in script_data["segments"] if s.get("type") == "A-Roll"]
+                        
+                        script_data["broll_segment_count"] = len(broll_segments)
+                        script_data["aroll_segment_count"] = len(aroll_segments)
+                        
+                        print(f"Updated script.json with version info: {len(broll_segments)} B-Roll, {len(aroll_segments)} A-Roll segments")
+                    
+                    with open(script_path, "w") as f:
+                        json.dump(script_data, f, indent=2)
+                        
+                # Now check for content_status.json and sync it with script.json if needed
+                content_status_path = project_dir / "content_status.json"
+                if content_status_path.exists() and "segments" in script_data:
+                    try:
+                        with open(content_status_path, "r") as f:
+                            content_status = json.load(f)
+                            
+                        # Check if B-roll segments in content_status match script.json
+                        broll_segments = [s for s in script_data["segments"] if s.get("type") == "B-Roll"]
+                        broll_segment_count = len(broll_segments)
+                        
+                        if "broll" in content_status:
+                            content_broll_count = len(content_status["broll"])
+                            # If counts don't match, we need to update content_status.json
+                            if content_broll_count != broll_segment_count:
+                                # Back up content status file
+                                backup_path = project_dir / f"content_status.json.bak.{int(time.time())}"
+                                shutil.copy(content_status_path, backup_path)
+                                
+                                # Create new content status with the correct number of B-roll segments
+                                new_broll_status = {}
+                                for i in range(broll_segment_count):
+                                    segment_id = f"segment_{i}"
+                                    # Copy existing data if available, otherwise create empty entry
+                                    if "broll" in content_status and segment_id in content_status["broll"]:
+                                        new_broll_status[segment_id] = content_status["broll"][segment_id]
+                                    else:
+                                        new_broll_status[segment_id] = {
+                                            "status": "not_started",
+                                            "asset_paths": [],
+                                            "selected_asset": None
+                                        }
+                                
+                                # Update content status with new B-roll data
+                                content_status["broll"] = new_broll_status
+                                content_status["broll_segment_count"] = broll_segment_count
+                                content_status["synced_with_script"] = True
+                                content_status["last_updated"] = time.time()
+                                
+                                with open(content_status_path, "w") as f:
+                                    json.dump(content_status, f, indent=2)
+                                    
+                                print(f"Updated content_status.json to match script.json: {broll_segment_count} B-Roll segments")
+                    except Exception as e:
+                        print(f"Error updating content_status.json: {str(e)}")
+            except Exception as e:
+                print(f"Error updating script.json: {str(e)}")
+    
+    # Clear Streamlit cache files if any exist
+    cache_dir = Path(".streamlit/cache")
+    if cache_dir.exists():
+        try:
+            shutil.rmtree(cache_dir)
+            os.makedirs(cache_dir, exist_ok=True)
+            print("Cleared Streamlit cache directory")
+        except Exception as e:
+            print(f"Error clearing Streamlit cache: {str(e)}")
+    
+    # Clear temporary preview files if any exist
+    preview_dir = Path("preview")
+    if preview_dir.exists() and preview_dir.is_dir():
+        try:
+            for file in preview_dir.glob("*_preview.*"):
+                os.remove(file)
+                print(f"Removed temporary preview file: {file}")
+        except Exception as e:
+            print(f"Error clearing preview files: {str(e)}")
+    
+    print("Cache clearing complete. App is starting with a clean state.")
+
+# Run cache clearing on startup
+clear_app_cache()
 
 # Set page configuration
 st.set_page_config(

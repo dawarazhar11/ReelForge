@@ -209,6 +209,9 @@ if "script_theme" not in st.session_state:
     st.session_state.script_theme = ""
 if "broll_generation_strategy" not in st.session_state:
     st.session_state.broll_generation_strategy = "balanced"
+# Add new session state variable for B-roll percentage
+if "broll_percentage" not in st.session_state:
+    st.session_state.broll_percentage = 25  # Default to 25%
 # Add new session state variables for Ollama and automatic segmentation
 if "ollama_client" not in st.session_state:
     st.session_state.ollama_client = OllamaClient(host="http://100.115.243.42:11434")
@@ -252,7 +255,8 @@ def save_a_roll_segments(segments):
         return save_segments(
             segments,
             st.session_state.b_roll_segments,
-            st.session_state.script_theme
+            st.session_state.script_theme,
+            st.session_state.broll_percentage
         )
     
     script_file = project_path / "script.json"
@@ -497,14 +501,15 @@ def ensure_segments_have_timing(segments, video_duration=None):
     return segments
 
 # Function to generate B-Roll segments based on A-Roll segments
-def generate_broll_segments(a_roll_segments, theme, strategy="balanced"):
+def generate_broll_segments(a_roll_segments, theme, strategy="balanced", percentage=25):
     """
-    Generate B-Roll segments based on A-Roll segments and a theme
+    Generate B-Roll segments based on A-Roll segments, a theme, and percentage distribution
     
     Args:
         a_roll_segments: List of A-Roll segments
         theme: Theme for the B-Roll content
-        strategy: Strategy for B-Roll placement ('minimal', 'balanced', 'maximum')
+        strategy: Legacy parameter for backward compatibility ('balanced', 'full-coverage', 'minimal')
+        percentage: Percentage of A-Roll segments to have B-Roll (25, 50, or 75)
         
     Returns:
         List of B-Roll segments
@@ -513,93 +518,145 @@ def generate_broll_segments(a_roll_segments, theme, strategy="balanced"):
         return []
     
     b_roll_segments = []
+    total_aroll_segments = len(a_roll_segments)
     
-    # Determine number of B-Roll segments based on strategy
-    if strategy == "minimal":
-        # Minimal: Just intro and outro B-Roll
-        target_count = 2
-    elif strategy == "maximum":
-        # Maximum: B-Roll between every A-Roll segment
-        target_count = len(a_roll_segments) + 1
+    # Convert legacy strategy to percentage if needed (for backward compatibility)
+    if percentage is None:
+        if strategy == "minimal":
+            percentage = 25
+        elif strategy == "maximum" or strategy == "full-coverage":
+            percentage = 75
+        else:  # balanced
+            percentage = 50
+    
+    # Calculate number of B-Roll segments based on percentage
+    if percentage == 25:
+        # 25%: Intro after first segment, outro before last segment
+        target_count = max(2, round(total_aroll_segments * 0.25))
+    elif percentage == 75:
+        # 75%: More B-Roll dominant
+        target_count = max(2, round(total_aroll_segments * 0.75))
     else:
-        # Balanced: Approximately 1 B-Roll for every 2 A-Roll segments
-        target_count = max(2, len(a_roll_segments) // 2 + 1)
+        # 50%: Balanced approach
+        target_count = max(2, round(total_aroll_segments * 0.50))
     
-    # Always add intro B-Roll
+    # Always include an intro B-Roll
     intro_broll = {
         "type": "B-Roll",
         "content": f"Introductory visual for {theme}",
-        "duration": 3.0  # Default duration in seconds
+        "duration": 3.0,  # Default duration in seconds
+        "is_intro": True
     }
     b_roll_segments.append(intro_broll)
     
-    # Add B-Roll segments between A-Roll segments based on strategy
-    if strategy == "minimal":
-        # Just add outro B-Roll
-        outro_broll = {
-            "type": "B-Roll",
-            "content": f"Concluding visual for {theme}",
-            "duration": 3.0
-        }
-        b_roll_segments.append(outro_broll)
-    elif strategy == "maximum":
-        # Add B-Roll after each A-Roll segment
-        for i, segment in enumerate(a_roll_segments):
-            content = segment["content"]
-            summary = content[:50] + "..." if len(content) > 50 else content
-            
-            broll = {
-                "type": "B-Roll",
-                "content": f"Visual representation of: {summary}",
-                "duration": 3.0,
-                "related_aroll": i  # Index of related A-Roll segment
-            }
-            b_roll_segments.append(broll)
-            
+    # For very small target counts, just add intro and outro
+    if target_count <= 2:
         # Add outro B-Roll
         outro_broll = {
             "type": "B-Roll",
             "content": f"Concluding visual for {theme}",
-            "duration": 3.0
+            "duration": 3.0,
+            "is_outro": True
         }
         b_roll_segments.append(outro_broll)
-    else:
-        # Balanced approach: Add B-Roll at strategic points
-        segments_per_broll = max(1, len(a_roll_segments) // (target_count - 1))
-        
-        for i in range(len(a_roll_segments)):
-            if i > 0 and i % segments_per_broll == 0 and len(b_roll_segments) < target_count - 1:
-                # Get content from surrounding A-Roll segments for context
-                prev_content = a_roll_segments[i-1]["content"]
-                current_content = a_roll_segments[i]["content"]
-                
-                # Create a summary from both segments
-                combined = prev_content + " " + current_content
-                summary = combined[:50] + "..." if len(combined) > 50 else combined
+        return b_roll_segments
+    
+    # For the remaining B-Roll segments, we'll distribute them based on the percentage
+    remaining_brolls = target_count - 1  # Subtract 1 for the intro
+    
+    # Distribution logic based on percentage
+    if percentage == 25:
+        # 25%: Place one near the beginning and the rest near the end
+        # (We already added intro, so just add one before the end)
+        if remaining_brolls >= 1:
+            outro_broll = {
+                "type": "B-Roll",
+                "content": f"Concluding visual for {theme}",
+                "duration": 3.0,
+                "is_outro": True,
+                "related_aroll": total_aroll_segments - 1
+            }
+            b_roll_segments.append(outro_broll)
+    
+    elif percentage == 75:
+        # 75%: Dense B-Roll coverage
+        # Place remaining B-Rolls at regular intervals, but exclude positions right after intro and before outro
+        if total_aroll_segments > 2:
+            available_positions = list(range(1, total_aroll_segments - 1))
+            
+            # If we have more remaining_brolls than available positions, we'll just use all positions
+            if remaining_brolls >= len(available_positions):
+                positions_to_use = available_positions
+            else:
+                # Otherwise, distribute evenly
+                step = len(available_positions) / remaining_brolls
+                positions_to_use = [available_positions[min(int(i * step), len(available_positions) - 1)] 
+                                   for i in range(remaining_brolls)]
+            
+            # Create B-Roll segments at the selected positions
+            for pos in positions_to_use:
+                content = a_roll_segments[pos]["content"]
+                summary = content[:50] + "..." if len(content) > 50 else content
                 
                 broll = {
                     "type": "B-Roll",
                     "content": f"Visual representation of: {summary}",
                     "duration": 3.0,
-                    "related_aroll": i  # Index of related A-Roll segment
+                    "related_aroll": pos
                 }
                 b_roll_segments.append(broll)
-        
-        # Add outro B-Roll if we haven't reached target count
-        if len(b_roll_segments) < target_count:
+            
+            # Add outro B-Roll
             outro_broll = {
                 "type": "B-Roll",
                 "content": f"Concluding visual for {theme}",
-                "duration": 3.0
+                "duration": 3.0,
+                "is_outro": True,
+                "related_aroll": total_aroll_segments - 1
             }
             b_roll_segments.append(outro_broll)
+    
+    else:
+        # 50%: Balanced distribution
+        # Distribute remaining B-Rolls evenly across the video
+        if total_aroll_segments > 2:
+            step = total_aroll_segments / (remaining_brolls + 1)
+            
+            for i in range(1, remaining_brolls + 1):
+                pos = min(int(i * step), total_aroll_segments - 1)
+                
+                content = a_roll_segments[pos]["content"]
+                summary = content[:50] + "..." if len(content) > 50 else content
+                
+                broll = {
+                    "type": "B-Roll",
+                    "content": f"Visual representation of: {summary}",
+                    "duration": 3.0,
+                    "related_aroll": pos
+                }
+                b_roll_segments.append(broll)
+            
+            # Add outro B-Roll if it's not already covered by our distribution
+            if int(remaining_brolls * step) < total_aroll_segments - 1:
+                outro_broll = {
+                    "type": "B-Roll",
+                    "content": f"Concluding visual for {theme}",
+                    "duration": 3.0,
+                    "is_outro": True,
+                    "related_aroll": total_aroll_segments - 1
+                }
+                b_roll_segments.append(outro_broll)
     
     return b_roll_segments
 
 # Function to save both A-Roll and B-Roll segments
-def save_segments(a_roll_segments, b_roll_segments, theme):
+def save_segments(a_roll_segments, b_roll_segments, theme, broll_percentage=None):
     """Save both A-Roll and B-Roll segments to script.json"""
     script_file = project_path / "script.json"
+    
+    # Use the session state percentage if not explicitly provided
+    if broll_percentage is None and "broll_percentage" in st.session_state:
+        broll_percentage = st.session_state.broll_percentage
     
     # Check if script.json already exists and load it
     existing_data = {}
@@ -609,6 +666,10 @@ def save_segments(a_roll_segments, b_roll_segments, theme):
                 existing_data = json.load(f)
         except (json.JSONDecodeError, IOError) as e:
             print(f"Error loading existing script: {str(e)}")
+    
+    # Add debug info
+    print(f"Saving script with {len(a_roll_segments)} A-Roll segments and {len(b_roll_segments)} B-Roll segments")
+    print(f"B-Roll percentage: {broll_percentage}%")
     
     # Combine segments in the correct order
     all_segments = []
@@ -634,18 +695,34 @@ def save_segments(a_roll_segments, b_roll_segments, theme):
     # Create full script text from segments
     full_script = " ".join([segment["content"] for segment in all_segments if "content" in segment])
     
-    # Prepare data to save
+    # Create B-Roll to A-Roll mapping for reference
+    broll_aroll_mapping = {}
+    for i, segment in enumerate(b_roll_segments):
+        if "related_aroll" in segment:
+            broll_aroll_mapping[f"broll_{i}"] = f"aroll_{segment['related_aroll']}"
+    
+    # Add a clear indication of how many B-roll segments were created
+    broll_segment_count = len(b_roll_segments)
+    aroll_segment_count = len(a_roll_segments)
+    
+    # Prepare data to save with version information
     data = {
         "full_script": full_script,
         "segments": all_segments,
         "theme": theme,
         "source": "transcription",
-        "timestamp": time.time()
+        "timestamp": time.time(),
+        "broll_percentage": broll_percentage,
+        "broll_aroll_mapping": broll_aroll_mapping,
+        "broll_segment_count": broll_segment_count,
+        "aroll_segment_count": aroll_segment_count,
+        "version": "2.0",  # Add version to track changes in structure
+        "generated_with": "percentage_based_allocation"
     }
     
     # Preserve any other fields from existing data
     for key, value in existing_data.items():
-        if key not in data:
+        if key not in data and key not in ["segments", "broll_aroll_mapping", "broll_segment_count"]:
             data[key] = value
     
     # Save to file
@@ -816,11 +893,41 @@ def generate_broll_prompts_with_ollama(a_roll_segments, theme):
     
     return b_roll_segments
 
+# Function to clean up existing B-roll data to prevent conflicts
+def cleanup_broll_data():
+    """
+    Clean up existing B-roll data to prevent conflicts with newly generated B-roll segments.
+    This ensures that old B-roll data doesn't interfere with the new percentage-based allocation.
+    """
+    # Clean up broll_prompts.json if it exists
+    project_path = get_project_path()
+    if not project_path:
+        return
+    
+    broll_prompts_path = os.path.join(project_path, "broll_prompts.json")
+    if os.path.exists(broll_prompts_path):
+        try:
+            os.remove(broll_prompts_path)
+            print(f"Removed old B-roll prompts file: {broll_prompts_path}")
+        except Exception as e:
+            print(f"Error removing old B-roll prompts file: {str(e)}")
+    
+    # Alternative location in config directory
+    config_broll_prompts_path = os.path.join(project_path, "config", "user_data", project_path.name, "broll_prompts.json")
+    if os.path.exists(config_broll_prompts_path):
+        try:
+            os.remove(config_broll_prompts_path)
+            print(f"Removed old B-roll prompts file: {config_broll_prompts_path}")
+        except Exception as e:
+            print(f"Error removing old B-roll prompts file: {str(e)}")
+    
+    return True
+
 # Main function
 def main():
     # Header and instructions
     st.title("A-Roll Transcription")
-    render_step_header(4.5, "A-Roll Transcription", 8)
+    render_step_header(1, "A-Roll Transcription", 6)
     
     st.write("Upload your A-Roll video to generate a transcript and split it into segments.")
     
@@ -1173,8 +1280,32 @@ def main():
                     with generation_tabs[0]:
                         st.write("Automatically generate B-Roll prompts for each segment using AI.")
                         
+                        # Add percentage selector here as well for consistency
+                        st.markdown("""
+                        <div style="background-color: #f8f9fa; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
+                            <h4>B-Roll Density</h4>
+                            <p>Select what percentage of A-Roll segments should have corresponding B-Roll segments:</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        percentage_options = {25: "25% - Minimal", 50: "50% - Balanced", 75: "75% - Maximum"}
+                        auto_selected_percentage = st.select_slider(
+                            "B-Roll Percentage",
+                            options=list(percentage_options.keys()),
+                            value=st.session_state.broll_percentage,
+                            format_func=lambda x: percentage_options[x],
+                            help="Select the percentage of A-Roll segments that should have corresponding B-Roll segments.",
+                            key="auto_broll_percentage_slider"
+                        )
+                        
+                        # Update session state with selected percentage
+                        st.session_state.broll_percentage = auto_selected_percentage
+                        
                         if st.button("Generate B-Roll Prompts with AI"):
                             with st.spinner("Generating B-Roll prompts..."):
+                                # Clean up existing B-roll data first
+                                cleanup_broll_data()
+                                
                                 # Use Ollama to generate B-Roll prompts
                                 b_roll_segments = generate_broll_prompts_with_ollama(
                                     st.session_state.a_roll_segments,
@@ -1182,13 +1313,36 @@ def main():
                                 )
                                 
                                 if b_roll_segments:
-                                    st.session_state.b_roll_segments = b_roll_segments
+                                    # Apply the percentage-based filtering to the AI-generated prompts
+                                    total_aroll_segments = len(st.session_state.a_roll_segments)
+                                    target_count = max(2, round(total_aroll_segments * (auto_selected_percentage / 100)))
+                                    
+                                    # Always keep the first B-Roll segment (intro)
+                                    filtered_segments = [b_roll_segments[0]]
+                                    
+                                    # If we have more than one segment, apply percentage-based filtering
+                                    if len(b_roll_segments) > 1:
+                                        # For 25%, keep intro and outro
+                                        if auto_selected_percentage == 25:
+                                            if len(b_roll_segments) > 1:
+                                                filtered_segments.append(b_roll_segments[-1])
+                                        # For other percentages, select segments evenly
+                                        else:
+                                            remaining_count = min(target_count - 1, len(b_roll_segments) - 1)
+                                            if remaining_count > 0:
+                                                step = (len(b_roll_segments) - 1) / remaining_count
+                                                indices = [min(int(i * step) + 1, len(b_roll_segments) - 1) for i in range(remaining_count)]
+                                                for idx in indices:
+                                                    filtered_segments.append(b_roll_segments[idx])
+                                    
+                                    st.session_state.b_roll_segments = filtered_segments
                                     
                                     # Save the segments and theme
                                     save_segments(
                                         st.session_state.a_roll_segments,
-                                        b_roll_segments,
-                                        theme
+                                        filtered_segments,
+                                        theme,
+                                        auto_selected_percentage
                                     )
                                     
                                     st.session_state.script_theme = theme
@@ -1204,20 +1358,43 @@ def main():
                     with generation_tabs[1]:
                         st.write("Configure B-Roll generation strategy manually.")
                         
-                        strategy = st.radio(
-                            "B-Roll Generation Strategy",
-                            ["balanced", "full-coverage", "minimal"],
-                            index=0,
-                            help="Balanced: Generate B-Roll for key points. Full-coverage: Generate B-Roll for every segment. Minimal: Generate B-Roll sparingly."
+                        # Replace strategy radio with percentage selector
+                        st.markdown("""
+                        <div style="background-color: #f8f9fa; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
+                            <h4>B-Roll Density</h4>
+                            <p>Select what percentage of A-Roll segments should have corresponding B-Roll segments:</p>
+                            <ul>
+                                <li><strong>25%</strong>: Minimal B-Roll, placed after the intro and before the outro</li>
+                                <li><strong>50%</strong>: Balanced B-Roll distribution across the video</li>
+                                <li><strong>75%</strong>: Dense B-Roll coverage for a more visual experience</li>
+                            </ul>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # Add percentage selector with options 25%, 50%, 75%
+                        percentage_options = {25: "25% - Minimal", 50: "50% - Balanced", 75: "75% - Maximum"}
+                        selected_percentage = st.select_slider(
+                            "B-Roll Percentage",
+                            options=list(percentage_options.keys()),
+                            value=st.session_state.broll_percentage,
+                            format_func=lambda x: percentage_options[x],
+                            help="Select the percentage of A-Roll segments that should have corresponding B-Roll segments.",
+                            key="manual_broll_percentage_slider"
                         )
+                        
+                        # Update session state with selected percentage
+                        st.session_state.broll_percentage = selected_percentage
                         
                         if st.button("Generate B-Roll Segments"):
                             with st.spinner("Generating B-Roll segments..."):
-                                # Use the existing function for manual configuration
+                                # Clean up existing B-roll data first
+                                cleanup_broll_data()
+                                
+                                # Use the updated function with percentage parameter
                                 b_roll_segments = generate_broll_segments(
                                     st.session_state.a_roll_segments,
                                     theme,
-                                    strategy=strategy
+                                    percentage=selected_percentage
                                 )
                                 
                                 st.session_state.b_roll_segments = b_roll_segments
@@ -1226,7 +1403,8 @@ def main():
                                 save_segments(
                                     st.session_state.a_roll_segments,
                                     b_roll_segments,
-                                    theme
+                                    theme,
+                                    selected_percentage
                                 )
                                 
                                 st.session_state.script_theme = theme

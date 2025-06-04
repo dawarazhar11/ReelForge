@@ -154,7 +154,7 @@ def get_font_path(font_name):
 # Main function
 def main():
     # Header and navigation
-    render_step_header("Caption The Dreams", "Add animated word-by-word captions to your video")
+    render_step_header(5, "Caption The Dreams", 6)
     render_workflow_navigation()
     
     # Introduction
@@ -907,6 +907,14 @@ def main():
                 # Show error if output file not found
                 st.warning(f"Output video file not found at: {output_path}")
                 st.info("Try generating the video again.")
+    
+    # Add navigation buttons
+    st.markdown("---")
+    render_step_navigation(
+        current_step=5,
+        prev_step_path="pages/6_Video_Assembly.py",
+        next_step_path="pages/8_Social_Media_Upload.py"
+    )
 
 # Run the main function
 if __name__ == "__main__":

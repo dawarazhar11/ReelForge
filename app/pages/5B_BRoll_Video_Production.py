@@ -1031,8 +1031,8 @@ def generate_content_parallel(segments, broll_prompts, manual_upload, broll_fetc
     
     return result
 
-# Page header
-render_step_header("5B B-Roll Video Production", "Generate B-Roll videos using ComfyUI")
+# Render page header
+render_step_header(3, "B-Roll Video Production", 6)
 
 # Add a strong visual alert about cache issues
 st.error("""
@@ -1940,7 +1940,7 @@ if (not st.session_state.parallel_tasks["running"] and
 # Navigation buttons
 st.markdown("---")
 render_step_navigation(
-    current_step=6,
+    current_step=3,
     prev_step_path="pages/4_BRoll_Prompts.py",
     next_step_path="pages/6_Video_Assembly.py"
 )

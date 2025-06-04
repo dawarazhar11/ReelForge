@@ -340,7 +340,7 @@ def generate_negative_prompt(model, prompt):
         return default_negative
 
 # Page header
-render_step_header(4, "B-Roll Prompt Generation", 8)
+render_step_header(2, "B-Roll Prompt Generation", 6)
 st.title("🔍 B-Roll Prompt Generation")
 st.markdown("""
 Generate optimized prompts for your B-Roll segments that will be used to create visuals with Wan and ComfyUI.
@@ -371,9 +371,30 @@ def generate_broll_segments_from_aroll():
         st.error("No A-Roll segments found. Cannot generate B-Roll segments.")
         return False
     
-    # Calculate ideal number of B-Roll segments based on A-Roll count
-    # For short videos, we want approximately 1 B-Roll for every 2 A-Roll segments
-    ideal_broll_count = max(1, len(aroll_segments) // 2)
+    # Check if we have a percentage setting from script.json
+    broll_percentage = None
+    script_file = project_path / "script.json"
+    if script_file.exists():
+        try:
+            with open(script_file, "r") as f:
+                data = json.load(f)
+                broll_percentage = data.get("broll_percentage", None)
+        except Exception as e:
+            st.error(f"Error reading percentage setting: {str(e)}")
+    
+    # Calculate ideal number of B-Roll segments based on percentage or default to balanced approach
+    if broll_percentage == 25:
+        # 25%: Minimal B-roll, just intro and outro
+        ideal_broll_count = 2
+    elif broll_percentage == 75:
+        # 75%: Maximum B-roll, approximately 75% of A-roll count
+        ideal_broll_count = max(2, round(len(aroll_segments) * 0.75))
+    else:
+        # 50% or default: Balanced approach, approximately 50% of A-roll count
+        ideal_broll_count = max(2, round(len(aroll_segments) * 0.5))
+    
+    # Display debug info
+    st.info(f"Generating {ideal_broll_count} B-Roll segments for {len(aroll_segments)} A-Roll segments (Percentage: {broll_percentage}%)")
     
     # Create B-Roll segments at strategic positions
     new_segments = []
@@ -383,39 +404,66 @@ def generate_broll_segments_from_aroll():
     intro_broll = {
         "type": "B-Roll",
         "content": f"Introductory visual for {st.session_state.script_theme}",
-        "duration": 3.0  # Default duration in seconds
+        "duration": 3.0,  # Default duration in seconds
+        "is_intro": True
     }
     new_segments.append(intro_broll)
     broll_inserted += 1
     
-    # Add A-Roll segments with B-Roll segments interspersed
+    # Add A-Roll segments with B-Roll segments interspersed based on percentage
     for i, segment in enumerate(aroll_segments):
         new_segments.append(segment)
         
-        # Add B-Roll after some A-Roll segments
-        # For even distribution, use modulo based on ideal count
-        if broll_inserted < ideal_broll_count and (i + 1) % 2 == 0 and i < len(aroll_segments) - 1:
-            # Extract key phrases from surrounding A-Roll segments for context
-            current_content = segment["content"]
-            next_content = aroll_segments[i+1]["content"] if i+1 < len(aroll_segments) else ""
-            
-            # Create a B-Roll segment with content derived from surrounding A-Roll
-            broll_content = f"Visual representation of: {current_content[:50]}..." 
-            
-            broll_segment = {
-                "type": "B-Roll",
-                "content": broll_content,
-                "duration": 3.0  # Default duration in seconds
-            }
-            new_segments.append(broll_segment)
-            broll_inserted += 1
+        # For different percentage strategies
+        if broll_percentage == 25:
+            # 25%: Only add an outro at the end
+            if i == len(aroll_segments) - 1 and broll_inserted < ideal_broll_count:
+                outro_broll = {
+                    "type": "B-Roll",
+                    "content": f"Concluding visual for {st.session_state.script_theme}",
+                    "duration": 3.0,
+                    "is_outro": True,
+                    "related_aroll": i
+                }
+                new_segments.append(outro_broll)
+                broll_inserted += 1
+        elif broll_percentage == 75:
+            # 75%: Add B-roll after most A-roll segments
+            if i < len(aroll_segments) - 1 and broll_inserted < ideal_broll_count - 1:
+                # Use a higher frequency for 75%
+                if i % 2 == 0 or i % 3 == 0:  # More frequent insertions
+                    broll_content = f"Visual representation of: {segment['content'][:50]}..."
+                    broll_segment = {
+                        "type": "B-Roll",
+                        "content": broll_content,
+                        "duration": 3.0,
+                        "related_aroll": i
+                    }
+                    new_segments.append(broll_segment)
+                    broll_inserted += 1
+        else:
+            # 50% or default: Balanced approach
+            if broll_inserted < ideal_broll_count - 1 and i < len(aroll_segments) - 1:
+                # Add B-rolls at regular intervals
+                if i % 2 == 1:  # Every other segment
+                    broll_content = f"Visual representation of: {segment['content'][:50]}..."
+                    broll_segment = {
+                        "type": "B-Roll",
+                        "content": broll_content,
+                        "duration": 3.0,
+                        "related_aroll": i
+                    }
+                    new_segments.append(broll_segment)
+                    broll_inserted += 1
     
-    # Add a concluding B-Roll if needed
+    # Add a concluding B-Roll if needed and not already added
     if broll_inserted < ideal_broll_count:
         outro_broll = {
             "type": "B-Roll",
             "content": f"Concluding visual for {st.session_state.script_theme}",
-            "duration": 3.0  # Default duration in seconds
+            "duration": 3.0,
+            "is_outro": True,
+            "related_aroll": len(aroll_segments) - 1
         }
         new_segments.append(outro_broll)
     
@@ -423,13 +471,17 @@ def generate_broll_segments_from_aroll():
     st.session_state.segments = new_segments
     
     # Save the updated segments to script.json
-    script_file = project_path / "script.json"
     if script_file.exists():
         try:
             with open(script_file, "r") as f:
                 script_data = json.load(f)
                 
             script_data["segments"] = new_segments
+            
+            # Add/update version information
+            script_data["version"] = "2.0"
+            script_data["broll_segment_count"] = len([s for s in new_segments if s["type"] == "B-Roll"])
+            script_data["aroll_segment_count"] = len([s for s in new_segments if s["type"] == "A-Roll"])
             
             with open(script_file, "w") as f:
                 json.dump(script_data, f, indent=2)
@@ -447,17 +499,36 @@ if not broll_segments:
     # Check if this is from transcription
     script_file = project_path / "script.json"
     is_transcription = False
+    broll_percentage = None
+    
     if script_file.exists():
         try:
             with open(script_file, "r") as f:
                 data = json.load(f)
                 if data.get("source") == "transcription":
                     is_transcription = True
-        except:
-            pass
+                    broll_percentage = data.get("broll_percentage", None)
+                    if "version" in data and data.get("version") == "2.0":
+                        st.info(f"Using percentage-based B-Roll generation ({broll_percentage}%)")
+        except Exception as e:
+            st.error(f"Error reading script file: {str(e)}")
     
     if is_transcription:
         st.warning("No B-Roll segments found, but A-Roll segments from transcription detected.")
+        
+        # Add information about percentage-based B-roll
+        if broll_percentage is not None:
+            st.markdown(f"""
+            ### Percentage-Based B-Roll Generation
+            
+            Your project is configured to use **{broll_percentage}%** B-roll density. 
+            
+            - For 25%: Minimal B-roll at the beginning and end
+            - For 50%: Balanced B-roll distribution throughout the video
+            - For 75%: Maximum B-roll coverage
+            
+            Please generate B-roll segments now based on this setting.
+            """)
         
         # Add option to automatically generate B-Roll segments
         if st.button("🎬 Generate B-Roll Segments Automatically", type="primary"):
@@ -990,7 +1061,7 @@ if st.button("Generate Simple Prompts Offline", use_container_width=True):
 # Navigation buttons
 st.markdown("---")
 render_step_navigation(
-    current_step=5,
+    current_step=2,
     prev_step_path="pages/4.5_ARoll_Transcription.py",
     next_step_path="pages/5B_BRoll_Video_Production.py"
 ) 

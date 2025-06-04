@@ -240,7 +240,7 @@ def upload_to_instagram(video_path, caption):
 def main():
     """Main function for the Social Media Upload page"""
     # Header and navigation
-    render_step_header("Social Media Upload", "Upload your captioned video to YouTube, TikTok, and Instagram")
+    render_step_header(6, "Social Media Upload", 6)
     render_workflow_navigation()
     
     # Introduction
@@ -507,6 +507,13 @@ def main():
                     else:
                         st.session_state.social_media_upload["status"] = "error"
                         st.error("❌ All uploads failed. Please check the error messages above.")
+    
+    # Add navigation buttons
+    st.markdown("---")
+    render_step_navigation(
+        current_step=6,
+        prev_step_path="pages/7_Caption_The_Dreams.py"
+    )
 
 # Run the main function
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ import json
 def get_progress_percentage():
     """Calculate the percentage of workflow steps completed"""
     progress_file = Path("config/user_data/progress.json")
-    total_steps = 8  # Total number of steps in the workflow
+    total_steps = 6  # Total number of steps in the workflow
     
     if progress_file.exists():
         with open(progress_file, "r") as f:
@@ -24,74 +24,21 @@ def render_progress_bar():
     st.sidebar.progress(progress)
     st.sidebar.caption(f"{int(progress * 100)}% complete")
 
-def render_step_header(step_number_or_name, step_name_or_description=None, total_steps=8, step_number=None, title=None):
+def render_step_header(step_number, step_name, total_steps=6):
     """
-    Render a header with step information
+    Render a header for the current step with progress information
     
-    Supports the following calling patterns:
-    1. render_step_header(step_number, step_name, total_steps)
-    2. render_step_header(step_name, description)
-    3. render_step_header(step_number=4.5, title="Step Title", total_steps=8)
+    Args:
+        step_number: Current step number (1-indexed)
+        step_name: Name of the current step
+        total_steps: Total number of steps in the workflow
     """
-    # Handle the named parameter case (new pattern #3)
-    if step_number is not None and title is not None:
-        st.subheader(f"Step {step_number} of {total_steps}: {title}")
-        
-        # Calculate normalized progress value (0-1 range)
-        if step_number <= 1:
-            progress = 0.0
-        elif step_number >= total_steps:
-            progress = 1.0
-        else:
-            # Normalize to range [0,1]
-            progress = (step_number - 1) / (total_steps - 1)
-            
-        # Show progress bar
-        progress = min(1.0, max(0.0, progress))
-        st.progress(progress)
-        st.markdown("---")
-        return
+    # Create a progress bar
+    progress = (step_number - 1) / (total_steps - 1)
+    st.progress(progress)
     
-    # Determine which of the legacy calling patterns is being used
-    if step_name_or_description is None or isinstance(step_number_or_name, int) or isinstance(step_number_or_name, float):
-        # First pattern: step_number, step_name, total_steps
-        step_number = step_number_or_name
-        step_name = step_name_or_description if step_name_or_description else "Step"
-        
-        # Convert step_number to int if it's a string
-        if isinstance(step_number, str):
-            try:
-                step_number = int(step_number)
-            except ValueError:
-                # Default to 1 if conversion fails
-                step_number = 1
-        
-        st.subheader(f"Step {step_number} of {total_steps}: {step_name}")
-        
-        # Calculate normalized progress value (0-1 range)
-        if step_number <= 1:
-            progress = 0.0
-        elif step_number >= total_steps:
-            progress = 1.0
-        else:
-            # Normalize to range [0,1]
-            progress = (step_number - 1) / (total_steps - 1)
-    else:
-        # Second pattern: step_name, description
-        step_name = step_number_or_name
-        description = step_name_or_description
-        
-        st.subheader(step_name)
-        if description:
-            st.markdown(f"*{description}*")
-        
-        # No progress calculation for this pattern
-        progress = None
+    # Display step information
+    st.markdown(f"**Step {step_number} of {total_steps}: {step_name}**")
     
-    # Show progress bar if we have a progress value
-    if progress is not None:
-        # Double-check that progress is within valid range [0,1]
-        progress = min(1.0, max(0.0, progress))
-        st.progress(progress)
-    
-    st.markdown("---") 
+    # Add a spacer
+    st.markdown("") 

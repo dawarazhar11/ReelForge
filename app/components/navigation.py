@@ -6,50 +6,42 @@ from .progress import render_progress_bar
 def get_workflow_steps():
     """Return the list of workflow steps in order"""
     return [
+        # Start workflow directly with A-Roll and B-Roll steps
         {
-            "name": "Settings",
-            "icon": "⚙️",
-            "path": "pages/1_Settings.py"
-        },
-        {
-            "name": "Blueprint Setup",
-            "icon": "📝",
-            "path": "pages/2_Blueprint.py"
-        },
-        {
-            "name": "Script Segmentation",
-            "icon": "✂️",
-            "path": "pages/3_Script_Segmentation.py"
+            "name": "A-Roll Transcription",
+            "icon": "🎤",
+            "path": "pages/4.5_ARoll_Transcription.py",
+            "step_num": 1  # Renumbered
         },
         {
             "name": "B-Roll Prompts",
             "icon": "🔍",
-            "path": "pages/4_BRoll_Prompts.py"
-        },
-        {
-            "name": "A-Roll Transcription",
-            "icon": "🎤",
-            "path": "pages/4.5_ARoll_Transcription.py"
+            "path": "pages/4_BRoll_Prompts.py",
+            "step_num": 2  # Renumbered
         },
         {
             "name": "B-Roll Video Production",
             "icon": "🎬",
-            "path": "pages/5B_BRoll_Video_Production.py"
+            "path": "pages/5B_BRoll_Video_Production.py",
+            "step_num": 3  # Renumbered
         },
         {
             "name": "Video Assembly",
             "icon": "🎞️",
-            "path": "pages/6_Video_Assembly.py"
+            "path": "pages/6_Video_Assembly.py",
+            "step_num": 4  # Renumbered
         },
         {
             "name": "Caption The Dreams",
             "icon": "💬",
-            "path": "pages/7_Caption_The_Dreams.py"
+            "path": "pages/7_Caption_The_Dreams.py",
+            "step_num": 5  # Renumbered
         },
         {
             "name": "Social Media Upload",
             "icon": "🚀",
-            "path": "pages/8_Social_Media_Upload.py"
+            "path": "pages/8_Social_Media_Upload.py",
+            "step_num": 6  # Renumbered
         }
     ]
 

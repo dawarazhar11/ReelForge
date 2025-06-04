@@ -32,59 +32,42 @@ def render_custom_sidebar():
     
     # Define the navigation items we want to show
     sidebar_items = [
-        {
-            "name": "Settings",
-            "icon": "⚙️",
-            "path": "pages/1_Settings.py",
-            "step": 1
-        },
-        {
-            "name": "Blueprint",
-            "icon": "📝",
-            "path": "pages/2_Blueprint.py",
-            "step": 2
-        },
-        {
-            "name": "Script Segmentation",
-            "icon": "✂️",
-            "path": "pages/3_Script_Segmentation.py",
-            "step": 3
-        },
+        # Removed disabled pages (Settings, Blueprint, Script Segmentation)
         {
             "name": "A-Roll Transcription",
             "icon": "🎤",
             "path": "pages/4.5_ARoll_Transcription.py",
-            "step": 4
+            "step": 1  # Renumbered
         },
         {
             "name": "B-Roll Prompts",
             "icon": "🔍",
             "path": "pages/4_BRoll_Prompts.py",
-            "step": 5
+            "step": 2  # Renumbered
         },
         {
             "name": "B-Roll Video Production",
             "icon": "🎬",
             "path": "pages/5B_BRoll_Video_Production.py",
-            "step": 6
+            "step": 3  # Renumbered
         },
         {
             "name": "Video Assembly",
             "icon": "🎞️",
             "path": "pages/6_Video_Assembly.py",
-            "step": 7
+            "step": 4  # Renumbered
         },
         {
             "name": "Captioning",
             "icon": "💬",
-            "path": "pages/7_Autocaptions.py",
-            "step": 8
+            "path": "pages/7_Caption_The_Dreams.py",
+            "step": 5  # Renumbered
         },
         {
             "name": "Publishing",
             "icon": "🚀",
             "path": "pages/8_Social_Media_Upload.py",
-            "step": 9
+            "step": 6  # Renumbered
         }
     ]
 
@@ -118,59 +101,42 @@ def render_horizontal_navigation():
     with st.container():
         # Define the navigation items we want to show
         horizontal_items = [
-            {
-                "name": "Settings",
-                "icon": "⚙️",
-                "path": "pages/1_Settings.py",
-                "step": 1
-            },
-            {
-                "name": "Blueprint",
-                "icon": "📝",
-                "path": "pages/2_Blueprint.py",
-                "step": 2
-            },
-            {
-                "name": "Script Segmentation",
-                "icon": "✂️",
-                "path": "pages/3_Script_Segmentation.py",
-                "step": 3
-            },
+            # Removed disabled pages (Settings, Blueprint, Script Segmentation)
             {
                 "name": "A-Roll Transcription",
                 "icon": "🎤",
                 "path": "pages/4.5_ARoll_Transcription.py",
-                "step": 4
+                "step": 1  # Renumbered
             },
             {
                 "name": "B-Roll Prompts",
                 "icon": "🔍",
                 "path": "pages/4_BRoll_Prompts.py",
-                "step": 5
+                "step": 2  # Renumbered
             },
             {
                 "name": "B-Roll Video Production",
                 "icon": "🎬",
                 "path": "pages/5B_BRoll_Video_Production.py",
-                "step": 6
+                "step": 3  # Renumbered
             },
             {
                 "name": "Video Assembly",
                 "icon": "🎞️",
                 "path": "pages/6_Video_Assembly.py",
-                "step": 7
+                "step": 4  # Renumbered
             },
             {
                 "name": "Captioning",
                 "icon": "💬",
-                "path": "pages/7_Autocaptions.py",
-                "step": 8
+                "path": "pages/7_Caption_The_Dreams.py",
+                "step": 5  # Renumbered
             },
             {
                 "name": "Publishing",
                 "icon": "🚀",
                 "path": "pages/8_Social_Media_Upload.py",
-                "step": 9
+                "step": 6  # Renumbered
             }
         ]
         
@@ -215,9 +181,7 @@ def render_step_navigation(current_step, prev_step_path=None, next_step_path=Non
     # Current step indicator
     with col2:
         steps = [
-            "Settings",
-            "Blueprint",
-            "Script Segmentation",
+            # Updated step names to match the new order (without disabled pages)
             "A-Roll Transcription",
             "B-Roll Prompts",
             "B-Roll Video Production",

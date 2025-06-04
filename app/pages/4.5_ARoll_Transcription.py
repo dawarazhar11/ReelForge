@@ -948,13 +948,25 @@ def main():
         
         # Process uploaded file if present
         if uploaded_file:
-            # Save the uploaded file
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp_file:
-                tmp_file.write(uploaded_file.read())
-                video_path = tmp_file.name
+            # Create the a-roll directory if it doesn't exist
+            aroll_dir = os.path.join(project_path, "media", "a-roll")
+            os.makedirs(aroll_dir, exist_ok=True)
+            
+            # Define the path for the main A-Roll video
+            main_aroll_path = os.path.join(aroll_dir, "main_aroll.mp4")
+            
+            # Save the uploaded file directly to the main_aroll.mp4 location
+            with open(main_aroll_path, "wb") as f:
+                f.write(uploaded_file.read())
+            
+            # Update the video path to point to the permanent location
+            video_path = main_aroll_path
             
             # Store in session state
             st.session_state.uploaded_video = video_path
+            
+            # Show success message for the upload
+            st.success(f"Video uploaded and saved to project.")
         
         # Display the video
         st.video(video_path)

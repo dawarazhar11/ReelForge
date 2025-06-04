@@ -25,11 +25,11 @@ def clear_app_cache():
             try:
                 # Instead of deleting, back it up with timestamp
                 backup_path = project_dir / f"broll_prompts.json.bak.{int(time.time())}"
-                shutil.copy(broll_prompts_path, backup_path)
+                shutil.copy2(broll_prompts_path, backup_path)
                 os.remove(broll_prompts_path)
                 print(f"Cleared cached B-roll prompts file: {broll_prompts_path}")
             except Exception as e:
-                print(f"Error clearing B-roll prompts: {str(e)}")
+                print(f"Error clearing cached file: {e}")
         
         # Check script.json file and add version information if missing
         script_path = project_dir / "script.json"
@@ -73,7 +73,7 @@ def clear_app_cache():
                             if content_broll_count != broll_segment_count:
                                 # Back up content status file
                                 backup_path = project_dir / f"content_status.json.bak.{int(time.time())}"
-                                shutil.copy(content_status_path, backup_path)
+                                shutil.copy2(content_status_path, backup_path)
                                 
                                 # Create new content status with the correct number of B-roll segments
                                 new_broll_status = {}
@@ -103,6 +103,19 @@ def clear_app_cache():
                         print(f"Error updating content_status.json: {str(e)}")
             except Exception as e:
                 print(f"Error updating script.json: {str(e)}")
+        
+        # Also clean up main_aroll.mp4 file to prevent "Found existing A-Roll video" message
+        # when there's no active transcription process
+        aroll_path = project_dir / "media" / "a-roll" / "main_aroll.mp4"
+        if aroll_path.exists():
+            # Only remove if we don't have a corresponding transcription file
+            transcription_path = project_dir / "transcription.json"
+            if not transcription_path.exists():
+                try:
+                    os.remove(aroll_path)
+                    print(f"Cleared main_aroll.mp4 file as no active transcription exists")
+                except Exception as e:
+                    print(f"Error clearing main_aroll.mp4 file: {e}")
     
     # Clear Streamlit cache files if any exist
     cache_dir = Path(".streamlit/cache")
@@ -123,6 +136,15 @@ def clear_app_cache():
                 print(f"Removed temporary preview file: {file}")
         except Exception as e:
             print(f"Error clearing preview files: {str(e)}")
+    
+    # Clear session state
+    if st.session_state:
+        for key in list(st.session_state.keys()):
+            if key not in ['user_settings', 'project_path', 'current_page']:
+                try:
+                    del st.session_state[key]
+                except Exception:
+                    pass
     
     print("Cache clearing complete. App is starting with a clean state.")
 

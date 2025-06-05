@@ -1313,6 +1313,43 @@ def main():
                         # Update session state with selected percentage
                         st.session_state.broll_percentage = auto_selected_percentage
                         
+                        # Add B-Roll type selection (Video vs Image)
+                        if "broll_type" not in st.session_state:
+                            st.session_state.broll_type = "video"
+                            
+                        broll_type = st.radio(
+                            "Select B-Roll Type:",
+                            ["Video", "Image"],
+                            index=0 if st.session_state.broll_type.lower() == "video" else 1,
+                            key="broll_type_selector"
+                        )
+                        
+                        # Update session state with the selected B-Roll type (store in lowercase)
+                        st.session_state.broll_type = broll_type.lower()
+                        
+                        # Add image workflow selection if image type is selected
+                        if st.session_state.broll_type == "image":
+                            # Initialize session state for image template if not exists
+                            if "image_template" not in st.session_state:
+                                st.session_state.image_template = "image_homepc"
+                            
+                            # Add selection for image template
+                            image_templates = {"image_homepc": "Home PC", "flux_schnell": "Flux Schnell"}
+                            image_template = st.selectbox(
+                                "Select Image Workflow Template:",
+                                options=list(image_templates.keys()),
+                                index=list(image_templates.keys()).index(st.session_state.image_template) 
+                                    if st.session_state.image_template in image_templates else 0,
+                                format_func=lambda x: image_templates.get(x, x.replace("_", " ").title()),
+                                help="Choose which workflow template to use for image generation"
+                            )
+                            
+                            # Store selection in session state
+                            st.session_state.image_template = image_template
+                            
+                            # Show selected template
+                            st.info(f"Using template: **{image_templates.get(image_template, image_template)}**")
+                        
                         if st.button("Generate B-Roll Prompts with AI"):
                             with st.spinner("Generating B-Roll prompts..."):
                                 # Clean up existing B-roll data first
@@ -1349,6 +1386,16 @@ def main():
                                     
                                     st.session_state.b_roll_segments = filtered_segments
                                     
+                                    # Save B-Roll type to the script.json file
+                                    broll_prompts_data = {
+                                        "prompts": {str(i): segment.get("content", "") for i, segment in enumerate(filtered_segments)},
+                                        "broll_type": st.session_state.broll_type,
+                                        "image_template": st.session_state.get("image_template", "image_homepc") if st.session_state.broll_type == "image" else None
+                                    }
+                                    broll_prompts_file = project_path / "broll_prompts.json"
+                                    with open(broll_prompts_file, "w") as f:
+                                        json.dump(broll_prompts_data, f, indent=2)
+                                    
                                     # Save the segments and theme
                                     save_segments(
                                         st.session_state.a_roll_segments,
@@ -1363,7 +1410,10 @@ def main():
                                     mark_step_complete("aroll_transcription")
                                     
                                     st.success("B-Roll prompts generated successfully!")
-                                    st.info("Proceed to the next step to generate B-Roll visuals.")
+                                    
+                                    # Add direct navigation to B-Roll production
+                                    if st.button("Proceed to B-Roll Video Production", key="proceed_to_broll"):
+                                        st.switch_page("pages/5B_BRoll_Video_Production.py")
                                 else:
                                     st.error("Failed to generate B-Roll prompts.")
                     
@@ -1397,6 +1447,44 @@ def main():
                         # Update session state with selected percentage
                         st.session_state.broll_percentage = selected_percentage
                         
+                        # Add B-Roll type selection (Video vs Image)
+                        if "broll_type" not in st.session_state:
+                            st.session_state.broll_type = "video"
+                            
+                        manual_broll_type = st.radio(
+                            "Select B-Roll Type:",
+                            ["Video", "Image"],
+                            index=0 if st.session_state.broll_type.lower() == "video" else 1,
+                            key="manual_broll_type_selector"
+                        )
+                        
+                        # Update session state with the selected B-Roll type (store in lowercase)
+                        st.session_state.broll_type = manual_broll_type.lower()
+                        
+                        # Add image workflow selection if image type is selected
+                        if st.session_state.broll_type == "image":
+                            # Initialize session state for image template if not exists
+                            if "image_template" not in st.session_state:
+                                st.session_state.image_template = "image_homepc"
+                            
+                            # Add selection for image template
+                            image_templates = {"image_homepc": "Home PC", "flux_schnell": "Flux Schnell"}
+                            manual_image_template = st.selectbox(
+                                "Select Image Workflow Template:",
+                                options=list(image_templates.keys()),
+                                index=list(image_templates.keys()).index(st.session_state.image_template) 
+                                    if st.session_state.image_template in image_templates else 0,
+                                format_func=lambda x: image_templates.get(x, x.replace("_", " ").title()),
+                                help="Choose which workflow template to use for image generation",
+                                key="manual_image_template"
+                            )
+                            
+                            # Store selection in session state
+                            st.session_state.image_template = manual_image_template
+                            
+                            # Show selected template
+                            st.info(f"Using template: **{image_templates.get(manual_image_template, manual_image_template)}**")
+                        
                         if st.button("Generate B-Roll Segments"):
                             with st.spinner("Generating B-Roll segments..."):
                                 # Clean up existing B-roll data first
@@ -1410,6 +1498,16 @@ def main():
                                 )
                                 
                                 st.session_state.b_roll_segments = b_roll_segments
+                                
+                                # Save B-Roll type to the broll_prompts.json file
+                                broll_prompts_data = {
+                                    "prompts": {str(i): segment.get("content", "") for i, segment in enumerate(b_roll_segments)},
+                                    "broll_type": st.session_state.broll_type,
+                                    "image_template": st.session_state.get("image_template", "image_homepc") if st.session_state.broll_type == "image" else None
+                                }
+                                broll_prompts_file = project_path / "broll_prompts.json"
+                                with open(broll_prompts_file, "w") as f:
+                                    json.dump(broll_prompts_data, f, indent=2)
                                 
                                 # Save the segments and theme
                                 save_segments(
@@ -1425,7 +1523,10 @@ def main():
                                 mark_step_complete("aroll_transcription")
                                 
                                 st.success("B-Roll segments generated successfully!")
-                                st.info("Proceed to the next step to generate B-Roll visuals.")
+                                
+                                # Add direct navigation to B-Roll production
+                                if st.button("Proceed to B-Roll Video Production", key="manual_proceed_to_broll"):
+                                    st.switch_page("pages/5B_BRoll_Video_Production.py")
                 
                 # If B-Roll segments have been generated, display them
                 if st.session_state.b_roll_segments:

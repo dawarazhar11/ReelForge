@@ -153,6 +153,8 @@ if "segments" not in st.session_state:
     st.session_state.segments = []
 if "broll_prompts" not in st.session_state:
     st.session_state.broll_prompts = {}
+if "broll_type" not in st.session_state:
+    st.session_state.broll_type = "video"  # Default to video if not specified
 if "content_status" not in st.session_state:
     st.session_state.content_status = {
         "broll": {},
@@ -226,126 +228,35 @@ def load_script_data():
 # Function to load saved B-Roll prompts
 def load_broll_prompts():
     prompts_file = project_path / "broll_prompts.json"
-    
-    # Print more debug info
-    print(f"Debug - Looking for B-Roll prompts at: {prompts_file.absolute()}")
-    
     if prompts_file.exists():
         try:
             with open(prompts_file, "r") as f:
                 data = json.load(f)
                 
                 # Print debug info
-                print(f"Debug - Loading B-Roll prompts from {prompts_file}")
-                print(f"Debug - JSON data keys: {list(data.keys())}")
+                print(f"Debug - Loading B-Roll prompts: {prompts_file}")
                 
-                # Validate data structure
-                if not isinstance(data, dict):
-                    print("Error: B-Roll prompts file has invalid format")
-                    return False
-                
-                # Handle different JSON structures
-                if "prompts" in data and isinstance(data["prompts"], dict):
-                    # New format: {"prompts": {"segment_0": {...}, ...}, "broll_type": "..."}
-                    prompts_data = data["prompts"]
-                    broll_type = data.get("broll_type", "video")
-                    
-                    # Count prompts
-                    prompt_count = sum(1 for segment_id, prompt_data in prompts_data.items() 
-                                     if isinstance(prompt_data, dict) and "prompt" in prompt_data)
-                    
-                    print(f"Debug - Found {prompt_count} B-Roll prompts")
-                    print(f"Debug - Segment IDs: {list(prompts_data.keys())}")
-                    
-                    # Update session state if we have valid prompts
-                    if prompt_count > 0:
-                        st.session_state.broll_prompts = data
-                        st.session_state.broll_type = broll_type
-                        return True
+                # Handle different data formats
+                if "prompts" in data:
+                    st.session_state.broll_prompts = data["prompts"]
                 else:
-                    # Legacy format: {"segment_0": {...}, ...}
-                    # Count prompts
-                    prompt_count = sum(1 for segment_id, prompt_data in data.items() 
-                                     if isinstance(prompt_data, dict) and "prompt" in prompt_data)
-                    
-                    print(f"Debug - Found {prompt_count} B-Roll prompts")
-                    
-                    # Update session state if we have valid prompts
-                    if prompt_count > 0:
-                        st.session_state.broll_prompts = {"prompts": data, "broll_type": "video"}
-                        return True
+                    st.session_state.broll_prompts = data
                 
-                print("Warning: No valid B-Roll prompts found")
-                return False
-        except json.JSONDecodeError:
-            print(f"Error: broll_prompts.json is not valid JSON")
-            return False
+                # Load B-Roll type if available
+                if "broll_type" in data:
+                    st.session_state.broll_type = data["broll_type"]
+                    print(f"Debug - B-Roll type from prompts: {st.session_state.broll_type}")
+                
+                # Load image template if available
+                if "image_template" in data and data["image_template"]:
+                    st.session_state.workflow_selection["image"] = data["image_template"]
+                    print(f"Debug - Image template from prompts: {st.session_state.workflow_selection['image']}")
+                
+                return True
         except Exception as e:
             print(f"Error loading B-Roll prompts: {str(e)}")
             return False
-    else:
-        print(f"B-Roll prompts file not found at: {prompts_file.absolute()}")
-        
-        # Try alternate location
-        alt_prompts_file = Path("config/user_data/my_short_video/broll_prompts.json")
-        print(f"Trying alternate location: {alt_prompts_file.absolute()}")
-        
-        if alt_prompts_file.exists():
-            try:
-                with open(alt_prompts_file, "r") as f:
-                    data = json.load(f)
-                    
-                    # Print debug info
-                    print(f"Debug - Loading B-Roll prompts from alternate location: {alt_prompts_file}")
-                    print(f"Debug - JSON data keys: {list(data.keys())}")
-                    
-                    # Validate data structure
-                    if not isinstance(data, dict):
-                        print("Error: B-Roll prompts file has invalid format")
-                        return False
-                    
-                    # Handle different JSON structures
-                    if "prompts" in data and isinstance(data["prompts"], dict):
-                        # New format: {"prompts": {"segment_0": {...}, ...}, "broll_type": "..."}
-                        prompts_data = data["prompts"]
-                        broll_type = data.get("broll_type", "video")
-                        
-                        # Count prompts
-                        prompt_count = sum(1 for segment_id, prompt_data in prompts_data.items() 
-                                         if isinstance(prompt_data, dict) and "prompt" in prompt_data)
-                        
-                        print(f"Debug - Found {prompt_count} B-Roll prompts")
-                        print(f"Debug - Segment IDs: {list(prompts_data.keys())}")
-                        
-                        # Update session state if we have valid prompts
-                        if prompt_count > 0:
-                            st.session_state.broll_prompts = data
-                            st.session_state.broll_type = broll_type
-                            return True
-                    else:
-                        # Legacy format: {"segment_0": {...}, ...}
-                        # Count prompts
-                        prompt_count = sum(1 for segment_id, prompt_data in data.items() 
-                                         if isinstance(prompt_data, dict) and "prompt" in prompt_data)
-                        
-                        print(f"Debug - Found {prompt_count} B-Roll prompts")
-                        
-                        # Update session state if we have valid prompts
-                        if prompt_count > 0:
-                            st.session_state.broll_prompts = {"prompts": data, "broll_type": "video"}
-                            return True
-                    
-                    print("Warning: No valid B-Roll prompts found in alternate location")
-                    return False
-            except json.JSONDecodeError:
-                print(f"Error: broll_prompts.json is not valid JSON")
-                return False
-            except Exception as e:
-                print(f"Error loading B-Roll prompts: {str(e)}")
-                return False
-        
-        print("B-Roll prompts file not found in any location")
-        return False
+    return False
 
 # Function to load content status
 def load_content_status():
@@ -1129,7 +1040,7 @@ if not has_prompts:
     with st.expander("How to generate B-Roll prompts"):
         st.markdown("""
         ### How to generate B-Roll prompts:
-        1. Go to the **B-Roll Prompts** page (Step 4)
+        1. Go to the **B-Roll Prompts** page (Step 4) 
         2. Select your prompt generation style
         3. Generate prompts for each B-Roll segment
         4. Save your prompts
@@ -2542,3 +2453,71 @@ def render_broll_generation_section(unique_key="main"):
                 if success_count == len(broll_segments):
                     mark_step_complete('content_production')
                     st.balloons()  # Add some fun!
+
+# Main B-Roll content generation section
+def main():
+    # Header and instructions
+    st.title("B-Roll Video Production")
+    render_step_header(3, "B-Roll Video Production", 6)  # Adjusted step number based on updated navigation
+    
+    st.write("""
+    Generate B-Roll visuals based on your script and prompts. This step turns your B-Roll text prompts into visual content 
+    that will be combined with your A-Roll video in the next step.
+    """)
+    
+    # Load data
+    has_script = load_script_data()
+    has_prompts = load_broll_prompts()
+    has_status = load_content_status()
+    
+    if not has_script:
+        st.error("No script found. Please complete the Script Segmentation or A-Roll Transcription step first.")
+        return
+    
+    if not has_prompts:
+        st.warning("No B-Roll prompts found. We'll use default placeholders for now.")
+    
+    # Get B-Roll segments and prompts
+    broll_segments = [segment for segment in st.session_state.segments if segment["type"] == "B-Roll"]
+    
+    # Display info about B-Roll type
+    broll_type = st.session_state.get("broll_type", "video").lower()
+    st.info(f"B-Roll type: **{broll_type.upper()}**")
+    
+    # Display different workflow based on B-Roll type
+    if broll_type == "image":
+        st.subheader("Image-Based B-Roll Generation")
+        st.write("""
+        You've selected to use images for your B-Roll content. This will generate still images 
+        that will be animated in the Video Assembly step.
+        """)
+        
+        # Display image template selection
+        image_template = st.session_state.workflow_selection.get("image", "default")
+        st.success(f"Using image template: **{image_template}**")
+        
+        # Continue with image-specific workflow
+        render_broll_generation_section("image")
+    else:
+        # Video B-Roll workflow
+        st.subheader("Video B-Roll Generation")
+        st.write("""
+        You'll generate video clips for your B-Roll content. These short clips will be 
+        combined with your A-Roll in the Video Assembly step.
+        """)
+        
+        # Continue with video-specific workflow
+        render_broll_generation_section("video")
+    
+    # Navigation buttons at the bottom
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        if st.button("◀ Back to A-Roll Transcription"):
+            st.switch_page("pages/4.5_ARoll_Transcription.py")
+    with col2:
+        if st.button("Continue to Video Assembly ▶"):
+            mark_step_complete("broll_production")
+            st.switch_page("pages/6_Video_Assembly.py")
+
+if __name__ == "__main__":
+    main()

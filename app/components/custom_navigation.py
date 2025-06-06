@@ -163,6 +163,10 @@ def render_step_navigation(current_step, prev_step_path=None, next_step_path=Non
     # Previous step button
     with col1:
         if prev_step_path:
+            # Ensure the path has the pages/ prefix if it's a page
+            if prev_step_path != "Home.py" and not prev_step_path.startswith("pages/"):
+                prev_step_path = f"pages/{prev_step_path}"
+                
             if st.button("⬅️ Previous Step", use_container_width=True):
                 st.switch_page(prev_step_path)
     
@@ -186,5 +190,9 @@ def render_step_navigation(current_step, prev_step_path=None, next_step_path=Non
     # Next step button
     with col3:
         if next_step_path:
+            # Ensure the path has the pages/ prefix if it's a page
+            if next_step_path != "Home.py" and not next_step_path.startswith("pages/"):
+                next_step_path = f"pages/{next_step_path}"
+                
             if st.button("Next Step ➡️", use_container_width=True):
                 st.switch_page(next_step_path) 

@@ -1411,9 +1411,11 @@ def main():
                                     
                                     st.success("B-Roll prompts generated successfully!")
                                     
-                                    # Add direct navigation to B-Roll production
-                                    if st.button("Proceed to B-Roll Video Production", key="proceed_to_broll"):
-                                        st.switch_page("pages/5B_BRoll_Video_Production.py")
+                                    # Add direct navigation to B-Roll production with a more prominent style
+                                    nav_col1, nav_col2 = st.columns([2, 1])
+                                    with nav_col2:
+                                        if st.button("Next: B-Roll Production ➡️", key="auto_next_button", type="primary", use_container_width=True):
+                                            st.switch_page("pages/5B_BRoll_Video_Production.py")
                                 else:
                                     st.error("Failed to generate B-Roll prompts.")
                     
@@ -1524,9 +1526,11 @@ def main():
                                 
                                 st.success("B-Roll segments generated successfully!")
                                 
-                                # Add direct navigation to B-Roll production
-                                if st.button("Proceed to B-Roll Video Production", key="manual_proceed_to_broll"):
-                                    st.switch_page("pages/5B_BRoll_Video_Production.py")
+                                # Add direct navigation to B-Roll production with a more prominent style
+                                nav_col1, nav_col2 = st.columns([2, 1])
+                                with nav_col2:
+                                    if st.button("Next: B-Roll Production ➡️", key="manual_next_button", type="primary", use_container_width=True):
+                                        st.switch_page("pages/5B_BRoll_Video_Production.py")
                 
                 # If B-Roll segments have been generated, display them
                 if st.session_state.b_roll_segments:
@@ -1549,9 +1553,6 @@ def main():
                                 {segment.get("content", "")}
                             </div>
                             """, unsafe_allow_html=True)
-                    
-                    # Navigation buttons
-                    st.button("Proceed to B-Roll Generation", on_click=lambda: mark_step_complete("aroll_transcription"))
 
 # Helper function to format time in MM:SS format
 def format_time(seconds):
@@ -1565,5 +1566,46 @@ def format_time(seconds):
         # Return a default value if conversion fails
         return "00:00"
 
+# Git helper for saving progress
+def git_commit_changes():
+    """Helper function to commit changes to Git"""
+    try:
+        import subprocess
+        import datetime
+        
+        # Get current timestamp for commit message
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Git add all changes
+        subprocess.run(["git", "add", "."], check=True)
+        
+        # Git commit with timestamp
+        commit_message = f"A-Roll Transcription completed - {timestamp}"
+        result = subprocess.run(["git", "commit", "-m", commit_message], 
+                               capture_output=True, text=True)
+        
+        if result.returncode == 0:
+            return True, "Changes committed successfully!"
+        else:
+            return False, f"Commit failed: {result.stderr}"
+    except Exception as e:
+        return False, f"Error committing changes: {str(e)}"
+
 if __name__ == "__main__":
-    main() 
+    main()
+    
+    # Add Git commit helper at the bottom
+    with st.expander("💾 Save Progress to Git", expanded=False):
+        st.markdown("""
+        ### Commit your changes to Git
+        
+        This will save your current progress to your Git repository.
+        """)
+        
+        if st.button("Commit Changes", key="git_commit_button", type="primary"):
+            with st.spinner("Committing changes..."):
+                success, message = git_commit_changes()
+                if success:
+                    st.success(message)
+                else:
+                    st.error(message) 

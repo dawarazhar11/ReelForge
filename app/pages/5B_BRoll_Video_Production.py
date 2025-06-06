@@ -143,7 +143,8 @@ JSON_TEMPLATES = {
     "image": {
         "default": "app/image_homepc.json",
         "lora": "app/lora.json",
-        "flux": "app/flux_dev_checkpoint.json"
+        "flux": "app/flux_dev_checkpoint.json",
+        "flux_schnell": "app/flux_schnell.json"  # Added the flux_schnell template
     },
     "video": "app/wan.json"
 }
@@ -236,11 +237,16 @@ def load_broll_prompts():
                 # Print debug info
                 print(f"Debug - Loading B-Roll prompts: {prompts_file}")
                 
-                # Handle different data formats
+                # Store the complete data structure for reference
+                st.session_state.broll_prompts_full = data
+                
+                # Handle different data formats for backward compatibility
                 if "prompts" in data:
-                    st.session_state.broll_prompts = data["prompts"]
+                    st.session_state.broll_prompts = data
+                    print(f"Debug - Found {len(data['prompts'])} prompts in nested structure")
                 else:
                     st.session_state.broll_prompts = data
+                    print(f"Debug - Found {len(data)} items in flat structure")
                 
                 # Load B-Roll type if available
                 if "broll_type" in data:
@@ -770,31 +776,57 @@ def batch_process_broll_prompts():
     
     # Debug information
     print(f"Debug - Starting batch processing for {len(broll_segments)} B-Roll segments")
-    print(f"Debug - B-Roll prompts keys: {list(st.session_state.broll_prompts.keys())}")
-    if "prompts" in st.session_state.broll_prompts:
-        print(f"Debug - Prompts sub-keys: {list(st.session_state.broll_prompts['prompts'].keys())}")
+    
+    # Extract prompts data correctly based on structure
+    prompts_data = {}
+    if hasattr(st.session_state, 'broll_prompts_full') and st.session_state.broll_prompts_full:
+        if "prompts" in st.session_state.broll_prompts_full:
+            prompts_data = st.session_state.broll_prompts_full["prompts"]
+            print(f"Debug - Using prompts from broll_prompts_full: {len(prompts_data)} prompts")
+    elif hasattr(st.session_state, 'broll_prompts'):
+        if isinstance(st.session_state.broll_prompts, dict):
+            if "prompts" in st.session_state.broll_prompts:
+                prompts_data = st.session_state.broll_prompts["prompts"]
+                print(f"Debug - Using prompts from nested broll_prompts: {len(prompts_data)} prompts")
+            else:
+                prompts_data = st.session_state.broll_prompts
+                print(f"Debug - Using prompts directly from broll_prompts: {len(prompts_data)} prompts")
+    
+    if not prompts_data:
+        st.error("No B-Roll prompts found. Please generate prompts first.")
+        return {}, {"general": "No prompts found"}
+    
+    print(f"Debug - Available prompt segment IDs: {list(prompts_data.keys())}")
     
     # Process each B-Roll segment
     for i, segment in enumerate(broll_segments):
         segment_id = f"segment_{i}"
         
         # Check if we have prompts for this segment
-        if "prompts" in st.session_state.broll_prompts and segment_id in st.session_state.broll_prompts["prompts"]:
-            prompt_data = st.session_state.broll_prompts["prompts"][segment_id]
+        if segment_id in prompts_data:
+            prompt_data = prompts_data[segment_id]
             
-            print(f"Debug - Processing segment {segment_id} with prompt data: {prompt_data.keys() if isinstance(prompt_data, dict) else 'not a dict'}")
+            # Handle both dictionary and string formats
+            if isinstance(prompt_data, dict):
+                prompt_text = prompt_data.get("prompt", "")
+                negative_prompt = prompt_data.get("negative_prompt", "ugly, blurry, low quality")
+            else:
+                prompt_text = str(prompt_data)
+                negative_prompt = "ugly, blurry, low quality"
+            
+            print(f"Debug - Processing segment {segment_id} with prompt: {prompt_text[:50]}...")
             
             # Prepare the workflow
             workflow = prepare_comfyui_workflow(
                 template_file,
-                prompt_data["prompt"],
-                prompt_data.get("negative_prompt", "ugly, blurry, low quality"),
+                prompt_text,
+                negative_prompt,
                 resolution="1080x1920"
             )
             
             # Display the prepared prompt in the UI
             st.info(f"Preparing prompt for Segment {i+1}...")
-            st.text_area(f"Segment {i+1} Prompt", value=prompt_data["prompt"], height=150, key=f"prompt_view_{i}")
+            st.text_area(f"Segment {i+1} Prompt", value=prompt_text, height=150, key=f"prompt_view_{i}")
             
             try:
                 # Submit the workflow to ComfyUI
@@ -847,7 +879,7 @@ def batch_process_broll_prompts():
                 st.error(f"Exception while submitting B-Roll Segment {i+1}: {error_msg}")
         else:
             print(f"Debug - No prompts found for segment {segment_id}")
-            print(f"Debug - Available segments: {list(st.session_state.broll_prompts.get('prompts', {}).keys())}")
+            print(f"Debug - Available segments: {list(prompts_data.keys())}")
             
             # Update content status to show missing prompt
             update_content_status(
@@ -1231,14 +1263,21 @@ with col2:
     workflow_options = {
         "default": "Default Image Workflow (image_homepc.json)",
         "lora": "LoRA Enhanced Workflow (lora.json)",
-        "flux": "Flux Dev Checkpoint (flux_dev_checkpoint.json)"
+        "flux": "Flux Dev Checkpoint (flux_dev_checkpoint.json)",
+        "flux_schnell": "Flux Schnell Workflow"  # Added missing option
     }
+    
+    # Find the index of the selected workflow safely
+    current_selection = st.session_state.workflow_selection.get("image", "default")
+    if current_selection not in workflow_options:
+        print(f"Warning: Selected workflow '{current_selection}' not in available options, defaulting to 'default'")
+        current_selection = "default"
     
     selected_workflow = st.selectbox(
         "Select workflow for image generation:",
         options=list(workflow_options.keys()),
         format_func=lambda x: workflow_options[x],
-        index=list(workflow_options.keys()).index(st.session_state.workflow_selection["image"]),
+        index=list(workflow_options.keys()).index(current_selection),
         key="workflow_selector"
     )
     st.session_state.workflow_selection["image"] = selected_workflow
@@ -1250,6 +1289,8 @@ with col2:
         st.info("LoRA workflow adds the flux-chatgpt-ghibli-lora for stylized image generation.")
     elif selected_workflow == "flux":
         st.info("Flux Dev Checkpoint workflow uses newer Flux models which may better handle complex prompts.")
+    elif selected_workflow == "flux_schnell":
+        st.info("Flux Schnell workflow uses a faster Flux model which may be suitable for certain types of prompts.")
     
     # Add note about video generation
     st.caption("Note: Video generation always uses the standard video workflow (wan.json)")
@@ -2274,8 +2315,23 @@ def generate_broll_sequentially(segments_data, api_url=None):
         with segment_container:
             st.subheader(f"Segment {segment_id}")
             
-            # Check if is_video flag exists, default to True for B-Roll
-            is_video = segment_data.get("is_video", True)
+            # Check segment_data type and handle accordingly
+            if isinstance(segment_data, dict):
+                # It's a dictionary, use get() method
+                is_video = segment_data.get("is_video", True)
+                prompt_text = segment_data.get("prompt", "")
+                negative_prompt = segment_data.get("negative_prompt", "ugly, blurry, low quality")
+            elif isinstance(segment_data, str):
+                # It's a string, use it directly as the prompt
+                is_video = True  # Default to video for string prompts
+                prompt_text = segment_data
+                negative_prompt = "ugly, blurry, low quality"
+            else:
+                # Unknown type, log and skip
+                st.error(f"Unknown data type for segment {segment_id}: {type(segment_data)}")
+                results[segment_id] = {"status": "error", "message": f"Invalid data type: {type(segment_data)}"}
+                continue
+                
             content_type = "video" if is_video else "image"
             
             # Create client ID for tracking
@@ -2290,12 +2346,15 @@ def generate_broll_sequentially(segments_data, api_url=None):
                 
             # Get parameters
             params = {
-                "prompt": segment_data.get("prompt", ""),
-                "negative_prompt": segment_data.get("negative_prompt", "ugly, blurry, low quality, deformed"),
+                "prompt": prompt_text,
+                "negative_prompt": negative_prompt,
                 "width": 1080,
                 "height": 1920,
                 "seed": random.randint(1, 999999999)
             }
+            
+            # Display the prompt
+            st.text_area("Prompt", value=prompt_text, height=100)
             
             # Modify workflow
             modified_workflow = modify_workflow(workflow, params)
@@ -2306,98 +2365,103 @@ def generate_broll_sequentially(segments_data, api_url=None):
             
             # Submit job
             st.info(f"Submitting {content_type} generation job")
-            result = comfyui_api.queue_prompt(modified_workflow, client_id, api_url)
             
-            # Check result
-            if result["status_code"] != 200 or not result.get("prompt_id"):
-                st.error(f"Failed to submit job: {result.get('error', 'Unknown error')}")
-                results[segment_id] = {"status": "error", "message": f"Job submission failed: {result.get('error', 'Unknown error')}"}
-                continue
+            try:
+                # Submit the workflow to ComfyUI
+                result = submit_comfyui_workflow(modified_workflow)
                 
-            prompt_id = result["prompt_id"]
-            st.info(f"Job submitted with ID: {prompt_id}")
-            
-            # Store the prompt ID
-            if "broll_fetch_ids" not in st.session_state:
-                st.session_state.broll_fetch_ids = {}
-            st.session_state.broll_fetch_ids[segment_id] = prompt_id
-            
-            # Fetch content
-            st.info("Waiting for content generation to complete...")
-            fetch_result = periodic_content_fetch(prompt_id, api_url)
-            
-            if fetch_result["status"] == "success":
-                # Save content
-                content = fetch_result["content"]
-                file_ext = "mp4" if is_video else "png"
-                file_path = save_media_content(content, "broll", segment_id, file_ext)
+                if result["status"] != "success":
+                    st.error(f"Failed to submit job: {result.get('message', 'Unknown error')}")
+                    results[segment_id] = {"status": "error", "message": f"Job submission failed: {result.get('message', 'Unknown error')}"}
+                    continue
+                    
+                prompt_id = result["prompt_id"]
+                st.info(f"Job submitted with ID: {prompt_id}")
                 
-                # Update status
-                st.session_state.content_status["broll"][segment_id] = {
-                    "status": "complete",
-                    "file_path": file_path,
-                    "prompt_id": prompt_id,
-                    "content_type": content_type,
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                }
+                # Store the prompt ID
+                if "broll_fetch_ids" not in st.session_state:
+                    st.session_state.broll_fetch_ids = {}
+                st.session_state.broll_fetch_ids[segment_id] = prompt_id
                 
-                # Display result
-                st.success(f"Successfully generated {content_type} for segment {segment_id}")
-                if is_video:
-                    st.video(file_path)
+                # Fetch content
+                st.info("Waiting for content generation to complete...")
+                fetch_result = periodic_content_fetch(prompt_id, api_url)
+                
+                if fetch_result["status"] == "success":
+                    # Save content
+                    content = fetch_result["content"]
+                    file_ext = "mp4" if is_video else "png"
+                    file_path = save_media_content(content, "broll", segment_id, file_ext)
+                    
+                    # Update status
+                    st.session_state.content_status["broll"][segment_id] = {
+                        "status": "complete",
+                        "file_path": file_path,
+                        "prompt_id": prompt_id,
+                        "content_type": content_type,
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    }
+                    
+                    # Display result
+                    st.success(f"Successfully generated {content_type} for segment {segment_id}")
+                    if is_video:
+                        st.video(file_path)
+                    else:
+                        st.image(file_path)
+                        
+                    results[segment_id] = {
+                        "status": "success", 
+                        "file_path": file_path,
+                        "prompt_id": prompt_id
+                    }
                 else:
-                    st.image(file_path)
+                    # Try direct download for AnimateDiff patterns
+                    if is_video:
+                        downloaded = False
+                        possible_files = [f"animation_{i:05d}.mp4" for i in range(1, 10)]
+                        
+                        for filename in possible_files:
+                            file_url = f"{api_url}/view?filename={filename}"
+                            try:
+                                response = requests.head(file_url, timeout=5)
+                                if response.status_code == 200:
+                                    content_response = requests.get(file_url, timeout=60)
+                                    if content_response.status_code == 200:
+                                        # Save file
+                                        file_path = save_media_content(content_response.content, "broll", segment_id, "mp4")
+                                        
+                                        # Update status
+                                        st.session_state.content_status["broll"][segment_id] = {
+                                            "status": "complete",
+                                            "file_path": file_path,
+                                            "prompt_id": prompt_id,
+                                            "content_type": "video",
+                                            "filename": filename,
+                                            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                        }
+                                        
+                                        st.success(f"Found and downloaded video from pattern {filename}")
+                                        st.video(file_path)
+                                        
+                                        results[segment_id] = {
+                                            "status": "success", 
+                                            "file_path": file_path,
+                                            "prompt_id": prompt_id
+                                        }
+                                        downloaded = True
+                                        break
+                            except Exception as e:
+                                st.warning(f"Error checking file {filename}: {str(e)}")
                     
-                results[segment_id] = {
-                    "status": "success", 
-                    "file_path": file_path,
-                    "prompt_id": prompt_id
-                }
-            else:
-                # Try direct download for AnimateDiff patterns
-                if is_video:
-                    downloaded = False
-                    possible_files = [f"animation_{i:05d}.mp4" for i in range(1, 10)]
-                    
-                    for filename in possible_files:
-                        file_url = f"{api_url}/view?filename={filename}"
-                        try:
-                            response = requests.head(file_url, timeout=5)
-                            if response.status_code == 200:
-                                content_response = requests.get(file_url, timeout=60)
-                                if content_response.status_code == 200:
-                                    # Save file
-                                    file_path = save_media_content(content_response.content, "broll", segment_id, "mp4")
-                                    
-                                    # Update status
-                                    st.session_state.content_status["broll"][segment_id] = {
-                                        "status": "complete",
-                                        "file_path": file_path,
-                                        "prompt_id": prompt_id,
-                                        "content_type": "video",
-                                        "filename": filename,
-                                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                                    }
-                                    
-                                    st.success(f"Found and downloaded video from pattern {filename}")
-                                    st.video(file_path)
-                                    
-                                    results[segment_id] = {
-                                        "status": "success", 
-                                        "file_path": file_path,
-                                        "prompt_id": prompt_id
-                                    }
-                                    downloaded = True
-                                    break
-                        except Exception as e:
-                            st.warning(f"Error checking file {filename}: {str(e)}")
-                
-                    if not downloaded:
+                        if not downloaded:
+                            st.error(f"Failed to generate content: {fetch_result.get('message', 'Unknown error')}")
+                            results[segment_id] = {"status": "error", "message": fetch_result.get('message', 'Content generation failed')}
+                    else:
                         st.error(f"Failed to generate content: {fetch_result.get('message', 'Unknown error')}")
                         results[segment_id] = {"status": "error", "message": fetch_result.get('message', 'Content generation failed')}
-                else:
-                    st.error(f"Failed to generate content: {fetch_result.get('message', 'Unknown error')}")
-                    results[segment_id] = {"status": "error", "message": fetch_result.get('message', 'Content generation failed')}
+            except Exception as e:
+                st.error(f"Error processing segment {segment_id}: {str(e)}")
+                results[segment_id] = {"status": "error", "message": str(e)}
             
             # Add a separator between segments
             st.divider()
@@ -2426,20 +2490,71 @@ def render_broll_generation_section(unique_key="main"):
         if st.button("🎨 Generate All B-Roll", type="primary", key=f"generate_broll_{unique_key}", use_container_width=True):
             # Capture all required data before starting the thread
             temp_segments = st.session_state.segments.copy() if hasattr(st.session_state, 'segments') and st.session_state.segments else []
-            temp_broll_prompts = st.session_state.broll_prompts.copy() if hasattr(st.session_state, 'broll_prompts') else {'prompts': {}}
             
-            # Check if we have B-roll segments to process
+            # Check how broll_prompts is structured and extract appropriately
+            broll_prompts = {}
+            if hasattr(st.session_state, 'broll_prompts_full') and st.session_state.broll_prompts_full:
+                # First try the full structure that has both prompts and metadata
+                if "prompts" in st.session_state.broll_prompts_full:
+                    broll_prompts = st.session_state.broll_prompts_full["prompts"]
+                    print(f"Debug - Using prompts from broll_prompts_full structure: {len(broll_prompts)} prompts")
+            elif hasattr(st.session_state, 'broll_prompts'):
+                # Fallback to direct structure
+                if isinstance(st.session_state.broll_prompts, dict):
+                    if "prompts" in st.session_state.broll_prompts:
+                        broll_prompts = st.session_state.broll_prompts["prompts"]
+                        print(f"Debug - Using prompts from nested broll_prompts structure: {len(broll_prompts)} prompts")
+                    else:
+                        broll_prompts = st.session_state.broll_prompts
+                        print(f"Debug - Using prompts directly from broll_prompts: {len(broll_prompts)} prompts")
+            
+            # Debug log what we found
+            print(f"Debug - Segments count: {len(temp_segments)}")
+            print(f"Debug - Available prompts: {list(broll_prompts.keys())}")
+            
+            # Process segments - this should work whether we have segment objects or just segment IDs
             broll_segments = {}
-            for i, seg in enumerate(temp_segments):
-                segment_id = f"segment_{i}"
-                if segment_id in temp_broll_prompts.get('prompts', {}):
-                    broll_segments[segment_id] = temp_broll_prompts['prompts'][segment_id]
+            
+            # First try with direct matching if we have actual segment objects
+            if temp_segments:
+                for i, seg in enumerate(temp_segments):
+                    segment_id = f"segment_{i}"
+                    # Check both possible structures for prompts
+                    if segment_id in broll_prompts:
+                        broll_segments[segment_id] = broll_prompts[segment_id]
+                        print(f"Debug - Found prompt for segment {segment_id}")
+            
+            # If we still don't have any segments, try using the prompts directly
+            if not broll_segments and broll_prompts:
+                print(f"Debug - Using prompts directly as no matching segments found")
+                broll_segments = broll_prompts
+            
+            # Final check
+            if not broll_segments:
+                # Try loading script.json directly as a last resort
+                script_file = project_path / "script.json"
+                if script_file.exists():
+                    try:
+                        with open(script_file, "r") as f:
+                            script_data = json.load(f)
+                            if "segments" in script_data:
+                                # Find B-Roll segments
+                                for i, segment in enumerate(script_data["segments"]):
+                                    if isinstance(segment, dict) and segment.get("type") == "B-Roll":
+                                        segment_id = f"segment_{i}"
+                                        if segment_id in broll_prompts:
+                                            broll_segments[segment_id] = broll_prompts[segment_id]
+                                            print(f"Debug - Found prompt for B-Roll segment {segment_id} from script.json")
+                    except Exception as e:
+                        print(f"Error loading script.json: {str(e)}")
             
             if not broll_segments:
-                st.error("No B-roll segments to process. Please create segments first.")
+                st.error("No B-roll segments to process. Please create segments and generate prompts first.")
+                st.info("Go to 'A-Roll Transcription' to create segments with B-Roll prompts.")
             else:
                 # Generate B-roll sequentially
                 st.subheader("B-Roll Generation in Progress")
+                print(f"Debug - Proceeding with {len(broll_segments)} B-Roll segments")
                 result = generate_broll_sequentially(broll_segments)
                 
                 # Save updated content status
@@ -2482,6 +2597,46 @@ def main():
     
     # Display info about B-Roll type
     broll_type = st.session_state.get("broll_type", "video").lower()
+
+    # If broll_type is "mixed" or another unexpected value, check the script to see if we can determine the actual type
+    if broll_type not in ["video", "image"]:
+        # Try to determine from broll_prompts_full first (most reliable source)
+        if "broll_prompts_full" in st.session_state and isinstance(st.session_state.broll_prompts_full, dict):
+            if "broll_type" in st.session_state.broll_prompts_full:
+                broll_type = st.session_state.broll_prompts_full["broll_type"].lower()
+                print(f"Debug - Using B-Roll type from broll_prompts_full: {broll_type}")
+        # Try to determine from broll_prompts
+        elif "broll_prompts" in st.session_state:
+            if isinstance(st.session_state.broll_prompts, dict):
+                # Direct access if broll_type is in the top level
+                if "broll_type" in st.session_state.broll_prompts:
+                    broll_type = st.session_state.broll_prompts["broll_type"].lower()
+                    print(f"Debug - Using B-Roll type from broll_prompts: {broll_type}")
+                # Check if it's a nested structure with "prompts" key
+                elif "prompts" in st.session_state.broll_prompts and isinstance(st.session_state.broll_prompts["prompts"], dict):
+                    # Sometimes the type is in the main dict alongside "prompts"
+                    if "broll_type" in st.session_state.broll_prompts:
+                        broll_type = st.session_state.broll_prompts["broll_type"].lower()
+                        print(f"Debug - Using B-Roll type from nested prompts: {broll_type}")
+        
+        # If still not a valid type, check if we can find info in script.json
+        if broll_type not in ["video", "image"]:
+            script_file = project_path / "script.json"
+            if script_file.exists():
+                try:
+                    with open(script_file, "r") as f:
+                        script_data = json.load(f)
+                        if "broll_type" in script_data:
+                            broll_type = script_data["broll_type"].lower()
+                            print(f"Debug - Using B-Roll type from script.json: {broll_type}")
+                except Exception as e:
+                    print(f"Error reading script.json for B-Roll type: {str(e)}")
+        
+        # If still not a valid type, default to "video"
+        if broll_type not in ["video", "image"]:
+            broll_type = "video"
+            st.warning("B-Roll type could not be determined. Defaulting to video.")
+
     st.info(f"B-Roll type: **{broll_type.upper()}**")
     
     # Display different workflow based on B-Roll type

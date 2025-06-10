@@ -2,13 +2,21 @@
 """
 Page for adding animated word-by-word captions to videos
 """
+import streamlit as st
+
+# Set page config - must be the first Streamlit command
+st.set_page_config(
+    page_title="Caption The Dreams - AI Money Printer Shorts",
+    page_icon="✨",
+    layout="wide"
+)
+
 import os
 import sys
 import time
 import json
 import traceback
 from pathlib import Path
-import streamlit as st
 import numpy as np
 from PIL import Image
 from datetime import datetime
@@ -39,13 +47,6 @@ except ImportError as e:
     st.error(f"Error importing modules: {e}")
     st.info("Please make sure you're running this from the project root directory.")
     st.stop()
-
-# Set page config
-st.set_page_config(
-    page_title="Caption The Dreams - AI Money Printer Shorts",
-    page_icon="✨",
-    layout="wide"
-)
 
 # Initialize session state for this page
 if "caption_dreams" not in st.session_state:

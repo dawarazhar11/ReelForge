@@ -1,4 +1,13 @@
 import streamlit as st
+
+# Set page configuration - must be the first Streamlit command
+st.set_page_config(
+    page_title="B-Roll Video Production | AI Money Printer",
+    page_icon="🎬",
+    layout="centered",
+    initial_sidebar_state="expanded"
+)
+
 import os
 import sys
 import json
@@ -9,6 +18,12 @@ import base64
 import threading
 from datetime import datetime
 import random
+import traceback
+import copy
+import uuid
+import logging
+import tempfile
+import shutil
 
 # Import custom helper module for ComfyUI integration
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "../app"))
@@ -21,23 +36,36 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
     print(f"Added {parent_dir} to path")
 
-# Try to import local modules# Try to import local modules
+# Try to import local modules
 try:
     from components.custom_navigation import render_custom_sidebar, render_horizontal_navigation, render_step_navigation
     from components.progress import render_step_header
     from utils.session_state import get_settings, get_project_path, mark_step_complete
     from utils.progress_tracker import start_comfyui_tracking
+    from utils.video.assembly import render_video, extract_audio, download_video
+    from utils.fonts.text_effects import add_captions_to_video
     print("Successfully imported local modules")
 except ImportError as e:
     st.error(f"Failed to import local modules: {str(e)}")
     st.stop()
-# Set page configuration
-st.set_page_config(
-    page_title="B-Roll Video Production | AI Money Printer",
-    page_icon="🎬",
-    layout="centered",
-    initial_sidebar_state="expanded"
-)
+
+# Try to import the new ComfyUI WebSocket client
+try:
+    from utils.ai.comfyui_websocket import (
+        load_workflow_file,
+        modify_workflow,
+        submit_workflow,
+        get_output_images,
+        wait_for_prompt_completion,
+        check_prompt_status
+    )
+    COMFYUI_WEBSOCKET_AVAILABLE = True
+    # Use info after imports to avoid Streamlit error
+    websocket_status = "ComfyUI WebSocket client available. Using WebSocket API for improved stability."
+except ImportError:
+    COMFYUI_WEBSOCKET_AVAILABLE = False
+    # Use warning after imports to avoid Streamlit error
+    websocket_status = "ComfyUI WebSocket client not available. Using fallback HTTP API."
 
 # Load custom CSS
 def load_css():
@@ -47,6 +75,12 @@ def load_css():
             st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
 load_css()
+
+# Display WebSocket status after page config
+if COMFYUI_WEBSOCKET_AVAILABLE:
+    st.info(websocket_status)
+else:
+    st.warning(websocket_status)
 
 # Style for horizontal navigation
 st.markdown("""
@@ -138,7 +172,7 @@ project_path = get_project_path()
 # Constants
 OLLAMA_API_URL = "http://100.115.243.42:11434/api"
 COMFYUI_IMAGE_API_URL = "http://100.115.243.42:8000"
-COMFYUI_VIDEO_API_URL = "http://100.86.185.76:8000"
+COMFYUI_VIDEO_API_URL = "http://100.115.243.42:8000"
 JSON_TEMPLATES = {
     "image": {
         "default": "app/image_homepc.json",
@@ -188,6 +222,8 @@ if "batch_process_status" not in st.session_state:
         "prompt_ids": {},
         "errors": {}
     }
+if "debug_info" not in st.session_state:
+    st.session_state.debug_info = []
 
 # Function to load saved script and segments# Function to load saved script and segments (for B-Roll only)
 def load_script_data():
@@ -393,96 +429,247 @@ def prepare_comfyui_workflow(template_file, prompt, negative_prompt, resolution=
 # Function to submit job to ComfyUI
 def submit_comfyui_workflow(workflow):
     """
-    Submit a workflow to ComfyUI and return a standardized result
+    Submit a workflow to ComfyUI server.
     
     Args:
-        workflow: The prepared ComfyUI workflow to submit
+        workflow: The ComfyUI workflow to submit
         
     Returns:
-        dict: Result with status and prompt_id fields
+        Dictionary with prompt_id if successful, error message if failed
     """
+    # If the WebSocket client is available, use it
+    if COMFYUI_WEBSOCKET_AVAILABLE:
+        try:
+            # Determine which API URL to use based on the workflow type
+            api_url = COMFYUI_VIDEO_API_URL
+            
+            # Log the workflow submission
+            st.session_state.debug_info.append(f"Submitting workflow to {api_url} using WebSocket client")
+            logger.info(f"Submitting workflow to {api_url} using WebSocket client")
+            
+            # Submit the workflow
+            prompt_id = submit_workflow(
+                workflow,
+                server_url=api_url,
+                extra_data={"source": "ai_money_printer"}
+            )
+            
+            if prompt_id:
+                st.session_state.debug_info.append(f"Workflow submitted successfully. Prompt ID: {prompt_id}")
+                logger.info(f"Workflow submitted successfully. Prompt ID: {prompt_id}")
+                return {
+                    "status": "success",
+                    "prompt_id": prompt_id
+                }
+            else:
+                error_msg = "Failed to submit workflow: No prompt ID returned"
+                st.session_state.debug_info.append(error_msg)
+                logger.error(error_msg)
+                return {
+                    "status": "error",
+                    "error": error_msg
+                }
+                
+        except Exception as e:
+            error_msg = f"Error submitting workflow: {str(e)}"
+            st.session_state.debug_info.append(error_msg)
+            logger.error(error_msg)
+            return {
+                "status": "error",
+                "error": error_msg
+            }
+    
+    # Fallback to the old HTTP API method
     try:
-        # Validate the workflow
-        if not workflow:
-            return {"status": "error", "message": "Invalid workflow - cannot submit"}
+        # Create unique client_id for this session
+        client_id = str(uuid.uuid4())
         
-        # Use the correct ComfyUI server URL
+        # Prepare data
+        data = {
+            "prompt": workflow,
+            "client_id": client_id
+        }
+        
+        # Convert to JSON
+        json_data = json.dumps(data).encode('utf-8')
+        
+        # Determine which API URL to use based on the workflow type
         api_url = COMFYUI_VIDEO_API_URL
-        print(f"Submitting job to ComfyUI at: {api_url}")
         
-        # Submit the workflow
-        response = requests.post(f"{api_url}/prompt", json=workflow, timeout=30)
+        # Log the workflow submission
+        st.session_state.debug_info.append(f"Submitting workflow to {api_url} using HTTP API")
+        logger.info(f"Submitting workflow to {api_url} using HTTP API")
+        
+        # Send request
+        response = requests.post(f"{api_url}/prompt", data=json_data)
         
         if response.status_code == 200:
             result = response.json()
-            print(f"Job submitted successfully. Response: {result}")
-            
-            # Extract the prompt_id from the response
-            if "prompt_id" in result:
-                prompt_id = result["prompt_id"]
-                
-                # Save the prompt_id for tracking
-                if "broll_fetch_ids" not in st.session_state:
-                    st.session_state.broll_fetch_ids = {}
-                
-                # Set up progress tracking
-                tracker = start_comfyui_tracking(prompt_id, api_url)
-                if "active_trackers" not in st.session_state:
-                    st.session_state.active_trackers = []
-                st.session_state.active_trackers.append(tracker)
-                
+            prompt_id = result.get("prompt_id")
+            if prompt_id:
+                st.session_state.debug_info.append(f"Workflow submitted successfully. Prompt ID: {prompt_id}")
+                logger.info(f"Workflow submitted successfully. Prompt ID: {prompt_id}")
                 return {
                     "status": "success",
-                    "prompt_id": prompt_id,
-                    "message": "Job submitted successfully"
+                    "prompt_id": prompt_id
+                }
+            else:
+                error_msg = "No prompt ID returned"
+                st.session_state.debug_info.append(error_msg)
+                logger.error(error_msg)
+                return {
+                    "status": "error",
+                    "error": error_msg
+                }
+        else:
+            error_msg = f"Error submitting workflow: Status code {response.status_code}, Response: {response.text}"
+            st.session_state.debug_info.append(error_msg)
+            logger.error(error_msg)
+            return {
+                "status": "error",
+                "error": error_msg
+            }
+    except Exception as e:
+        error_msg = f"Error submitting workflow: {str(e)}"
+        st.session_state.debug_info.append(error_msg)
+        logger.error(error_msg)
+        return {
+            "status": "error",
+            "error": error_msg
+        }
+
+def check_comfyui_job_status(api_url, prompt_id):
+    """
+    Check the status of a ComfyUI job.
+    
+    Args:
+        api_url: The ComfyUI API URL
+        prompt_id: The prompt ID to check
+        
+    Returns:
+        Dictionary with status information
+    """
+    # If the WebSocket client is available, use it
+    if COMFYUI_WEBSOCKET_AVAILABLE:
+        try:
+            # Log the status check
+            st.session_state.debug_info.append(f"Checking job status for prompt {prompt_id} using WebSocket client")
+            logger.info(f"Checking job status for prompt {prompt_id} using WebSocket client")
+            
+            # Check the status
+            status_info = check_prompt_status(prompt_id, server_url=api_url)
+            
+            # Log the result
+            status = status_info.get("status", "unknown")
+            st.session_state.debug_info.append(f"Job status: {status}")
+            logger.info(f"Job status: {status}")
+            
+            # Map the status to the expected format
+            if status == "complete":
+                return {
+                    "status": "success",
+                    "data": status_info
+                }
+            elif status == "running" or status == "pending":
+                return {
+                    "status": "processing",
+                    "data": status_info
+                }
+            elif status == "error":
+                return {
+                    "status": "error",
+                    "error": status_info.get("error_message", "Unknown error")
                 }
             else:
                 return {
-                    "status": "error",
-                    "message": f"No prompt_id in response: {result}"
+                    "status": "unknown",
+                    "data": status_info
                 }
-        else:
-            error_message = f"Error submitting job. Status code: {response.status_code}"
-            print(error_message)
-            try:
-                error_detail = response.json()
-                print(f"Response content: {error_detail}")
-            except:
-                error_detail = response.text
-                print(f"Response text: {error_detail}")
-            
+                
+        except Exception as e:
+            error_msg = f"Error checking job status: {str(e)}"
+            st.session_state.debug_info.append(error_msg)
+            logger.error(error_msg)
             return {
                 "status": "error",
-                "message": error_message,
-                "detail": str(error_detail)
+                "error": error_msg
             }
+    
+    # Fallback to the old HTTP API method
+    try:
+        # Log the status check
+        st.session_state.debug_info.append(f"Checking job status for prompt {prompt_id} using HTTP API")
+        logger.info(f"Checking job status for prompt {prompt_id} using HTTP API")
+        
+        # Check the history endpoint first
+        history_url = f"{api_url}/history"
+        history_response = requests.get(history_url)
+        
+        if history_response.status_code == 200:
+            history_data = history_response.json()
+            
+            # Look for the prompt in the history
+            for item in history_data:
+                if item.get("prompt_id") == prompt_id:
+                    # Check if it has outputs, which means it's complete
+                    if "outputs" in item and item["outputs"]:
+                        st.session_state.debug_info.append(f"Job complete. Found in history with outputs.")
+                        logger.info(f"Job complete. Found in history with outputs.")
+                        return {
+                            "status": "success",
+                            "data": item
+                        }
+                    else:
+                        st.session_state.debug_info.append(f"Job still processing. Found in history but no outputs yet.")
+                        logger.info(f"Job still processing. Found in history but no outputs yet.")
+                        return {
+                            "status": "processing",
+                            "data": item
+                        }
+        
+        # If not found in history, check the queue
+        queue_url = f"{api_url}/queue"
+        queue_response = requests.get(queue_url)
+        
+        if queue_response.status_code == 200:
+            queue_data = queue_response.json()
+            
+            # Check the running queue item
+            running_item = queue_data.get("running", {})
+            if running_item and running_item.get("prompt_id") == prompt_id:
+                st.session_state.debug_info.append(f"Job is currently running.")
+                logger.info(f"Job is currently running.")
+                return {
+                    "status": "processing",
+                    "data": running_item
+                }
+            
+            # Check the pending queue items
+            for item in queue_data.get("pending", []):
+                if item.get("prompt_id") == prompt_id:
+                    st.session_state.debug_info.append(f"Job is pending in queue.")
+                    logger.info(f"Job is pending in queue.")
+                    return {
+                        "status": "processing",
+                        "data": item
+                    }
+        
+        # If we get here, the prompt ID wasn't found in history or queue
+        st.session_state.debug_info.append(f"Job not found in history or queue.")
+        logger.warning(f"Job not found in history or queue.")
+        return {
+            "status": "unknown",
+            "error": "Job not found in history or queue"
+        }
+        
     except Exception as e:
-        error_message = f"Exception while submitting job: {str(e)}"
-        print(error_message)
+        error_msg = f"Error checking job status: {str(e)}"
+        st.session_state.debug_info.append(error_msg)
+        logger.error(error_msg)
         return {
             "status": "error",
-            "message": error_message
+            "error": error_msg
         }
-
-# Function to check ComfyUI job status
-def check_comfyui_job_status(api_url, prompt_id):
-    """
-    Check the status of a ComfyUI job
-    """
-    try:
-        # Use the correct ComfyUI server URL
-        api_url = "http://100.115.243.42:8000"
-        print(f"Checking job status at: {api_url}/history/{prompt_id}")
-        
-        response = requests.get(f"{api_url}/history/{prompt_id}", timeout=30)
-        if response.status_code == 200:
-            return response.json()
-        else:
-            print(f"Error checking job status. Status code: {response.status_code}")
-            return None
-    except Exception as e:
-        print(f"Error checking job status: {str(e)}")
-        return None
 
 # Function to get file from ComfyUI node
 def get_comfyui_file(api_url, filename, node_id=""):
@@ -629,6 +816,73 @@ def fetch_comfyui_content_by_id(api_url, prompt_id, max_retries=3, retry_delay=5
     print(f"\n=== Fetching content for prompt_id: {prompt_id} ===")
     print(f"API URL: {api_url}")
     
+    # If the WebSocket client is available, use it
+    if COMFYUI_WEBSOCKET_AVAILABLE:
+        try:
+            # Check job status
+            print(f"Checking job status using WebSocket client")
+            status_info = check_prompt_status(prompt_id, server_url=api_url)
+            
+            print(f"Job status: {status_info['status']}")
+            
+            if status_info["status"] == "complete":
+                # Get the full prompt ID if it was a partial match
+                full_prompt_id = status_info.get("prompt_id", prompt_id)
+                if full_prompt_id != prompt_id:
+                    print(f"Found full prompt ID: {full_prompt_id}")
+                    prompt_id = full_prompt_id
+                
+                # Get output files
+                print(f"Getting output files")
+                output_dir = Path(tempfile.mkdtemp())
+                output_paths = get_output_images(
+                    prompt_id,
+                    server_url=api_url,
+                    output_dir=output_dir
+                )
+                
+                if output_paths:
+                    print(f"Found {len(output_paths)} output files")
+                    
+                    # Return the first output file
+                    output_path = output_paths[0]
+                    with open(output_path, "rb") as f:
+                        content = f.read()
+                    
+                    # Determine file extension
+                    file_extension = os.path.splitext(output_path)[1].lower()
+                    if not file_extension:
+                        file_extension = ".mp4"  # Default to mp4 if no extension
+                    
+                    # Clean up temporary directory
+                    shutil.rmtree(output_dir, ignore_errors=True)
+                    
+                    return {
+                        "status": "success",
+                        "content": content,
+                        "file_extension": file_extension,
+                        "prompt_id": prompt_id
+                    }
+                else:
+                    error_msg = "No output files found for this job"
+                    print(error_msg)
+                    return {"status": "error", "message": error_msg}
+            
+            elif status_info["status"] == "running" or status_info["status"] == "pending":
+                return {"status": "processing", "message": f"Job is still {status_info['status']}"}
+            
+            else:
+                error_msg = f"Job status is {status_info['status']}"
+                print(error_msg)
+                return {"status": "error", "message": error_msg}
+                
+        except Exception as e:
+            error_msg = f"Error using WebSocket client: {str(e)}"
+            print(error_msg)
+            # Fall through to the traditional method
+            print("Falling back to traditional method")
+    
+    # Traditional method using direct HTTP requests
     def make_request(url, method='get', timeout=60, **kwargs):
         """Helper function to make requests with retry logic"""
         for attempt in range(max_retries):
@@ -654,7 +908,7 @@ def fetch_comfyui_content_by_id(api_url, prompt_id, max_retries=3, retry_delay=5
     
     try:
         # First check if the job exists in history
-        history_url = f"{api_url}/history/{prompt_id}"
+        history_url = f"{api_url}/history"
         print(f"\n1. Checking history at: {history_url}")
         
         history_response = make_request(history_url, timeout=60)
@@ -665,131 +919,112 @@ def fetch_comfyui_content_by_id(api_url, prompt_id, max_retries=3, retry_delay=5
             print(error_msg)
             return {"status": "error", "message": error_msg}
             
-        job_data = history_response.json()
-        print(f"Job data keys: {list(job_data.keys())}")
+        history_data = history_response.json()
         
-        if prompt_id not in job_data:
+        # Handle both dictionary and list formats
+        job_data = None
+        if isinstance(history_data, dict):
+            # Look for exact or partial match in the keys
+            for item_id, item_data in history_data.items():
+                if item_id == prompt_id or item_id.startswith(prompt_id) or prompt_id.startswith(item_id):
+                    print(f"Found matching prompt ID in history: {item_id}")
+                    job_data = item_data
+                    prompt_id = item_id  # Use the full ID
+                    break
+        elif isinstance(history_data, list):
+            for item in history_data:
+                if isinstance(item, dict) and "prompt_id" in item:
+                    item_id = item["prompt_id"]
+                    if item_id == prompt_id or item_id.startswith(prompt_id) or prompt_id.startswith(item_id):
+                        print(f"Found matching prompt ID in history: {item_id}")
+                        job_data = item
+                        prompt_id = item_id  # Use the full ID
+                        break
+        
+        if not job_data:
             error_msg = f"Prompt ID '{prompt_id}' not found in history. The job may have been deleted or hasn't been submitted yet."
             print(error_msg)
-            st.warning(error_msg)
-            return {"status": "error", "message": "Prompt ID not found in history"}
-            
-        # Get the job data
-        job_info = job_data[prompt_id]
-        print(f"\n2. Job info keys: {list(job_info.keys())}")
-        
-        # Check if job has outputs
-        if "outputs" in job_info and job_info["outputs"]:
-            outputs = job_info["outputs"]
-            print(f"\n3. Output nodes: {list(outputs.keys())}")
-            
-            # Iterate through output nodes to find image/video output
-            for node_id, node_data in outputs.items():
-                print(f"\n4. Processing node: {node_id}")
-                print(f"Node data keys: {list(node_data.keys())}")
-                
-                # Check for images
-                if "images" in node_data:
-                    print(f"Found {len(node_data['images'])} images")
-                    for image_data in node_data["images"]:
-                        filename = image_data["filename"]
-                        file_type = image_data.get("type", "image")
-                        print(f"Processing image: {filename} (type: {file_type})")
-                        
-                        # Download the file
-                        file_url = f"{api_url}/view?filename={filename}"
-                        print(f"Downloading from: {file_url}")
-                        
-                        content_response = make_request(file_url, timeout=120)
-                        if content_response.status_code == 200:
-                            print(f"Successfully downloaded image: {filename}")
-                            return {
-                                "status": "success",
-                                "content": content_response.content,
-                                "filename": filename,
-                                "prompt_id": prompt_id,
-                                "type": file_type
-                            }
-                        else:
-                            print(f"Failed to download image. Status code: {content_response.status_code}")
-                
-                # Check for videos and other media files
-                for media_type in ["videos", "gifs", "mp4"]:
-                    if media_type in node_data:
-                        print(f"Found {len(node_data[media_type])} {media_type}")
-                        for media_item in node_data[media_type]:
-                            filename = media_item.get("filename", "")
-                            if filename:
-                                # Determine actual file type from extension
-                                file_ext = os.path.splitext(filename)[1].lower()
-                                actual_type = "video" if file_ext == ".mp4" else media_type
-                                
-                                print(f"Processing {actual_type}: {filename}")
-                                
-                                # Download the file
-                                file_url = f"{api_url}/view?filename={filename}"
-                                print(f"Downloading from: {file_url}")
-                                
-                                content_response = make_request(file_url, timeout=180)
-                                if content_response.status_code == 200:
-                                    print(f"Successfully downloaded {actual_type}: {filename}")
-                                    return {
-                                        "status": "success",
-                                        "content": content_response.content,
-                                        "filename": filename,
-                                        "prompt_id": prompt_id,
-                                        "type": actual_type
-                                    }
-                                else:
-                                    print(f"Failed to download {actual_type}. Status code: {content_response.status_code}")
-            
-            # Check for AnimateDiff outputs
-            print("\n5. Checking for AnimateDiff outputs")
-            possible_files = [f"animation_{i:05d}.mp4" for i in range(1, 10)]
-            for filename in possible_files:
-                try:
-                    file_url = f"{api_url}/view?filename={filename}"
-                    print(f"Checking: {file_url}")
-                    
-                    response = make_request(file_url, method='head', timeout=30)
-                    if response.status_code == 200:
-                        print(f"Found AnimateDiff file: {filename}")
-                        content_response = make_request(file_url, timeout=180)
-                        if content_response.status_code == 200:
-                            print(f"Successfully downloaded AnimateDiff output: {filename}")
-                            return {
-                                "status": "success",
-                                "content": content_response.content,
-                                "filename": filename,
-                                "prompt_id": prompt_id,
-                                "type": "video",
-                                "note": "Found using filename pattern"
-                            }
-                except Exception as e:
-                    print(f"Error checking AnimateDiff file {filename}: {str(e)}")
-            
-            # If we got here, we couldn't find any output files
-            error_msg = "No output file found in job results"
-            print(error_msg)
             return {"status": "error", "message": error_msg}
-        else:
-            # Job is still processing
-            status_msg = "Job is still processing"
-            print(status_msg)
-            return {"status": "processing", "message": status_msg}
+        
+        # Get job info
+        job_info = job_data[prompt_id]
+        
+        # Check if job completed
+        outputs = job_info.get("outputs", {})
+        if not outputs:
+            return {
+                "status": "processing",
+                "message": "Job still processing"
+            }
+        
+        # Find output file
+        for node_id, node_data in outputs.items():
+            # Check for images
+            if "images" in node_data:
+                for image_data in node_data["images"]:
+                    filename = image_data.get("filename", "")
+                    
+                    if filename:
+                        # Download file
+                        file_url = f"{api_url}/view?filename={filename}"
+                        content_response = requests.get(file_url, timeout=30)
+                        
+                        if content_response.status_code == 200:
+                            return {
+                                "status": "success",
+                                "content": content_response.content,
+                                "filename": filename,
+                                "type": "image"
+                            }
             
-    except requests.exceptions.Timeout as e:
-        error_msg = f"Timeout while fetching content after {max_retries} attempts. The server may be busy. Error: {str(e)}"
-        print(error_msg)
-        return {"status": "error", "message": error_msg}
-    except requests.exceptions.ConnectionError as e:
-        error_msg = f"Could not connect to ComfyUI API at {api_url} after {max_retries} attempts. The server might be down. Error: {str(e)}"
-        print(error_msg)
-        return {"status": "error", "message": error_msg}
+            # Check for videos
+            for media_type in ["videos", "gifs"]:
+                if media_type in node_data:
+                    for media_item in node_data[media_type]:
+                        filename = media_item.get("filename", "")
+                        
+                        if filename:
+                            # Download file
+                            file_url = f"{api_url}/view?filename={filename}"
+                            content_response = requests.get(file_url, timeout=60)
+                            
+                            if content_response.status_code == 200:
+                                return {
+                                    "status": "success",
+                                    "content": content_response.content,
+                                    "filename": filename,
+                                    "type": "video"
+                                }
+        
+        # If we get here, try looking for AnimateDiff pattern files
+        possible_files = [f"animation_{i:05d}.mp4" for i in range(1, 10)]
+        for filename in possible_files:
+            file_url = f"{api_url}/view?filename={filename}"
+            try:
+                response = requests.head(file_url, timeout=5)
+                if response.status_code == 200:
+                    content_response = requests.get(file_url, timeout=60)
+                    if content_response.status_code == 200:
+                        return {
+                            "status": "success",
+                            "content": content_response.content,
+                            "filename": filename,
+                            "type": "video"
+                        }
+            except Exception as e:
+                print(f"Error checking alternative file {filename}: {str(e)}")
+        
+        return {
+            "status": "error",
+            "message": "No output file found"
+        }
+    
     except Exception as e:
-        error_msg = f"Error fetching content: {str(e)}"
-        print(error_msg)
-        return {"status": "error", "message": error_msg}
+        st.error(f"Error fetching content: {str(e)}")
+        return {
+            "status": "error",
+            "message": f"Error fetching content: {str(e)}"
+        }
 
 # Function to save media content to file
 def save_media_content(content, segment_type, segment_id, file_extension):
@@ -1079,9 +1314,9 @@ with clear_cache_col2:
         
         # Recreate broll_fetch_ids with the new IDs
         st.session_state.broll_fetch_ids = {
-            "segment_0": "ca26f439-3be6-4897-9e8a-d56448f4bb9a",  # SEG1
-            "segment_1": "15027251-6c76-4aee-b5d1-adddfa591257",  # SEG2
-            "segment_2": "8f34773a-a113-494b-be8a-e5ecd241a8a4"   # SEG3
+            "segment_0": "ca26f439-3be6-4897-9e8a-d56448f4bb9a",
+            "segment_1": "15027251-6c76-4aee-b5d1-adddfa591257", 
+            "segment_2": "8f34773a-a113-494b-be8a-e5ecd241a8a4"
         }
         
         # Clear any keys that might have the old B-roll IDs cached
@@ -2057,8 +2292,9 @@ with st.expander("🧹 Cache Management"):
 def load_workflow(workflow_type="video"):
     """Load workflow from JSON file"""
     try:
-        # Get the application root directory
+        # Get the application root directory - more reliable approach
         app_dir = Path(__file__).parent.parent.absolute()
+        project_root = app_dir.parent  # Go up one more level to reach project root
         
         if workflow_type == "video":
             workflow_file = "wan.json"
@@ -2069,17 +2305,14 @@ def load_workflow(workflow_type="video"):
         
         # Check multiple locations for the workflow file
         possible_paths = [
-            Path(workflow_file),                   # Current directory
-            app_dir / workflow_file,               # Application directory
-            app_dir / "app" / workflow_file,       # App subdirectory
+            app_dir / workflow_file,               # Application directory (app/)
+            project_root / workflow_file,          # Project root directory 
             app_dir / "workflows" / workflow_file, # Workflows subdirectory
-            Path(__file__).parent / workflow_file,  # Parent directory (pages directory)
-            Path(__file__).parent / "workflows" / workflow_file,  # Workflows in pages directory
+            project_root / "app" / workflow_file,  # App directory in project root
             Path(os.getcwd()) / workflow_file,     # Current working directory
-            Path(os.getcwd()) / "workflows" / workflow_file,  # Workflows in current working directory
+            Path(os.getcwd()) / "app" / workflow_file, # App in current working directory
             Path("/Users/dawarazhar/Desktop/AI-Money-Printer-Shorts/app") / workflow_file,  # Absolute app path
             Path("/Users/dawarazhar/Desktop/AI-Money-Printer-Shorts") / workflow_file,      # Project root
-            Path("/Users/dawarazhar/Desktop/AI-Money-Printer-Shorts/app/workflows") / workflow_file,  # App workflows folder
         ]
         
         # Also check fallback file
@@ -2089,54 +2322,224 @@ def load_workflow(workflow_type="video"):
         # Try each possible path
         for path in possible_paths:
             if path.exists():
+                print(f"Found workflow file at: {path}")
                 with open(path, "r") as f:
                     workflow = json.load(f)
+                    if not workflow:
+                        print(f"⚠️ Warning: Workflow file {path} exists but is empty or invalid JSON")
+                        continue
+                        
+                    # Check if workflow has nodes
+                    if len(workflow) == 0:
+                        print(f"⚠️ Warning: Workflow file {path} has no nodes")
+                        continue
+                        
                     print(f"✅ Loaded {workflow_type} workflow from {path} with {len(workflow)} nodes")
+                    
+                    # Create a simplified clone of the workflow
+                    try:
+                        # Identify the key nodes we need for the workflow
+                        text_nodes = [k for k in workflow.keys() 
+                                    if "class_type" in workflow[k] and 
+                                    workflow[k]["class_type"] == "CLIPTextEncode"]
+                        
+                        if len(text_nodes) >= 2:
+                            print(f"✅ Found {len(text_nodes)} text nodes in workflow")
+                        else:
+                            print(f"⚠️ Warning: Only found {len(text_nodes)} text nodes in workflow, might not work correctly")
+                    except Exception as e:
+                        print(f"⚠️ Warning: Error analyzing workflow structure: {str(e)}")
+                    
                     return workflow
         
-        # If we get here, file wasn't found - create a basic workflow template
-        if workflow_type == "image":
-            # Create a basic image workflow as fallback
-            basic_workflow = {
-                "1": {"class_type": "CLIPTextEncode", "inputs": {"text": ""}},
-                "2": {"class_type": "CLIPTextEncode", "inputs": {"text": ""}},
-                "3": {"class_type": "EmptyLatentImage", "inputs": {"width": 1080, "height": 1920}},
-                "4": {"class_type": "KSampler", "inputs": {"seed": 12345}}
-            }
-            print(f"⚠️ Created basic {workflow_type} workflow template as fallback")
-            return basic_workflow
+        # If we get here, file wasn't found or all found files were invalid
+        print(f"❌ Error: No valid workflow files found for {workflow_type}")
+        print(f"Searched paths: {[str(p) for p in possible_paths]}")
+        
+        # Create a standardized workflow that should work with ComfyUI
+        if workflow_type == "video":
+            print(f"⚠️ Creating simplified video workflow as fallback")
+            return create_simplified_video_workflow()
         else:
-            raise FileNotFoundError(f"Workflow file {workflow_file} not found in any of the expected locations")
+            print(f"⚠️ Creating simplified image workflow as fallback")
+            return create_simplified_image_workflow()
             
     except Exception as e:
         st.error(f"Failed to load workflow file: {str(e)}")
+        traceback.print_exc()  # Print the full traceback for debugging
         
-        # Create a basic fallback workflow
-        if workflow_type == "image":
-            basic_workflow = {
-                "1": {"class_type": "CLIPTextEncode", "inputs": {"text": ""}},
-                "2": {"class_type": "CLIPTextEncode", "inputs": {"text": ""}},
-                "3": {"class_type": "EmptyLatentImage", "inputs": {"width": 1080, "height": 1920}},
-                "4": {"class_type": "KSampler", "inputs": {"seed": 12345}}
+        # Create a standardized workflow as fallback
+        if workflow_type == "video":
+            print(f"⚠️ Creating simplified video workflow after error")
+            return create_simplified_video_workflow()
+        else:
+            print(f"⚠️ Creating simplified image workflow after error")
+            return create_simplified_image_workflow()
+
+def create_simplified_image_workflow():
+    """Create a simplified image workflow that works with ComfyUI"""
+    # This is a minimal workflow for generating an image with ComfyUI
+    workflow = {
+        "1": {
+            "class_type": "CLIPTextEncode",
+            "inputs": {
+                "text": "A beautiful scene with mountains and trees",
+                "clip": ["5", 0]
             }
-            print(f"⚠️ Created basic {workflow_type} workflow template as fallback after error")
-            return basic_workflow
-        return None
+        },
+        "2": {
+            "class_type": "CLIPTextEncode",
+            "inputs": {
+                "text": "ugly, blurry, low quality",
+                "clip": ["5", 0]
+            }
+        },
+        "3": {
+            "class_type": "EmptyLatentImage",
+            "inputs": {
+                "width": 1080,
+                "height": 1920,
+                "batch_size": 1
+            }
+        },
+        "4": {
+            "class_type": "KSampler",
+            "inputs": {
+                "seed": 123456789,
+                "steps": 20,
+                "cfg": 7,
+                "sampler_name": "euler_ancestral",
+                "scheduler": "normal",
+                "denoise": 1,
+                "model": ["5", 0],
+                "positive": ["1", 0],
+                "negative": ["2", 0],
+                "latent_image": ["3", 0]
+            }
+        },
+        "5": {
+            "class_type": "CheckpointLoaderSimple",
+            "inputs": {
+                "ckpt_name": "deliberate_v2.safetensors"
+            }
+        },
+        "6": {
+            "class_type": "VAEDecode",
+            "inputs": {
+                "samples": ["4", 0],
+                "vae": ["5", 2]
+            }
+        },
+        "7": {
+            "class_type": "SaveImage",
+            "inputs": {
+                "images": ["6", 0],
+                "filename_prefix": "ComfyUI"
+            }
+        }
+    }
+    return workflow
+
+def create_simplified_video_workflow():
+    """Create a simplified video workflow that works with ComfyUI"""
+    # This is a minimal workflow for generating a video with ComfyUI
+    workflow = {
+        "1": {
+            "class_type": "CLIPTextEncode",
+            "inputs": {
+                "text": "A beautiful scene with mountains and trees",
+                "clip": ["5", 0]
+            }
+        },
+        "2": {
+            "class_type": "CLIPTextEncode",
+            "inputs": {
+                "text": "ugly, blurry, low quality",
+                "clip": ["5", 0]
+            }
+        },
+        "3": {
+            "class_type": "KSampler",
+            "inputs": {
+                "seed": 123456789,
+                "steps": 20,
+                "cfg": 7,
+                "sampler_name": "euler_ancestral",
+                "scheduler": "normal",
+                "denoise": 1,
+                "model": ["5", 0],
+                "positive": ["1", 0],
+                "negative": ["2", 0],
+                "latent_image": ["4", 0]
+            }
+        },
+        "4": {
+            "class_type": "EmptyLatentVideo",
+            "inputs": {
+                "width": 1080,
+                "height": 1920,
+                "batch_size": 1,
+                "length": 24,
+                "fps": 8
+            }
+        },
+        "5": {
+            "class_type": "CheckpointLoaderSimple",
+            "inputs": {
+                "ckpt_name": "deliberate_v2.safetensors"
+            }
+        },
+        "6": {
+            "class_type": "VAEDecode",
+            "inputs": {
+                "samples": ["3", 0],
+                "vae": ["5", 2]
+            }
+        },
+        "7": {
+            "class_type": "SaveAnimation",
+            "inputs": {
+                "images": ["6", 0],
+                "filename_prefix": "ComfyUI",
+                "fps": 8,
+                "format": "mp4",
+                "quality": 95
+            }
+        }
+    }
+    return workflow
 
 # Function to modify workflow with custom parameters
 def modify_workflow(workflow, params):
     """Modify the loaded workflow JSON with custom parameters"""
     try:
         if workflow is None:
+            print("❌ Error: Workflow is None, cannot modify")
             return None
             
         # Create a deep copy to avoid modifying the original
-        modified_workflow = workflow.copy()
+        modified_workflow = copy.deepcopy(workflow)
+        
+        # Debug - display params being applied
+        print(f"Workflow modification params: {params}")
+        
+        # Make sure prompt is not empty
+        prompt = params.get("prompt", "")
+        negative_prompt = params.get("negative_prompt", "")
+        
+        if not prompt:
+            print("⚠️ Warning: Empty prompt provided, using default")
+            prompt = "A beautiful scene with mountains and trees"
+        
+        if not negative_prompt:
+            negative_prompt = "ugly, blurry, low quality"
         
         # Find text input nodes (for prompt) - search for nodes with CLIPTextEncode class_type
         text_nodes = [k for k in modified_workflow.keys() 
                      if "class_type" in modified_workflow[k] and 
                      modified_workflow[k]["class_type"] == "CLIPTextEncode"]
+        
+        print(f"Found {len(text_nodes)} CLIPTextEncode nodes: {text_nodes}")
         
         # Find negative text nodes - typically the second CLIPTextEncode node
         if len(text_nodes) >= 2:
@@ -2146,18 +2549,47 @@ def modify_workflow(workflow, params):
             
             # Set prompts
             if "inputs" in modified_workflow[pos_node_id]:
-                modified_workflow[pos_node_id]["inputs"]["text"] = params.get("prompt", "")
-                print(f"Set prompt in node {pos_node_id}")
+                modified_workflow[pos_node_id]["inputs"]["text"] = prompt
+                print(f"Set positive prompt in node {pos_node_id}: {prompt[:50]}...")
                 
             if "inputs" in modified_workflow[neg_node_id]:
-                modified_workflow[neg_node_id]["inputs"]["text"] = params.get("negative_prompt", "")
-                print(f"Set negative prompt in node {neg_node_id}")
+                modified_workflow[neg_node_id]["inputs"]["text"] = negative_prompt
+                print(f"Set negative prompt in node {neg_node_id}: {negative_prompt[:50]}...")
+        elif len(text_nodes) == 1:
+            # Only one text node - use it for positive prompt
+            pos_node_id = text_nodes[0]
+            
+            if "inputs" in modified_workflow[pos_node_id]:
+                modified_workflow[pos_node_id]["inputs"]["text"] = prompt
+                print(f"Set positive prompt in single node {pos_node_id}: {prompt[:50]}...")
+        else:
+            print("❌ Error: No text input nodes found in workflow")
+            # This is a serious issue - we'll create a completely new workflow
+            if params.get("video", True):
+                print("Creating new video workflow with prompt")
+                workflow = create_simplified_video_workflow()
+                # Apply prompt directly to the new workflow
+                workflow["1"]["inputs"]["text"] = prompt
+                workflow["2"]["inputs"]["text"] = negative_prompt
+                print(f"Created new video workflow with prompt: {prompt[:50]}...")
+                return workflow
+            else:
+                print("Creating new image workflow with prompt")
+                workflow = create_simplified_image_workflow()
+                # Apply prompt directly to the new workflow
+                workflow["1"]["inputs"]["text"] = prompt
+                workflow["2"]["inputs"]["text"] = negative_prompt
+                print(f"Created new image workflow with prompt: {prompt[:50]}...")
+                return workflow
         
         # Find empty latent image nodes for dimensions
-        latent_nodes = [k for k in modified_workflow.keys() 
-                       if "class_type" in modified_workflow[k] and 
-                       (modified_workflow[k]["class_type"] == "EmptyLatentImage" or
-                        modified_workflow[k]["class_type"] == "EmptyLatentVideo")]
+        latent_nodes = []
+        for k, node in modified_workflow.items():
+            if "class_type" in node:
+                if node["class_type"] == "EmptyLatentImage":
+                    latent_nodes.append(k)
+                elif node["class_type"] == "EmptyLatentVideo":
+                    latent_nodes.append(k)
         
         if latent_nodes:
             latent_node_id = latent_nodes[0]
@@ -2166,7 +2598,7 @@ def modify_workflow(workflow, params):
                     modified_workflow[latent_node_id]["inputs"]["width"] = params.get("width", 1080)
                 if "height" in modified_workflow[latent_node_id]["inputs"]:
                     modified_workflow[latent_node_id]["inputs"]["height"] = params.get("height", 1920)
-                print(f"Set dimensions in node {latent_node_id}")
+                print(f"Set dimensions in node {latent_node_id}: {params.get('width', 1080)}x{params.get('height', 1920)}")
         
         # Find sampler nodes for seed
         sampler_nodes = [k for k in modified_workflow.keys() 
@@ -2177,14 +2609,87 @@ def modify_workflow(workflow, params):
         if sampler_nodes:
             sampler_node_id = sampler_nodes[0]
             if "inputs" in modified_workflow[sampler_node_id] and "seed" in modified_workflow[sampler_node_id]["inputs"]:
-                modified_workflow[sampler_node_id]["inputs"]["seed"] = params.get("seed", random.randint(1, 999999999))
-                print(f"Set seed in node {sampler_node_id}")
+                seed_value = params.get("seed", random.randint(1, 999999999))
+                modified_workflow[sampler_node_id]["inputs"]["seed"] = seed_value
+                print(f"Set seed in node {sampler_node_id}: {seed_value}")
+        
+        # Ensure the complete workflow has been properly updated
+        # Look for any places where clip connections need to be updated
+        for node_id, node in modified_workflow.items():
+            if "inputs" in node:
+                for input_name, input_value in node["inputs"].items():
+                    # Check for cross-node references
+                    if isinstance(input_value, list) and len(input_value) == 2:
+                        # This is a connection - make sure it's valid
+                        target_node_id, output_idx = input_value
+                        if isinstance(target_node_id, str) and target_node_id not in modified_workflow:
+                            print(f"⚠️ Warning: Node {node_id} input {input_name} references non-existent node {target_node_id}")
+                            # You could try to fix these connections if needed
+        
+        # Additional validation before returning
+        if not validate_workflow(modified_workflow):
+            print("⚠️ Warning: Workflow validation failed. Using fallback workflow.")
+            if "video" in params and params["video"]:
+                return create_simplified_video_workflow()
+            else:
+                return create_simplified_image_workflow()
         
         return modified_workflow
         
     except Exception as e:
         print(f"Error modifying workflow: {str(e)}")
-        return None
+        traceback.print_exc()
+        # On any exception, return a failsafe workflow
+        if "video" in params and params["video"]:
+            workflow = create_simplified_video_workflow()
+        else:
+            workflow = create_simplified_image_workflow()
+            
+        # Apply the prompt directly to the new workflow
+        prompt = params.get("prompt", "A beautiful scene")
+        negative_prompt = params.get("negative_prompt", "ugly, blurry, low quality")
+        workflow["1"]["inputs"]["text"] = prompt
+        workflow["2"]["inputs"]["text"] = negative_prompt
+        return workflow
+
+def validate_workflow(workflow):
+    """Validate that the workflow has all the required components"""
+    try:
+        # Check for required node types
+        required_classes = {
+            "CLIPTextEncode": 0,
+            "KSampler": 0
+        }
+        
+        # Either EmptyLatentImage or EmptyLatentVideo should be present
+        latent_found = False
+        
+        for node_id, node in workflow.items():
+            if "class_type" in node:
+                if node["class_type"] in required_classes:
+                    required_classes[node["class_type"]] += 1
+                elif node["class_type"] in ["EmptyLatentImage", "EmptyLatentVideo"]:
+                    latent_found = True
+        
+        # We need at least one text encode node
+        if required_classes["CLIPTextEncode"] < 1:
+            print("❌ Workflow missing CLIPTextEncode node")
+            return False
+            
+        # We need a sampler
+        if required_classes["KSampler"] < 1:
+            print("❌ Workflow missing KSampler node")
+            return False
+            
+        # We need a latent source
+        if not latent_found:
+            print("❌ Workflow missing EmptyLatentImage or EmptyLatentVideo node")
+            return False
+            
+        return True
+    except Exception as e:
+        print(f"Error validating workflow: {str(e)}")
+        return False
 
 # Function to fetch content by prompt ID
 def fetch_content_by_id(prompt_id, api_url):
@@ -2652,220 +3157,223 @@ def main():
 
     st.info(f"B-Roll type: **{broll_type.upper()}**")
     
-    # Simple section for fetching existing B-Roll by ID
-    st.subheader("Fetch Existing B-Roll Content")
+    # Create tabs to organize content
+    broll_tabs = st.tabs(["Content Generation", "Status & Preview"])
     
-    # Get B-Roll segments
-    broll_segments = [segment for segment in st.session_state.segments if segment["type"] == "B-Roll"]
-    
-    if not broll_segments:
-        st.warning("No B-Roll segments found. Please complete the A-Roll Transcription step first.")
-        return
-    
-    # Show simplified ID input form
-    for i, segment in enumerate(broll_segments):
-        segment_id = f"segment_{i}"
-        col1, col2 = st.columns([4, 1])
+    with broll_tabs[0]:
+        # Simple section for fetching existing B-Roll by ID
+        st.subheader("Fetch Existing B-Roll Content")
         
-        with col1:
-            b_roll_id = st.text_input(
-                f"B-Roll ID for Segment {i+1}",
-                value=st.session_state.broll_fetch_ids.get(segment_id, ""),
-                key=f"broll_id_segment_{segment_id}_{int(time.time())}"
-            )
-            st.session_state.broll_fetch_ids[segment_id] = b_roll_id
+        # Get B-Roll segments
+        broll_segments = [segment for segment in st.session_state.segments if segment["type"] == "B-Roll"]
+        
+        if not broll_segments:
+            st.warning("No B-Roll segments found. Please complete the A-Roll Transcription step first.")
+            return
+        
+        # Show simplified ID input form
+        for i, segment in enumerate(broll_segments):
+            segment_id = f"segment_{i}"
+            col1, col2 = st.columns([4, 1])
             
-        with col2:
-            if st.button("Reset", key=f"reset_btn_{segment_id}"):
-                # Default IDs if needed
-                default_ids = {
-                    "segment_0": "ca26f439-3be6-4897-9e8a-d56448f4bb9a",
-                    "segment_1": "15027251-6c76-4aee-b5d1-adddfa591257"
-                }
-                st.session_state.broll_fetch_ids[segment_id] = default_ids.get(segment_id, "")
-                st.rerun()
-    
-    # Fetch button
-    if st.button("🔄 Fetch B-Roll Content", type="primary"):
-        with st.spinner("Fetching content from provided IDs..."):
-            fetch_success = False
-            
-            # Count the number of IDs we have
-            broll_id_count = sum(1 for id in st.session_state.broll_fetch_ids.values() if id)
-            
-            st.info(f"Found {broll_id_count} B-Roll IDs to fetch")
-                
-            # Process B-Roll IDs
-            for segment_id, prompt_id in st.session_state.broll_fetch_ids.items():
-                if not prompt_id:
-                    continue
-                
-                # Set status to "fetching" to show progress
-                update_content_status(
-                    segment_id=segment_id,
-                    segment_type="broll",
-                    status="fetching",
-                    message=f"Fetching content for ID: {prompt_id}",
-                    prompt_id=prompt_id
+            with col1:
+                b_roll_id = st.text_input(
+                    f"B-Roll ID for Segment {i+1}",
+                    value=st.session_state.broll_fetch_ids.get(segment_id, ""),
+                    key=f"broll_id_segment_{segment_id}_{int(time.time())}"
                 )
+                st.session_state.broll_fetch_ids[segment_id] = b_roll_id
                 
-                # Get the appropriate API URL - assuming video API
-                api_url = COMFYUI_VIDEO_API_URL
+            with col2:
+                if st.button("Reset", key=f"reset_btn_{segment_id}"):
+                    # Default IDs if needed
+                    default_ids = {
+                        "segment_0": "ca26f439-3be6-4897-9e8a-d56448f4bb9a",
+                        "segment_1": "15027251-6c76-4aee-b5d1-adddfa591257"
+                    }
+                    st.session_state.broll_fetch_ids[segment_id] = default_ids.get(segment_id, "")
+                    st.rerun()
+        
+        # Fetch button
+        if st.button("🔄 Fetch B-Roll Content", type="primary", key="fetch_broll_button"):
+            with st.spinner("Fetching content from provided IDs..."):
+                fetch_success = False
                 
-                # Fetch the content
-                result = fetch_comfyui_content_by_id(api_url, prompt_id)
+                # Count the number of IDs we have
+                broll_id_count = sum(1 for id in st.session_state.broll_fetch_ids.values() if id)
                 
-                if result["status"] == "success":
-                    # Determine file extension based on content type
-                    content_type = result.get("type", "image")
-                    file_ext = "mp4" if content_type == "video" else "png"
+                st.info(f"Found {broll_id_count} B-Roll IDs to fetch")
                     
-                    # Save the fetched content
-                    file_path = save_media_content(
-                        result["content"], 
-                        "broll",
-                        segment_id,
-                        file_ext
+                # Process B-Roll IDs
+                for segment_id, prompt_id in st.session_state.broll_fetch_ids.items():
+                    if not prompt_id:
+                        continue
+                    
+                    # Set status to "fetching" to show progress
+                    update_content_status(
+                        segment_id=segment_id,
+                        segment_type="broll",
+                        status="fetching",
+                        message=f"Fetching content for ID: {prompt_id}",
+                        prompt_id=prompt_id
                     )
                     
-                    # Update content status
-                    update_content_status(
-                        segment_id=segment_id,
-                        segment_type="broll",
-                        status="complete",
-                        file_path=file_path,
-                        prompt_id=prompt_id,
-                        content_type=content_type,
-                        timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    )
-                    fetch_success = True
-                    st.success(f"Successfully fetched content for segment {segment_id}")
-                elif result["status"] == "processing":
-                    # Content is still being generated
-                    update_content_status(
-                        segment_id=segment_id,
-                        segment_type="broll",
-                        status="waiting",
-                        message="ComfyUI job still processing. Try again later.",
-                        prompt_id=prompt_id,
-                        timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    )
-                    st.warning(f"Content for segment {segment_id} is still processing. Try again later.")
+                    # Get the appropriate API URL - assuming video API
+                    api_url = COMFYUI_VIDEO_API_URL
+                    
+                    # Fetch the content
+                    result = fetch_comfyui_content_by_id(api_url, prompt_id)
+                    
+                    if result["status"] == "success":
+                        # Determine file extension based on content type
+                        content_type = result.get("type", "image")
+                        file_ext = "mp4" if content_type == "video" else "png"
+                        
+                        # Save the fetched content
+                        file_path = save_media_content(
+                            result["content"], 
+                            "broll",
+                            segment_id,
+                            file_ext
+                        )
+                        
+                        # Update content status
+                        update_content_status(
+                            segment_id=segment_id,
+                            segment_type="broll",
+                            status="complete",
+                            file_path=file_path,
+                            prompt_id=prompt_id,
+                            content_type=content_type,
+                            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        )
+                        fetch_success = True
+                        st.success(f"Successfully fetched content for segment {segment_id}")
+                    elif result["status"] == "processing":
+                        # Content is still being generated
+                        update_content_status(
+                            segment_id=segment_id,
+                            segment_type="broll",
+                            status="waiting",
+                            message="ComfyUI job still processing. Try again later.",
+                            prompt_id=prompt_id,
+                            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        )
+                        st.warning(f"Content for segment {segment_id} is still processing. Try again later.")
+                    else:
+                        # Error fetching content
+                        update_content_status(
+                            segment_id=segment_id,
+                            segment_type="broll",
+                            status="error",
+                            message=result.get("message", "Unknown error fetching content"),
+                            prompt_id=prompt_id,
+                            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        )
+                        st.error(f"Error fetching content for segment {segment_id}: {result.get('message', 'Unknown error')}")
+                
+                # Save the updated content status
+                save_content_status()
+                
+                if fetch_success:
+                    st.success("Successfully fetched content from provided IDs!")
                 else:
-                    # Error fetching content
-                    update_content_status(
-                        segment_id=segment_id,
-                        segment_type="broll",
-                        status="error",
-                        message=result.get("message", "Unknown error fetching content"),
-                        prompt_id=prompt_id,
-                        timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    )
-                    st.error(f"Error fetching content for segment {segment_id}: {result.get('message', 'Unknown error')}")
-            
-            # Save the updated content status
-            save_content_status()
-            
-            if fetch_success:
-                st.success("Successfully fetched content from provided IDs!")
-            else:
-                st.warning("No content was fetched. Please check your IDs and try again.")
-    
-    st.divider()
-    
-    # B-Roll generation section
-    st.subheader("Generate B-Roll Content")
-    st.write("Generate new B-Roll video content based on your prompts.")
-    
-    # Create a single button for B-roll generation
-    if st.button("🎨 Generate All B-Roll", type="primary", use_container_width=True):
-        # Capture all required data before starting the processing
-        temp_segments = st.session_state.segments.copy() if hasattr(st.session_state, 'segments') and st.session_state.segments else []
+                    st.warning("No content was fetched. Please check your IDs and try again.")
         
-        # Check how broll_prompts is structured and extract appropriately
-        broll_prompts = {}
-        if hasattr(st.session_state, 'broll_prompts_full') and st.session_state.broll_prompts_full:
-            # First try the full structure that has both prompts and metadata
-            if "prompts" in st.session_state.broll_prompts_full:
-                broll_prompts = st.session_state.broll_prompts_full["prompts"]
-                print(f"Debug - Using prompts from broll_prompts_full structure: {len(broll_prompts)} prompts")
-        elif hasattr(st.session_state, 'broll_prompts'):
-            # Fallback to direct structure
-            if isinstance(st.session_state.broll_prompts, dict):
-                if "prompts" in st.session_state.broll_prompts:
-                    broll_prompts = st.session_state.broll_prompts["prompts"]
-                    print(f"Debug - Using prompts from nested broll_prompts structure: {len(broll_prompts)} prompts")
-                else:
-                    broll_prompts = st.session_state.broll_prompts
-                    print(f"Debug - Using prompts directly from broll_prompts: {len(broll_prompts)} prompts")
-        
-        # Debug log what we found
-        print(f"Debug - Segments count: {len(temp_segments)}")
-        print(f"Debug - Available prompts: {list(broll_prompts.keys())}")
-        
-        # Process segments - this should work whether we have segment objects or just segment IDs
-        broll_segments = {}
-        
-        # First try with direct matching if we have actual segment objects
-        if temp_segments:
-            for i, seg in enumerate(temp_segments):
-                segment_id = f"segment_{i}"
-                # Check both possible structures for prompts
-                if segment_id in broll_prompts:
-                    broll_segments[segment_id] = broll_prompts[segment_id]
-                    print(f"Debug - Found prompt for segment {segment_id}")
-        
-        # If we still don't have any segments, try using the prompts directly
-        if not broll_segments and broll_prompts:
-            print(f"Debug - Using prompts directly as no matching segments found")
-            broll_segments = broll_prompts
-        
-        # Final check
-        if not broll_segments:
-            # Try loading script.json directly as a last resort
-            script_file = project_path / "script.json"
-            if script_file.exists():
-                try:
-                    with open(script_file, "r") as f:
-                        script_data = json.load(f)
-                        if "segments" in script_data:
-                            # Find B-Roll segments
-                            for i, segment in enumerate(script_data["segments"]):
-                                if isinstance(segment, dict) and segment.get("type") == "B-Roll":
-                                    segment_id = f"segment_{i}"
-                                    if segment_id in broll_prompts:
-                                        broll_segments[segment_id] = broll_prompts[segment_id]
-                                        print(f"Debug - Found prompt for B-Roll segment {segment_id} from script.json")
-                except Exception as e:
-                    print(f"Error loading script.json: {str(e)}")
-        
-        if not broll_segments:
-            st.error("No B-roll segments to process. Please create segments and generate prompts first.")
-            st.info("Go to 'A-Roll Transcription' to create segments with B-Roll prompts.")
-        else:
-            # Generate B-roll sequentially
-            st.subheader("B-Roll Generation in Progress")
-            print(f"Debug - Proceeding with {len(broll_segments)} B-Roll segments")
-            result = generate_broll_sequentially(broll_segments)
-            
-            # Save updated content status
-            save_content_status()
-            
-            # Show summary
-            success_count = sum(1 for r in result.values() if r.get('status') == 'success')
-            st.success(f"Completed B-roll generation: {success_count} successful out of {len(broll_segments)} segments.")
-            
-            # Mark step as complete if all segments succeeded
-            if success_count == len(broll_segments):
-                mark_step_complete('content_production')
-                st.balloons()  # Add some fun!
-    
-    # Display generation status
-    if "broll" in st.session_state.content_status:
         st.divider()
+        
+        # B-Roll generation section
+        st.subheader("Generate B-Roll Content")
+        st.write("Generate new B-Roll video content based on your prompts.")
+        
+        # Create a single button for B-roll generation
+        if st.button("🎨 Generate All B-Roll", type="primary", use_container_width=True, key="generate_all_broll"):
+            # Capture all required data before starting the processing
+            temp_segments = st.session_state.segments.copy() if hasattr(st.session_state, 'segments') and st.session_state.segments else []
+            
+            # Check how broll_prompts is structured and extract appropriately
+            broll_prompts = {}
+            if hasattr(st.session_state, 'broll_prompts_full') and st.session_state.broll_prompts_full:
+                # First try the full structure that has both prompts and metadata
+                if "prompts" in st.session_state.broll_prompts_full:
+                    broll_prompts = st.session_state.broll_prompts_full["prompts"]
+                    print(f"Debug - Using prompts from broll_prompts_full structure: {len(broll_prompts)} prompts")
+            elif hasattr(st.session_state, 'broll_prompts'):
+                # Fallback to direct structure
+                if isinstance(st.session_state.broll_prompts, dict):
+                    if "prompts" in st.session_state.broll_prompts:
+                        broll_prompts = st.session_state.broll_prompts["prompts"]
+                        print(f"Debug - Using prompts from nested broll_prompts structure: {len(broll_prompts)} prompts")
+                    else:
+                        broll_prompts = st.session_state.broll_prompts
+                        print(f"Debug - Using prompts directly from broll_prompts: {len(broll_prompts)} prompts")
+            
+            # Debug log what we found
+            print(f"Debug - Segments count: {len(temp_segments)}")
+            print(f"Debug - Available prompts: {list(broll_prompts.keys())}")
+            
+            # Process segments - this should work whether we have segment objects or just segment IDs
+            broll_segments = {}
+            
+            # First try with direct matching if we have actual segment objects
+            if temp_segments:
+                for i, seg in enumerate(temp_segments):
+                    segment_id = f"segment_{i}"
+                    # Check both possible structures for prompts
+                    if segment_id in broll_prompts:
+                        broll_segments[segment_id] = broll_prompts[segment_id]
+                        print(f"Debug - Found prompt for segment {segment_id}")
+            
+            # If we still don't have any segments, try using the prompts directly
+            if not broll_segments and broll_prompts:
+                print(f"Debug - Using prompts directly as no matching segments found")
+                broll_segments = broll_prompts
+            
+            # Final check
+            if not broll_segments:
+                # Try loading script.json directly as a last resort
+                script_file = project_path / "script.json"
+                if script_file.exists():
+                    try:
+                        with open(script_file, "r") as f:
+                            script_data = json.load(f)
+                            if "segments" in script_data:
+                                # Find B-Roll segments
+                                for i, segment in enumerate(script_data["segments"]):
+                                    if isinstance(segment, dict) and segment.get("type") == "B-Roll":
+                                        segment_id = f"segment_{i}"
+                                        if segment_id in broll_prompts:
+                                            broll_segments[segment_id] = broll_prompts[segment_id]
+                                            print(f"Debug - Found prompt for B-Roll segment {segment_id} from script.json")
+                    except Exception as e:
+                        print(f"Error loading script.json: {str(e)}")
+            
+            if not broll_segments:
+                st.error("No B-roll segments to process. Please create segments and generate prompts first.")
+                st.info("Go to 'A-Roll Transcription' to create segments with B-Roll prompts.")
+            else:
+                # Generate B-roll sequentially
+                st.subheader("B-Roll Generation in Progress")
+                print(f"Debug - Proceeding with {len(broll_segments)} B-Roll segments")
+                result = generate_broll_sequentially(broll_segments)
+                
+                # Save updated content status
+                save_content_status()
+                
+                # Show summary
+                success_count = sum(1 for r in result.values() if r.get('status') == 'success')
+                st.success(f"Completed B-roll generation: {success_count} successful out of {len(broll_segments)} segments.")
+                
+                # Mark step as complete if all segments succeeded
+                if success_count == len(broll_segments):
+                    mark_step_complete('content_production')
+                    st.balloons()  # Add some fun!
+    
+    with broll_tabs[1]:
+        # Display generation status
         st.subheader("B-Roll Status")
         
-        if st.session_state.content_status["broll"]:
+        if "broll" in st.session_state.content_status and st.session_state.content_status["broll"]:
             for i, segment in enumerate(broll_segments):
                 segment_id = f"segment_{i}"
                 if segment_id in st.session_state.content_status["broll"]:

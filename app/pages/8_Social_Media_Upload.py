@@ -2,13 +2,21 @@
 """
 Page for uploading videos to social media platforms (YouTube, TikTok, Instagram)
 """
+import streamlit as st
+
+# Set page config - must be the first Streamlit command
+st.set_page_config(
+    page_title="Social Media Upload - AI Money Printer Shorts",
+    page_icon="🚀",
+    layout="wide"
+)
+
 import os
 import sys
 import json
 import time
 import traceback
 from pathlib import Path
-import streamlit as st
 import requests
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.oauth2.credentials import Credentials
@@ -30,13 +38,6 @@ except ImportError as e:
     st.error(f"Error importing modules: {e}")
     st.info("Please make sure you're running this from the project root directory.")
     st.stop()
-
-# Set page config
-st.set_page_config(
-    page_title="Social Media Upload - AI Money Printer Shorts",
-    page_icon="🚀",
-    layout="wide"
-)
 
 # Initialize session state for this page
 if "social_media_upload" not in st.session_state:

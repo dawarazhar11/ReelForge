@@ -1,4 +1,13 @@
 import streamlit as st
+
+# Set page configuration - must be the first Streamlit command
+st.set_page_config(
+    page_title="Video Assembly | AI Money Printer",
+    page_icon="🎬",
+    layout="centered",
+    initial_sidebar_state="expanded"
+)
+
 import os
 import sys
 from pathlib import Path
@@ -244,14 +253,6 @@ import subprocess
 
 # Add utils.video.broll_defaults import
 from utils.video.broll_defaults import apply_default_broll_ids, update_session_state_with_defaults
-
-# Set page configuration
-st.set_page_config(
-    page_title="Video Assembly | AI Money Printer",
-    page_icon="🎬",
-    layout="centered",
-    initial_sidebar_state="expanded"
-)
 
 # Apply custom CSS to fix sidebar text color
 st.markdown("""

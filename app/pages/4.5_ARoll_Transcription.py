@@ -1,4 +1,13 @@
 import streamlit as st
+
+# Set page configuration - must be the first Streamlit command
+st.set_page_config(
+    page_title="A-Roll Transcription | AI Money Printer",
+    page_icon="🎤",
+    layout="centered",
+    initial_sidebar_state="expanded"
+)
+
 import os
 import sys
 import json
@@ -43,14 +52,6 @@ try:
 except ImportError as e:
     st.error(f"Failed to import local modules: {str(e)}")
     st.stop()
-
-# Set page configuration
-st.set_page_config(
-    page_title="A-Roll Transcription | AI Money Printer",
-    page_icon="🎤",
-    layout="centered",
-    initial_sidebar_state="expanded"
-)
 
 # Load custom CSS
 def load_css():

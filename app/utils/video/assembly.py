@@ -277,51 +277,245 @@ def check_audio_overlaps(sequence):
         "segment_details": segment_details
     }
 
-# Add this function to extract audio from video file to separate audio file
-def extract_audio_track(video_path, output_dir=None):
+@error_handler
+def render_video(input_path, output_path=None, target_resolution=(1080, 1920), fps=30, bitrate="8000k", progress_callback=None):
     """
-    Extract audio from a video file to a separate audio file
+    Render a video file with specified parameters
     
     Args:
-        video_path: Path to video file
-        output_dir: Directory to save the audio file (uses temp dir if None)
+        input_path: Path to the input video file
+        output_path: Path to save the output video file (optional)
+        target_resolution: Target resolution (width, height)
+        fps: Frames per second
+        bitrate: Video bitrate
+        progress_callback: Function to call with progress updates
         
     Returns:
-        str: Path to extracted audio file or None if extraction failed
+        dict: Result containing status and output path
+    """
+    if not MOVIEPY_AVAILABLE:
+        return {"status": "error", "message": "MoviePy not available"}
+    
+    # Check input file
+    check_result = check_file(input_path, "video")
+    if check_result["status"] == "error":
+        return check_result
+    
+    # Generate output path if not provided
+    if not output_path:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"rendered_{timestamp}.mp4"
+        output_path = os.path.join(os.path.dirname(input_path), filename)
+    
+    # Create output directory if it doesn't exist
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    
+    try:
+        # Define progress callback function
+        def progress_print(progress, message=None):
+            if progress_callback:
+                progress_callback(progress, message)
+            else:
+                print(f"Rendering progress: {progress:.1f}%")
+        
+        # Load the video clip
+        clip = mp.VideoFileClip(input_path)
+        
+        # Resize to target resolution
+        if clip.size != target_resolution:
+            clip = resize_video(clip, target_resolution)
+        
+        # Write the output file
+        clip.write_videofile(
+            output_path,
+            fps=fps,
+            codec="libx264",
+            audio_codec="aac",
+            bitrate=bitrate,
+            threads=4,
+            preset="medium",
+            ffmpeg_params=["-crf", "22"],
+            progress_bar=False,
+            logger=None,
+            verbose=False,
+            callback=progress_print
+        )
+        
+        # Close the clip to release resources
+        clip.close()
+        
+        # Return success result
+        return {
+            "status": "success",
+            "input_path": input_path,
+            "output_path": output_path,
+            "resolution": target_resolution,
+            "fps": fps,
+            "bitrate": bitrate
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Error rendering video: {str(e)}",
+            "traceback": traceback.format_exc()
+        }
+
+@error_handler
+def extract_audio_track(video_path, output_dir=None):
+    """
+    Extract audio from a video file
+    
+    Args:
+        video_path: Path to the video file
+        output_dir: Directory to save the extracted audio (optional)
+        
+    Returns:
+        dict: Result containing status and output path
+    """
+    if not MOVIEPY_AVAILABLE:
+        return {"status": "error", "message": "MoviePy not available"}
+    
+    # Check input file
+    check_result = check_file(video_path, "video")
+    if check_result["status"] == "error":
+        return check_result
+    
+    # Generate output path if not provided
+    if not output_dir:
+        output_dir = os.path.dirname(video_path)
+    
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Generate output filename
+    basename = os.path.basename(video_path)
+    filename, _ = os.path.splitext(basename)
+    output_path = os.path.join(output_dir, f"{filename}_audio.wav")
+    
+    try:
+        # Load the video clip
+        video_clip = mp.VideoFileClip(video_path)
+        
+        # Check if video has audio
+        if video_clip.audio is None:
+            video_clip.close()
+            return {"status": "error", "message": "Video has no audio track"}
+        
+        # Extract audio
+        audio_clip = video_clip.audio
+        
+        # Write audio file
+        audio_clip.write_audiofile(
+            output_path,
+            codec="pcm_s16le",  # WAV format
+            ffmpeg_params=["-ac", "1", "-ar", "44100"],  # Mono, 44.1kHz
+            logger=None,
+            verbose=False
+        )
+        
+        # Close clips to release resources
+        audio_clip.close()
+        video_clip.close()
+        
+        # Return success result
+        return {
+            "status": "success",
+            "input_path": video_path,
+            "output_path": output_path
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Error extracting audio: {str(e)}",
+            "traceback": traceback.format_exc()
+        }
+
+@error_handler
+def download_video(url, output_path=None, timeout=60):
+    """
+    Download a video from a URL
+    
+    Args:
+        url: URL of the video to download
+        output_path: Path to save the downloaded video (optional)
+        timeout: Timeout in seconds for the download request
+        
+    Returns:
+        dict: Result containing status and output path
     """
     try:
-        # Create temp directory if not provided
-        if output_dir is None:
-            output_dir = tempfile.mkdtemp()
+        # Check if requests module is available
+        import requests
+    except ImportError:
+        return {"status": "error", "message": "Requests module not available. Please install it with: pip install requests"}
+    
+    # Generate output path if not provided
+    if not output_path:
+        # Create a temporary directory for downloads
+        download_dir = os.path.join(tempfile.gettempdir(), "video_downloads")
+        os.makedirs(download_dir, exist_ok=True)
         
-        # Generate output path for audio file
-        video_filename = os.path.basename(video_path)
-        video_name = os.path.splitext(video_filename)[0]
-        audio_path = os.path.join(output_dir, f"{video_name}.m4a")
+        # Generate a filename based on the URL
+        from hashlib import md5
+        url_hash = md5(url.encode()).hexdigest()[:10]
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_path = os.path.join(download_dir, f"download_{url_hash}_{timestamp}.mp4")
+    
+    # Create output directory if it doesn't exist
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    
+    try:
+        print(f"Downloading video from {url} to {output_path}")
         
-        print(f"Extracting audio from: {video_path}")
-        print(f"Video path for extraction: {os.path.abspath(video_path)}")
-        print(f"Audio output path: {audio_path}")
+        # Download the video
+        response = requests.get(url, stream=True, timeout=timeout)
+        response.raise_for_status()  # Raise an exception for HTTP errors
         
-        # Use ffmpeg to extract audio
-        cmd = [
-            "ffmpeg", "-y", "-i", os.path.abspath(video_path),
-            "-vn", "-acodec", "aac", "-b:a", "192k", "-f", "mp4",
-            audio_path
-        ]
+        # Get content length if available
+        total_size = int(response.headers.get('content-length', 0))
         
-        print(f"Running ffmpeg command: {' '.join(cmd)}")
-        process = subprocess.run(cmd, capture_output=True, text=True)
+        # Download with progress tracking
+        downloaded_size = 0
+        chunk_size = 8192
         
-        if process.returncode == 0:
-            print(f"Successfully extracted audio to: {audio_path}")
-            return audio_path
-        else:
-            print(f"Error extracting audio: {process.stderr}")
-            return None
+        with open(output_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=chunk_size):
+                if chunk:
+                    f.write(chunk)
+                    downloaded_size += len(chunk)
+                    
+                    # Print progress
+                    if total_size > 0:
+                        progress = (downloaded_size / total_size) * 100
+                        print(f"Download progress: {progress:.1f}%", end="\r")
+        
+        print("\nDownload complete!")
+        
+        # Verify the downloaded file
+        check_result = check_file(output_path, "video")
+        if check_result["status"] == "error":
+            return check_result
+        
+        # Return success result
+        return {
+            "status": "success",
+            "url": url,
+            "output_path": output_path,
+            "size": os.path.getsize(output_path)
+        }
+    except requests.RequestException as e:
+        return {
+            "status": "error",
+            "message": f"Error downloading video: {str(e)}",
+            "url": url
+        }
     except Exception as e:
-        print(f"Exception extracting audio: {str(e)}")
-        return None
+        return {
+            "status": "error",
+            "message": f"Error processing download: {str(e)}",
+            "traceback": traceback.format_exc(),
+            "url": url
+        }
 
 # Add this function to detect if a file is an image
 def is_image_file(file_path):
@@ -762,6 +956,28 @@ def assemble_video(sequence, target_resolution=(1080, 1920), output_dir=None, pr
                 shutil.rmtree(audio_temp_dir)
         except Exception:
             pass
+
+@error_handler
+def extract_audio(video_path, output_path=None):
+    """
+    Extract audio from a video file (simplified version for compatibility)
+    
+    Args:
+        video_path: Path to the video file
+        output_path: Path to save the extracted audio (optional)
+        
+    Returns:
+        str: Path to the extracted audio file or None if extraction failed
+    """
+    # Call the more comprehensive extract_audio_track function
+    result = extract_audio_track(video_path, os.path.dirname(output_path) if output_path else None)
+    
+    # For compatibility, return just the path or None
+    if result["status"] == "success":
+        return result["output_path"]
+    else:
+        print(f"Error extracting audio: {result.get('message', 'Unknown error')}")
+        return None
 
 if __name__ == "__main__":
     # Simple test if this script is run directly

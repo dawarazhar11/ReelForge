@@ -92,18 +92,55 @@ def extract_audio(video_path, output_path=None):
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
             output_path = temp_file.name
     
+    # First try using MoviePy
     try:
-        # Load the video and extract audio
+        print(f"Extracting audio from {video_path} using MoviePy...")
         video = mp.VideoFileClip(video_path)
+        if video.audio is None:
+            print("No audio track found in the video file.")
+            raise ValueError("No audio track in video")
         audio = video.audio
         audio.write_audiofile(output_path, codec='pcm_s16le', verbose=False, logger=None)
         video.close()
+        print(f"Audio extraction successful: {output_path}")
         return output_path
     except Exception as e:
-        print(f"Error extracting audio: {str(e)}")
-        if os.path.exists(output_path):
-            os.unlink(output_path)
-        return None
+        print(f"MoviePy extraction failed: {str(e)}")
+        
+        # Try using ffmpeg directly as a fallback
+        try:
+            print("Trying ffmpeg as fallback...")
+            # Ensure output directory exists
+            os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+            
+            # Build ffmpeg command
+            cmd = [
+                "ffmpeg", 
+                "-i", video_path,
+                "-vn",  # No video
+                "-acodec", "pcm_s16le",  # PCM 16-bit little-endian audio codec
+                "-ar", "16000",  # 16kHz sample rate
+                "-ac", "1",  # Mono
+                "-y",  # Overwrite output file if it exists
+                output_path
+            ]
+            
+            # Run ffmpeg
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                print(f"ffmpeg extraction successful: {output_path}")
+                return output_path
+            else:
+                print(f"ffmpeg error: {result.stderr}")
+                if os.path.exists(output_path):
+                    os.unlink(output_path)
+                return None
+        except Exception as ffmpeg_error:
+            print(f"ffmpeg extraction failed: {str(ffmpeg_error)}")
+            if os.path.exists(output_path):
+                os.unlink(output_path)
+            return None
 
 def transcribe_with_whisper(audio_path, model_size="base"):
     """

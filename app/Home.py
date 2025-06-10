@@ -16,6 +16,21 @@ def clear_app_cache():
     if not user_data_path.exists():
         return
     
+    # Reset progress tracking to ensure A-Roll Transcription is first step
+    progress_path = user_data_path / "progress.json"
+    if progress_path.exists():
+        try:
+            # Create a backup before modifying
+            backup_path = progress_path.with_suffix(f".json.bak.{int(time.time())}")
+            shutil.copy2(progress_path, backup_path)
+            # Create fresh progress file with all steps marked incomplete
+            progress_data = {}
+            with open(progress_path, "w") as f:
+                json.dump(progress_data, f, indent=4)
+            print(f"Reset progress tracking file: {progress_path}")
+        except Exception as e:
+            print(f"Error resetting progress file: {e}")
+    
     projects = [d for d in user_data_path.iterdir() if d.is_dir()]
     
     for project_dir in projects:
@@ -117,6 +132,17 @@ def clear_app_cache():
                 except Exception as e:
                     print(f"Error clearing main_aroll.mp4 file: {e}")
     
+        # Also clean up any transcription.json to force a clean start
+        transcription_path = project_dir / "transcription.json"
+        if transcription_path.exists():
+            try:
+                backup_path = project_dir / f"transcription.json.bak.{int(time.time())}"
+                shutil.copy2(transcription_path, backup_path)
+                os.remove(transcription_path)
+                print(f"Cleared transcription.json file to force a fresh start")
+            except Exception as e:
+                print(f"Error clearing transcription.json file: {e}")
+    
     # Clear Streamlit cache files if any exist
     cache_dir = Path(".streamlit/cache")
     if cache_dir.exists():
@@ -140,7 +166,7 @@ def clear_app_cache():
     # Clear session state
     if st.session_state:
         for key in list(st.session_state.keys()):
-            if key not in ['user_settings', 'project_path', 'current_page']:
+            if key not in ['user_settings']:
                 try:
                     del st.session_state[key]
                 except Exception:

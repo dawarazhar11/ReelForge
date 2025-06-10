@@ -994,25 +994,32 @@ def main():
             
             if st.button("Generate Transcript"):
                 with st.spinner("Generating transcript... This may take a while for longer videos."):
-                    # Extract audio from video
-                    audio_path = extract_audio(video_path)
-                    
-                    if audio_path:
-                        # Transcribe the audio
-                        transcription_data = transcribe_video(audio_path, engine=selected_engine)
+                    try:
+                        # Extract audio from video
+                        st.info("Extracting audio from video...")
+                        audio_path = extract_audio(video_path)
                         
-                        if transcription_data:
-                            # Save and display the transcription
-                            save_transcription_data(transcription_data)
-                            st.session_state.transcription_data = transcription_data
-                            st.session_state.transcription_complete = True
+                        if audio_path:
+                            # Transcribe the audio
+                            st.info(f"Transcribing audio using {selected_engine}...")
+                            transcription_data = transcribe_video(audio_path, engine=selected_engine)
                             
-                            # Display success message
-                            st.success("Transcription complete!")
+                            if transcription_data and transcription_data.get("status") == "success":
+                                # Save and display the transcription
+                                save_transcription_data(transcription_data)
+                                st.session_state.transcription_data = transcription_data
+                                st.session_state.transcription_complete = True
+                                
+                                # Display success message
+                                st.success("Transcription complete!")
+                            else:
+                                error_msg = transcription_data.get("message", "Unknown error") if transcription_data else "Transcription failed"
+                                st.error(f"Transcription failed: {error_msg}")
                         else:
-                            st.error("Transcription failed.")
-                    else:
-                        st.error("Failed to extract audio from video.")
+                            st.error("Failed to extract audio from video. Please ensure the video file is valid and has an audio track.")
+                    except Exception as e:
+                        st.error(f"Error during transcription process: {str(e)}")
+                        st.info("Try using a different video file or transcription engine.")
         
         # If transcription is complete, show the text and segmentation options
         if st.session_state.transcription_complete and isinstance(st.session_state.transcription_data, dict):

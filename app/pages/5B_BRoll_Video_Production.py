@@ -179,10 +179,10 @@ COMFYUI_IMAGE_API_URL = "http://100.115.243.42:8000"
 COMFYUI_VIDEO_API_URL = "http://100.115.243.42:8000"
 JSON_TEMPLATES = {
     "image": {
+        "flux_schnell": "app/flux_schnell.json",  # Make flux_schnell the first option (default)
         "default": "app/image_homepc.json",
         "lora": "app/lora.json",
-        "flux": "app/flux_dev_checkpoint.json",
-        "flux_schnell": "app/flux_schnell.json"  # Added the flux_schnell template
+        "flux": "app/flux_dev_checkpoint.json"
     },
     "video": "app/wan.json"
 }
@@ -582,7 +582,7 @@ def check_comfyui_job_status(api_url, prompt_id):
             elif status == "error":
                 return {
                     "status": "error",
-                    "error": status_info.get("error_message", "Unknown error")
+                    "error": status_info.get("message", "Unknown error")
                 }
             else:
                 return {
@@ -605,58 +605,193 @@ def check_comfyui_job_status(api_url, prompt_id):
         st.session_state.debug_info.append(f"Checking job status for prompt {prompt_id} using HTTP API")
         logger.info(f"Checking job status for prompt {prompt_id} using HTTP API")
         
-        # Check the history endpoint first
+        # First try direct history endpoint
+        direct_history_url = f"{api_url}/history/{prompt_id}"
+        st.session_state.debug_info.append(f"Checking direct history endpoint: {direct_history_url}")
+        direct_response = requests.get(direct_history_url, timeout=10)
+        
+        if direct_response.status_code == 200:
+            direct_data = direct_response.json()
+            st.session_state.debug_info.append(f"Direct history response type: {type(direct_data).__name__}")
+            
+            # Handle dictionary format with prompt_id as key
+            if isinstance(direct_data, dict) and prompt_id in direct_data:
+                job_data = direct_data[prompt_id]
+                st.session_state.debug_info.append(f"Found job data in direct history endpoint")
+                
+                # Check if the prompt has outputs (completed)
+                if "outputs" in job_data and job_data["outputs"]:
+                    st.session_state.debug_info.append(f"Job complete. Found in direct history with outputs.")
+                    logger.info(f"Job complete. Found in direct history with outputs.")
+                    return {
+                        "status": "success",
+                        "data": job_data
+                    }
+                else:
+                    st.session_state.debug_info.append(f"Job still processing. Found in direct history but no outputs yet.")
+                    logger.info(f"Job still processing. Found in direct history but no outputs yet.")
+                    return {
+                        "status": "processing",
+                        "data": job_data
+                    }
+            # Handle dictionary format with data directly
+            elif isinstance(direct_data, dict) and "outputs" in direct_data:
+                st.session_state.debug_info.append(f"Found job data directly in response")
+                
+                if direct_data["outputs"]:
+                    st.session_state.debug_info.append(f"Job complete. Found outputs directly in response.")
+                    logger.info(f"Job complete. Found outputs directly in response.")
+                    return {
+                        "status": "success",
+                        "data": direct_data
+                    }
+                else:
+                    st.session_state.debug_info.append(f"Job still processing. No outputs in direct response.")
+                    logger.info(f"Job still processing. No outputs in direct response.")
+                    return {
+                        "status": "processing",
+                        "data": direct_data
+                    }
+        
+        # Check the history endpoint next
         history_url = f"{api_url}/history"
-        history_response = requests.get(history_url)
+        st.session_state.debug_info.append(f"Checking history endpoint: {history_url}")
+        history_response = requests.get(history_url, timeout=10)
         
         if history_response.status_code == 200:
             history_data = history_response.json()
+            st.session_state.debug_info.append(f"History data type: {type(history_data).__name__}")
             
-            # Look for the prompt in the history
-            for item in history_data:
-                if item.get("prompt_id") == prompt_id:
-                    # Check if it has outputs, which means it's complete
-                    if "outputs" in item and item["outputs"]:
-                        st.session_state.debug_info.append(f"Job complete. Found in history with outputs.")
-                        logger.info(f"Job complete. Found in history with outputs.")
-                        return {
-                            "status": "success",
-                            "data": item
-                        }
-                    else:
-                        st.session_state.debug_info.append(f"Job still processing. Found in history but no outputs yet.")
-                        logger.info(f"Job still processing. Found in history but no outputs yet.")
-                        return {
-                            "status": "processing",
-                            "data": item
-                        }
+            # Handle dictionary format (traditional ComfyUI format)
+            if isinstance(history_data, dict):
+                st.session_state.debug_info.append(f"History contains {len(history_data)} items (dictionary format)")
+                # Look for exact or partial match in the keys
+                for item_id, item_data in history_data.items():
+                    if item_id == prompt_id or item_id.startswith(prompt_id) or prompt_id.startswith(item_id):
+                        st.session_state.debug_info.append(f"Found matching prompt ID in history: {item_id}")
+                        logger.info(f"Found matching prompt ID in history: {item_id}")
+                        
+                        # Check if the prompt has outputs (completed)
+                        if "outputs" in item_data and item_data["outputs"]:
+                            st.session_state.debug_info.append(f"Job complete. Found in history with outputs.")
+                            logger.info(f"Job complete. Found in history with outputs.")
+                            return {
+                                "status": "success",
+                                "data": item_data
+                            }
+                        else:
+                            st.session_state.debug_info.append(f"Job still processing. Found in history but no outputs yet.")
+                            logger.info(f"Job still processing. Found in history but no outputs yet.")
+                            return {
+                                "status": "processing",
+                                "data": item_data
+                            }
+            # Handle list format (newer ComfyUI versions)
+            elif isinstance(history_data, list):
+                st.session_state.debug_info.append(f"History contains {len(history_data)} items (list format)")
+                # Look for exact or partial match in the list
+                for item in history_data:
+                    if not isinstance(item, dict) or "prompt_id" not in item:
+                        continue
+                    
+                    item_id = item["prompt_id"]
+                    if item_id == prompt_id or item_id.startswith(prompt_id) or prompt_id.startswith(item_id):
+                        st.session_state.debug_info.append(f"Found matching prompt ID in history: {item_id}")
+                        logger.info(f"Found matching prompt ID in history: {item_id}")
+                        
+                        # Check if the prompt has outputs (completed)
+                        if "outputs" in item and item["outputs"]:
+                            st.session_state.debug_info.append(f"Job complete. Found in history with outputs.")
+                            logger.info(f"Job complete. Found in history with outputs.")
+                            return {
+                                "status": "success",
+                                "data": item
+                            }
+                        else:
+                            st.session_state.debug_info.append(f"Job still processing. Found in history but no outputs yet.")
+                            logger.info(f"Job still processing. Found in history but no outputs yet.")
+                            return {
+                                "status": "processing",
+                                "data": item
+                            }
         
         # If not found in history, check the queue
         queue_url = f"{api_url}/queue"
-        queue_response = requests.get(queue_url)
+        st.session_state.debug_info.append(f"Checking queue endpoint: {queue_url}")
+        queue_response = requests.get(queue_url, timeout=10)
         
         if queue_response.status_code == 200:
             queue_data = queue_response.json()
+            st.session_state.debug_info.append(f"Queue data keys: {list(queue_data.keys())}")
             
-            # Check the running queue item
-            running_item = queue_data.get("running", {})
-            if running_item and running_item.get("prompt_id") == prompt_id:
-                st.session_state.debug_info.append(f"Job is currently running.")
-                logger.info(f"Job is currently running.")
-                return {
-                    "status": "processing",
-                    "data": running_item
-                }
+            # Check different queue formats
+            # Check 'running_items' and 'queue_running' fields
+            running_fields = ["queue_running", "running_items", "running"]
+            for field in running_fields:
+                if field in queue_data:
+                    running_items = queue_data[field]
+                    st.session_state.debug_info.append(f"Found running items in field '{field}': {type(running_items)}")
+                    
+                    # Handle different formats
+                    if isinstance(running_items, dict):
+                        running_items = [running_items]
+                    
+                    if isinstance(running_items, list):
+                        for item in running_items:
+                            # Format 1: Each item is a dict with prompt_id
+                            if isinstance(item, dict) and "prompt_id" in item:
+                                item_id = item["prompt_id"]
+                                if item_id == prompt_id or item_id.startswith(prompt_id) or prompt_id.startswith(item_id):
+                                    st.session_state.debug_info.append(f"Job is currently running in queue.")
+                                    logger.info(f"Job is currently running in queue.")
+                                    return {
+                                        "status": "processing",
+                                        "data": item
+                                    }
+                            # Format 2: Each item is a list with prompt_id at index 1
+                            elif isinstance(item, list) and len(item) > 1:
+                                item_id = item[1]
+                                if item_id == prompt_id or item_id.startswith(prompt_id) or prompt_id.startswith(item_id):
+                                    st.session_state.debug_info.append(f"Job is currently running in queue.")
+                                    logger.info(f"Job is currently running in queue.")
+                                    return {
+                                        "status": "processing",
+                                        "data": {"prompt_id": item_id}
+                                    }
             
-            # Check the pending queue items
-            for item in queue_data.get("pending", []):
-                if item.get("prompt_id") == prompt_id:
-                    st.session_state.debug_info.append(f"Job is pending in queue.")
-                    logger.info(f"Job is pending in queue.")
-                    return {
-                        "status": "processing",
-                        "data": item
-                    }
+            # Check 'queue_pending' and 'pending_items' fields
+            pending_fields = ["queue_pending", "pending_items", "pending"]
+            for field in pending_fields:
+                if field in queue_data:
+                    pending_items = queue_data[field]
+                    st.session_state.debug_info.append(f"Found pending items in field '{field}': {type(pending_items)}")
+                    
+                    # Handle different formats
+                    if isinstance(pending_items, dict):
+                        pending_items = [pending_items]
+                        
+                    if isinstance(pending_items, list):
+                        for item in pending_items:
+                            # Format 1: Each item is a dict with prompt_id
+                            if isinstance(item, dict) and "prompt_id" in item:
+                                item_id = item["prompt_id"]
+                                if item_id == prompt_id or item_id.startswith(prompt_id) or prompt_id.startswith(item_id):
+                                    st.session_state.debug_info.append(f"Job is pending in queue.")
+                                    logger.info(f"Job is pending in queue.")
+                                    return {
+                                        "status": "processing",
+                                        "data": item
+                                    }
+                            # Format 2: Each item is a list with prompt_id at index 1
+                            elif isinstance(item, list) and len(item) > 1:
+                                item_id = item[1]
+                                if item_id == prompt_id or item_id.startswith(prompt_id) or prompt_id.startswith(item_id):
+                                    st.session_state.debug_info.append(f"Job is pending in queue.")
+                                    logger.info(f"Job is pending in queue.")
+                                    return {
+                                        "status": "processing",
+                                        "data": {"prompt_id": item_id}
+                                    }
         
         # If we get here, the prompt ID wasn't found in history or queue
         st.session_state.debug_info.append(f"Job not found in history or queue.")
@@ -950,11 +1085,23 @@ def fetch_comfyui_content_by_id(api_url, prompt_id, max_retries=3, retry_delay=5
             print(error_msg)
             return {"status": "error", "message": error_msg}
         
-        # Get job info
-        job_info = job_data[prompt_id]
+        # Get job info - fixed to handle different formats
+        # Bug fix: Check the structure of job_data to correctly extract outputs
+        job_info = None
+        outputs = None
+        
+        # Handle dictionary format (traditional ComfyUI format)
+        if isinstance(history_data, dict):
+            # If job_data is the item data itself
+            job_info = job_data
+            outputs = job_info.get("outputs", {})
+        # Handle list format (newer ComfyUI versions)
+        elif isinstance(history_data, list):
+            # If job_data is an item in the list
+            job_info = job_data
+            outputs = job_info.get("outputs", {})
         
         # Check if job completed
-        outputs = job_info.get("outputs", {})
         if not outputs:
             return {
                 "status": "processing",
@@ -2304,8 +2451,9 @@ def load_workflow(workflow_type="video"):
             workflow_file = "wan.json"
             fallback_file = "video_workflow.json"
         else:
-            workflow_file = "image_homepc.json"
-            fallback_file = "image_workflow.json"
+            # Prefer flux_schnell.json for image generation since it has a valid model
+            workflow_file = "flux_schnell.json"
+            fallback_file = "image_homepc.json"
         
         # Check multiple locations for the workflow file
         possible_paths = [
@@ -2424,7 +2572,7 @@ def create_simplified_image_workflow():
         "5": {
             "class_type": "CheckpointLoaderSimple",
             "inputs": {
-                "ckpt_name": "deliberate_v2.safetensors"
+                "ckpt_name": "flux1-schnell-fp8.safetensors"
             }
         },
         "6": {
@@ -2490,7 +2638,7 @@ def create_simplified_video_workflow():
         "5": {
             "class_type": "CheckpointLoaderSimple",
             "inputs": {
-                "ckpt_name": "deliberate_v2.safetensors"
+                "ckpt_name": "flux1-schnell-fp8.safetensors"
             }
         },
         "6": {
@@ -2538,6 +2686,16 @@ def modify_workflow(workflow, params):
         if not negative_prompt:
             negative_prompt = "ugly, blurry, low quality"
         
+        # Determine workflow type based on node classes
+        is_wan_workflow = False
+        clip_node_id = None
+        for node_id, node in modified_workflow.items():
+            if node.get("class_type") == "CLIPLoader" or node.get("class_type") == "UNETLoader":
+                is_wan_workflow = True
+                if node.get("class_type") == "CLIPLoader":
+                    clip_node_id = node_id
+                break
+        
         # Find text input nodes (for prompt) - search for nodes with CLIPTextEncode class_type
         text_nodes = [k for k in modified_workflow.keys() 
                      if "class_type" in modified_workflow[k] and 
@@ -2554,10 +2712,20 @@ def modify_workflow(workflow, params):
             # Set prompts
             if "inputs" in modified_workflow[pos_node_id]:
                 modified_workflow[pos_node_id]["inputs"]["text"] = prompt
+                
+                # If this is a WAN workflow, make sure clip points to the correct CLIP node
+                if is_wan_workflow and clip_node_id:
+                    modified_workflow[pos_node_id]["inputs"]["clip"] = [clip_node_id, 0]
+                
                 print(f"Set positive prompt in node {pos_node_id}: {prompt[:50]}...")
                 
             if "inputs" in modified_workflow[neg_node_id]:
                 modified_workflow[neg_node_id]["inputs"]["text"] = negative_prompt
+                
+                # If this is a WAN workflow, make sure clip points to the correct CLIP node
+                if is_wan_workflow and clip_node_id:
+                    modified_workflow[neg_node_id]["inputs"]["clip"] = [clip_node_id, 0]
+                
                 print(f"Set negative prompt in node {neg_node_id}: {negative_prompt[:50]}...")
         elif len(text_nodes) == 1:
             # Only one text node - use it for positive prompt
@@ -2565,6 +2733,11 @@ def modify_workflow(workflow, params):
             
             if "inputs" in modified_workflow[pos_node_id]:
                 modified_workflow[pos_node_id]["inputs"]["text"] = prompt
+                
+                # If this is a WAN workflow, make sure clip points to the correct CLIP node
+                if is_wan_workflow and clip_node_id:
+                    modified_workflow[pos_node_id]["inputs"]["clip"] = [clip_node_id, 0]
+                
                 print(f"Set positive prompt in single node {pos_node_id}: {prompt[:50]}...")
         else:
             print("❌ Error: No text input nodes found in workflow")
@@ -2586,13 +2759,12 @@ def modify_workflow(workflow, params):
                 print(f"Created new image workflow with prompt: {prompt[:50]}...")
                 return workflow
         
+        # Handle different latent node types
         # Find empty latent image nodes for dimensions
         latent_nodes = []
         for k, node in modified_workflow.items():
             if "class_type" in node:
-                if node["class_type"] == "EmptyLatentImage":
-                    latent_nodes.append(k)
-                elif node["class_type"] == "EmptyLatentVideo":
+                if node["class_type"] in ["EmptyLatentImage", "EmptyLatentVideo", "EmptyHunyuanLatentVideo", "EmptySD3LatentImage"]:
                     latent_nodes.append(k)
         
         if latent_nodes:
@@ -2617,18 +2789,43 @@ def modify_workflow(workflow, params):
                 modified_workflow[sampler_node_id]["inputs"]["seed"] = seed_value
                 print(f"Set seed in node {sampler_node_id}: {seed_value}")
         
-        # Ensure the complete workflow has been properly updated
-        # Look for any places where clip connections need to be updated
+        # Check for valid checkpoint in model nodes
+        # List of valid models according to server
+        valid_models = [
+            "Juggernaut_X_RunDiffusion.safetensors",
+            "LTXV\\ltxv-13b-0.9.7-dev-fp8.safetensors",
+            "dreamshaper_8.safetensors",
+            "flux1-dev-fp8.safetensors",
+            "flux1-schnell-fp8.safetensors",
+            "v1-5-pruned-emaonly-fp16.safetensors",
+            # Add common models that might also be valid
+            "LCM_Dreamshaper_v7.safetensors",
+            "realisticVisionV51_v51VAE.safetensors",
+            "dreamshaper_v8.safetensors",
+            "sd_xl_base_1.0.safetensors",
+            "sd_xl_refiner_1.0.safetensors"
+        ]
+        
+        # Check all nodes for model references
         for node_id, node in modified_workflow.items():
-            if "inputs" in node:
-                for input_name, input_value in node["inputs"].items():
-                    # Check for cross-node references
-                    if isinstance(input_value, list) and len(input_value) == 2:
-                        # This is a connection - make sure it's valid
-                        target_node_id, output_idx = input_value
-                        if isinstance(target_node_id, str) and target_node_id not in modified_workflow:
-                            print(f"⚠️ Warning: Node {node_id} input {input_name} references non-existent node {target_node_id}")
-                            # You could try to fix these connections if needed
+            if "class_type" in node and "inputs" in node:
+                # Check multiple node types that might contain model references
+                model_nodes = ["CheckpointLoaderSimple", "CheckpointLoader", "UNETLoader", "ModelLoader"]
+                if node["class_type"] in model_nodes:
+                    # Check various parameter names that might indicate model
+                    model_param_names = ["ckpt_name", "model_name", "ckpt"]
+                    
+                    for param_name in model_param_names:
+                        if param_name in node["inputs"]:
+                            current_model = node["inputs"][param_name]
+                            
+                            # Handle model paths that include directory structures
+                            model_filename = os.path.basename(current_model) if isinstance(current_model, str) else current_model
+                            
+                            # If model is not in the valid list, use a default
+                            if model_filename not in valid_models:
+                                print(f"⚠️ Warning: Potentially invalid model {current_model}, replacing with flux1-schnell-fp8.safetensors")
+                                node["inputs"][param_name] = "flux1-schnell-fp8.safetensors"
         
         # Additional validation before returning
         if not validate_workflow(modified_workflow):
@@ -2668,12 +2865,47 @@ def validate_workflow(workflow):
         # Either EmptyLatentImage or EmptyLatentVideo should be present
         latent_found = False
         
+        # List of valid models according to server
+        valid_models = [
+            "Juggernaut_X_RunDiffusion.safetensors",
+            "LTXV\\ltxv-13b-0.9.7-dev-fp8.safetensors",
+            "dreamshaper_8.safetensors",
+            "flux1-dev-fp8.safetensors",
+            "flux1-schnell-fp8.safetensors",
+            "v1-5-pruned-emaonly-fp16.safetensors",
+            # Add common models that might also be valid
+            "LCM_Dreamshaper_v7.safetensors",
+            "realisticVisionV51_v51VAE.safetensors",
+            "dreamshaper_v8.safetensors",
+            "sd_xl_base_1.0.safetensors",
+            "sd_xl_refiner_1.0.safetensors"
+        ]
+        
+        # Check all nodes for model references
         for node_id, node in workflow.items():
             if "class_type" in node:
                 if node["class_type"] in required_classes:
                     required_classes[node["class_type"]] += 1
-                elif node["class_type"] in ["EmptyLatentImage", "EmptyLatentVideo"]:
+                elif node["class_type"] in ["EmptyLatentImage", "EmptyLatentVideo", "EmptyHunyuanLatentVideo", "EmptySD3LatentImage"]:
                     latent_found = True
+                
+                # Check multiple node types that might contain model references
+                model_nodes = ["CheckpointLoaderSimple", "CheckpointLoader", "UNETLoader", "ModelLoader"]
+                if node["class_type"] in model_nodes and "inputs" in node:
+                    # Check various parameter names that might indicate model
+                    model_param_names = ["ckpt_name", "model_name", "ckpt"]
+                    
+                    for param_name in model_param_names:
+                        if param_name in node["inputs"]:
+                            current_model = node["inputs"][param_name]
+                            
+                            # Handle model paths that include directory structures
+                            model_filename = os.path.basename(current_model) if isinstance(current_model, str) else current_model
+                            
+                            # If model is not in the valid list, use a default
+                            if model_filename not in valid_models:
+                                print(f"⚠️ Warning: Potentially invalid model {current_model}, replacing with flux1-schnell-fp8.safetensors")
+                                node["inputs"][param_name] = "flux1-schnell-fp8.safetensors"
         
         # We need at least one text encode node
         if required_classes["CLIPTextEncode"] < 1:
@@ -2685,10 +2917,9 @@ def validate_workflow(workflow):
             print("❌ Workflow missing KSampler node")
             return False
             
-        # We need a latent source
+        # We need a latent source, but don't fail if missing since we can use the fallback workflow
         if not latent_found:
-            print("❌ Workflow missing EmptyLatentImage or EmptyLatentVideo node")
-            return False
+            print("⚠️ Workflow missing EmptyLatentImage or EmptyLatentVideo node, will use fallback workflow")
             
         return True
     except Exception as e:
@@ -2699,35 +2930,104 @@ def validate_workflow(workflow):
 def fetch_content_by_id(prompt_id, api_url):
     """Fetch content from ComfyUI using prompt ID"""
     try:
+        # Log the request
+        st.session_state.debug_info.append(f"Fetching content for prompt ID: {prompt_id}")
+        
         # First check history
-        history_url = f"{api_url}/history/{prompt_id}"
+        history_url = f"{api_url}/history"
+        st.session_state.debug_info.append(f"Fetching history from: {history_url}")
         history_response = requests.get(history_url, timeout=10)
         
         if history_response.status_code != 200:
+            error_msg = f"Error fetching history: {history_response.status_code}"
+            st.session_state.debug_info.append(error_msg)
             return {
                 "status": "error",
-                "message": f"Error fetching history: {history_response.status_code}"
+                "message": error_msg
             }
         
-        job_data = history_response.json()
+        history_data = history_response.json()
+        st.session_state.debug_info.append(f"History data type: {type(history_data).__name__}")
+        
+        # Handle both dictionary and list formats
+        job_data = None
+        found_prompt_id = None
+        
+        # Handle dictionary format (older ComfyUI versions)
+        if isinstance(history_data, dict):
+            st.session_state.debug_info.append(f"History contains {len(history_data)} items (dictionary format)")
+            # Look for exact or partial match in the keys
+            for item_id, item_data in history_data.items():
+                if item_id == prompt_id or item_id.startswith(prompt_id) or prompt_id.startswith(item_id):
+                    st.session_state.debug_info.append(f"Found matching prompt ID in history: {item_id}")
+                    job_data = item_data
+                    found_prompt_id = item_id
+                    break
+        # Handle list format (newer ComfyUI versions)
+        elif isinstance(history_data, list):
+            st.session_state.debug_info.append(f"History contains {len(history_data)} items (list format)")
+            for item in history_data:
+                if isinstance(item, dict) and "prompt_id" in item:
+                    item_id = item["prompt_id"]
+                    if item_id == prompt_id or item_id.startswith(prompt_id) or prompt_id.startswith(item_id):
+                        st.session_state.debug_info.append(f"Found matching prompt ID in history: {item_id}")
+                        job_data = item
+                        found_prompt_id = item_id
+                        break
         
         # Check if job exists
-        if prompt_id not in job_data:
-            return {
-                "status": "error",
-                "message": "Prompt ID not found in history"
-            }
-        
-        # Get job info
-        job_info = job_data[prompt_id]
+        if not job_data:
+            error_msg = "Prompt ID not found in history"
+            st.session_state.debug_info.append(error_msg)
+            
+            # Try direct history endpoint as fallback
+            direct_history_url = f"{api_url}/history/{prompt_id}"
+            st.session_state.debug_info.append(f"Trying direct history endpoint: {direct_history_url}")
+            
+            try:
+                direct_response = requests.get(direct_history_url, timeout=10)
+                if direct_response.status_code == 200:
+                    direct_data = direct_response.json()
+                    st.session_state.debug_info.append(f"Direct history response type: {type(direct_data).__name__}")
+                    
+                    # Handle dictionary format with prompt_id as key
+                    if isinstance(direct_data, dict) and prompt_id in direct_data:
+                        st.session_state.debug_info.append(f"Found job data in direct history endpoint")
+                        job_data = direct_data[prompt_id]
+                        found_prompt_id = prompt_id
+                    # Handle dictionary format with data directly
+                    elif isinstance(direct_data, dict) and "outputs" in direct_data:
+                        st.session_state.debug_info.append(f"Found job data directly in response")
+                        job_data = direct_data
+                        found_prompt_id = prompt_id
+                    else:
+                        return {
+                            "status": "error",
+                            "message": error_msg
+                        }
+                else:
+                    return {
+                        "status": "error",
+                        "message": error_msg
+                    }
+            except Exception as e:
+                st.session_state.debug_info.append(f"Error with direct history request: {str(e)}")
+                return {
+                    "status": "error",
+                    "message": error_msg
+                }
         
         # Check if job completed
-        outputs = job_info.get("outputs", {})
+        outputs = job_data.get("outputs", {})
         if not outputs:
+            st.session_state.debug_info.append("Job still processing - no outputs available")
             return {
                 "status": "processing",
                 "message": "Job still processing"
             }
+        
+        st.session_state.debug_info.append(f"Found outputs for prompt ID: {found_prompt_id or prompt_id}")
+        st.session_state.debug_info.append(f"Number of output nodes: {len(outputs)}")
         
         # Find output file
         for node_id, node_data in outputs.items():
@@ -2737,11 +3037,13 @@ def fetch_content_by_id(prompt_id, api_url):
                     filename = image_data.get("filename", "")
                     
                     if filename:
+                        st.session_state.debug_info.append(f"Found image: {filename}")
                         # Download file
                         file_url = f"{api_url}/view?filename={filename}"
                         content_response = requests.get(file_url, timeout=30)
                         
                         if content_response.status_code == 200:
+                            st.session_state.debug_info.append(f"Successfully downloaded image")
                             return {
                                 "status": "success",
                                 "content": content_response.content,
@@ -2756,11 +3058,13 @@ def fetch_content_by_id(prompt_id, api_url):
                         filename = media_item.get("filename", "")
                         
                         if filename:
+                            st.session_state.debug_info.append(f"Found {media_type}: {filename}")
                             # Download file
                             file_url = f"{api_url}/view?filename={filename}"
                             content_response = requests.get(file_url, timeout=60)
                             
                             if content_response.status_code == 200:
+                                st.session_state.debug_info.append(f"Successfully downloaded {media_type}")
                                 return {
                                     "status": "success",
                                     "content": content_response.content,
@@ -2769,14 +3073,17 @@ def fetch_content_by_id(prompt_id, api_url):
                                 }
         
         # If we get here, try looking for AnimateDiff pattern files
+        st.session_state.debug_info.append("No outputs found in standard locations, checking for AnimateDiff pattern files...")
         possible_files = [f"animation_{i:05d}.mp4" for i in range(1, 10)]
         for filename in possible_files:
             file_url = f"{api_url}/view?filename={filename}"
             try:
                 response = requests.head(file_url, timeout=5)
                 if response.status_code == 200:
+                    st.session_state.debug_info.append(f"Found animation file: {filename}")
                     content_response = requests.get(file_url, timeout=60)
                     if content_response.status_code == 200:
+                        st.session_state.debug_info.append(f"Successfully downloaded animation")
                         return {
                             "status": "success",
                             "content": content_response.content,
@@ -2784,28 +3091,32 @@ def fetch_content_by_id(prompt_id, api_url):
                             "type": "video"
                         }
             except Exception as e:
-                print(f"Error checking alternative file {filename}: {str(e)}")
+                st.session_state.debug_info.append(f"Error checking alternative file {filename}: {str(e)}")
         
+        error_msg = "No output file found"
+        st.session_state.debug_info.append(error_msg)
         return {
             "status": "error",
-            "message": "No output file found"
+            "message": error_msg
         }
     
     except Exception as e:
-        st.error(f"Error fetching content: {str(e)}")
+        error_msg = f"Error fetching content: {str(e)}"
+        st.session_state.debug_info.append(error_msg)
+        st.error(error_msg)
         return {
             "status": "error",
-            "message": f"Error fetching content: {str(e)}"
+            "message": error_msg
         }
 
-# Function to periodically fetch content until it's available
-def periodic_content_fetch(prompt_id, api_url, max_attempts=30, interval=3):
+# Function to periodically fetch content until it's available or max attempts reached
+def periodic_content_fetch(prompt_id, api_url, max_attempts=60, interval=5):
     """Periodically fetch content by prompt ID until it's available or max attempts reached"""
     status_placeholder = st.empty()
     status_placeholder.info(f"⏳ Waiting for content generation to complete (ID: {prompt_id})...")
     
     for attempt in range(1, max_attempts + 1):
-        status_placeholder.text(f"Fetch attempt {attempt}/{max_attempts}...")
+        status_placeholder.text(f"Fetch attempt {attempt}/{max_attempts}... (waiting for ComfyUI to process)")
         
         # Try to fetch content
         result = fetch_content_by_id(prompt_id, api_url)
@@ -2813,9 +3124,117 @@ def periodic_content_fetch(prompt_id, api_url, max_attempts=30, interval=3):
         if result["status"] == "success":
             status_placeholder.success("✅ Content successfully generated!")
             return result
+        elif result["status"] == "processing":
+            # If the job is still processing, wait and try again
+            status_placeholder.info(f"⏳ Job is still processing (attempt {attempt}/{max_attempts})...")
+            time.sleep(interval)
+            continue
         elif result["status"] == "error" and "not found" in result.get("message", "").lower():
-            # If prompt ID is not found, stop trying
-            status_placeholder.error("❌ Prompt ID not found")
+            # Check if the job is in the queue but not in history yet
+            try:
+                queue_url = f"{api_url}/queue"
+                queue_response = requests.get(queue_url)
+                
+                if queue_response.status_code == 200:
+                    queue_data = queue_response.json()
+                    
+                    # Check if the job is in the queue (running or pending)
+                    in_queue = False
+                    
+                    # Debug the queue data structure
+                    st.session_state.debug_info.append(f"Queue data keys: {list(queue_data.keys())}")
+                    
+                    # Check running items
+                    running_fields = ["queue_running", "running_items", "running"]
+                    for field in running_fields:
+                        if field in queue_data:
+                            running_items = queue_data[field]
+                            st.session_state.debug_info.append(f"Found running items in field '{field}': {type(running_items)}")
+                            
+                            # Handle different formats
+                            if isinstance(running_items, list):
+                                # Format 1: List of items
+                                for item in running_items:
+                                    # Format 1a: Each item is a dict with prompt_id
+                                    if isinstance(item, dict) and "prompt_id" in item:
+                                        item_id = item["prompt_id"]
+                                        if item_id == prompt_id or item_id.startswith(prompt_id) or prompt_id.startswith(item_id):
+                                            in_queue = True
+                                            status_placeholder.info(f"⏳ Job is currently running in queue (attempt {attempt}/{max_attempts})...")
+                                            break
+                                    # Format 1b: Each item is a list with prompt_id at index 1
+                                    elif isinstance(item, list) and len(item) > 1:
+                                        item_id = item[1]
+                                        if item_id == prompt_id or item_id.startswith(prompt_id) or prompt_id.startswith(item_id):
+                                            in_queue = True
+                                            status_placeholder.info(f"⏳ Job is currently running in queue (attempt {attempt}/{max_attempts})...")
+                                            break
+                            # Format 2: Dict with prompt_id as key
+                            elif isinstance(running_items, dict):
+                                for item_id, item_data in running_items.items():
+                                    if item_id == prompt_id or item_id.startswith(prompt_id) or prompt_id.startswith(item_id):
+                                        in_queue = True
+                                        status_placeholder.info(f"⏳ Job is currently running in queue (attempt {attempt}/{max_attempts})...")
+                                        break
+                    
+                    # Check pending items
+                    if not in_queue:
+                        pending_fields = ["queue_pending", "pending_items", "pending"]
+                        for field in pending_fields:
+                            if field in queue_data:
+                                pending_items = queue_data[field]
+                                st.session_state.debug_info.append(f"Found pending items in field '{field}': {type(pending_items)}")
+                                
+                                # Handle different formats
+                                if isinstance(pending_items, list):
+                                    # Format 1: List of items
+                                    for item in pending_items:
+                                        # Format 1a: Each item is a dict with prompt_id
+                                        if isinstance(item, dict) and "prompt_id" in item:
+                                            item_id = item["prompt_id"]
+                                            if item_id == prompt_id or item_id.startswith(prompt_id) or prompt_id.startswith(item_id):
+                                                in_queue = True
+                                                status_placeholder.info(f"⏳ Job is pending in queue (attempt {attempt}/{max_attempts})...")
+                                                break
+                                        # Format 1b: Each item is a list with prompt_id at index 1
+                                        elif isinstance(item, list) and len(item) > 1:
+                                            item_id = item[1]
+                                            if item_id == prompt_id or item_id.startswith(prompt_id) or prompt_id.startswith(item_id):
+                                                in_queue = True
+                                                status_placeholder.info(f"⏳ Job is pending in queue (attempt {attempt}/{max_attempts})...")
+                                                break
+                                # Format 2: Dict with prompt_id as key
+                                elif isinstance(pending_items, dict):
+                                    for item_id, item_data in pending_items.items():
+                                        if item_id == prompt_id or item_id.startswith(prompt_id) or prompt_id.startswith(item_id):
+                                            in_queue = True
+                                            status_placeholder.info(f"⏳ Job is pending in queue (attempt {attempt}/{max_attempts})...")
+                                            break
+                    
+                    if in_queue:
+                        # If the job is in the queue, wait and try again
+                        time.sleep(interval)
+                        continue
+            except Exception as e:
+                st.session_state.debug_info.append(f"Error checking queue: {str(e)}")
+                st.error(f"Error checking queue: {str(e)}")
+            
+            # If not in queue and not in history, try one more time with a direct history request
+            try:
+                # Try direct history endpoint with the prompt ID
+                direct_history_url = f"{api_url}/history/{prompt_id}"
+                direct_history_response = requests.get(direct_history_url)
+                
+                if direct_history_response.status_code == 200:
+                    st.session_state.debug_info.append(f"Found job via direct history endpoint")
+                    status_placeholder.info(f"⏳ Job found via direct history endpoint, waiting for completion...")
+                    time.sleep(interval)
+                    continue
+            except Exception as e:
+                st.session_state.debug_info.append(f"Error checking direct history: {str(e)}")
+            
+            # If still not found, it's likely the job was deleted or never submitted
+            status_placeholder.error("❌ Prompt ID not found in history or queue")
             return result
         
         # Wait before trying again

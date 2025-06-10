@@ -25,6 +25,10 @@ import logging
 import tempfile
 import shutil
 
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 # Import custom helper module for ComfyUI integration
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "../app"))
 import comfyui_helpers

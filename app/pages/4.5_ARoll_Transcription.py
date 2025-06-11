@@ -1587,7 +1587,8 @@ def main():
                                 index=list(image_templates.keys()).index(st.session_state.image_template) 
                                     if st.session_state.image_template in image_templates else 0,
                                 format_func=lambda x: image_templates.get(x, x.replace("_", " ").title()),
-                                help="Choose which workflow template to use for image generation"
+                                help="Choose which workflow template to use for image generation",
+                                key="auto_image_template_select"
                             )
                             
                             # Store selection in session state
@@ -1723,7 +1724,8 @@ def main():
                                 index=list(image_templates.keys()).index(st.session_state.image_template) 
                                     if st.session_state.image_template in image_templates else 0,
                                 format_func=lambda x: image_templates.get(x, x.replace("_", " ").title()),
-                                help="Choose which workflow template to use for image generation"
+                                help="Choose which workflow template to use for image generation",
+                                key="manual_image_template_select"
                             )
                             
                             # Store selection in session state

@@ -959,10 +959,13 @@ def generate_with_comfyui(prompts, media_type="video", image_template="flux_schn
     if media_type == "video":
         # Try video server first
         comfyui_url = video_server_url
-        workflow_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "wan.json")
+        workflow_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "text_to_video_wan.json")
     else:
         comfyui_url = image_server_url
-        workflow_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), f"{image_template}.json")
+        workflow_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "flux_schnell.json")
+        # If image_template is specified, use it instead of the default
+        if image_template and image_template != "flux_schnell":
+            workflow_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), f"{image_template}.json")
     
     # Load workflow file
     try:
@@ -1574,10 +1577,10 @@ def main():
                         if st.session_state.broll_type == "image":
                             # Initialize session state for image template if not exists
                             if "image_template" not in st.session_state:
-                                st.session_state.image_template = "image_homepc"
+                                st.session_state.image_template = "flux_schnell"
                             
                             # Add selection for image template
-                            image_templates = {"image_homepc": "Home PC", "flux_schnell": "Flux Schnell"}
+                            image_templates = {"flux_schnell": "Flux Schnell", "image_homepc": "Home PC"}
                             image_template = st.selectbox(
                                 "Select Image Workflow Template:",
                                 options=list(image_templates.keys()),
@@ -1633,7 +1636,7 @@ def main():
                                     broll_prompts_data = {
                                         "prompts": {str(i): segment.get("content", "") for i, segment in enumerate(filtered_segments)},
                                         "broll_type": st.session_state.broll_type,
-                                        "image_template": st.session_state.get("image_template", "image_homepc") if st.session_state.broll_type == "image" else None
+                                        "image_template": st.session_state.get("image_template", "flux_schnell") if st.session_state.broll_type == "image" else None
                                     }
                                     broll_prompts_file = project_path / "broll_prompts.json"
                                     with open(broll_prompts_file, "w") as f:
@@ -1710,25 +1713,24 @@ def main():
                         if st.session_state.broll_type == "image":
                             # Initialize session state for image template if not exists
                             if "image_template" not in st.session_state:
-                                st.session_state.image_template = "image_homepc"
+                                st.session_state.image_template = "flux_schnell"
                             
                             # Add selection for image template
-                            image_templates = {"image_homepc": "Home PC", "flux_schnell": "Flux Schnell"}
-                            manual_image_template = st.selectbox(
+                            image_templates = {"flux_schnell": "Flux Schnell", "image_homepc": "Home PC"}
+                            image_template = st.selectbox(
                                 "Select Image Workflow Template:",
                                 options=list(image_templates.keys()),
                                 index=list(image_templates.keys()).index(st.session_state.image_template) 
                                     if st.session_state.image_template in image_templates else 0,
                                 format_func=lambda x: image_templates.get(x, x.replace("_", " ").title()),
-                                help="Choose which workflow template to use for image generation",
-                                key="manual_image_template"
+                                help="Choose which workflow template to use for image generation"
                             )
                             
                             # Store selection in session state
-                            st.session_state.image_template = manual_image_template
+                            st.session_state.image_template = image_template
                             
                             # Show selected template
-                            st.info(f"Using template: **{image_templates.get(manual_image_template, manual_image_template)}**")
+                            st.info(f"Using template: **{image_templates.get(image_template, image_template)}**")
                         
                         if st.button("Generate B-Roll Segments"):
                             with st.spinner("Generating B-Roll segments..."):
@@ -1748,7 +1750,7 @@ def main():
                                 broll_prompts_data = {
                                     "prompts": {str(i): segment.get("content", "") for i, segment in enumerate(b_roll_segments)},
                                     "broll_type": st.session_state.broll_type,
-                                    "image_template": st.session_state.get("image_template", "image_homepc") if st.session_state.broll_type == "image" else None
+                                    "image_template": st.session_state.get("image_template", "flux_schnell") if st.session_state.broll_type == "image" else None
                                 }
                                 broll_prompts_file = project_path / "broll_prompts.json"
                                 with open(broll_prompts_file, "w") as f:
@@ -1820,7 +1822,7 @@ def main():
                             if broll_type == "image":
                                 st.info(f"Template: **{image_template}**")
                             else:
-                                st.info(f"Template: **wan.json**")
+                                st.info(f"Template: **text_to_video_wan.json**")
                         
                         # Check server status
                         server_status_cols = st.columns(2)

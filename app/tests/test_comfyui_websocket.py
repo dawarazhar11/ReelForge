@@ -256,7 +256,7 @@ def test_websocket_client():
     status_info = wait_for_prompt_completion(
         prompt_id,
         server_url=COMFYUI_SERVER_URL,
-        max_wait_time=300,  # 5 minutes timeout
+        max_wait_time=1000,  # 16.6 minutes timeout
         check_interval=5,    # Check every 5 seconds
         on_update=on_update,
         on_complete=on_complete,

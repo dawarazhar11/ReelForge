@@ -1232,7 +1232,7 @@ def check_prompt_status(prompt_id: str, server_url: str = "http://100.115.243.42
 
 def wait_for_prompt_completion(prompt_id: str, 
                               server_url: str = "http://100.115.243.42:8000",
-                              max_wait_time: int = 300,
+                              max_wait_time: int = 1000,
                               check_interval: int = 5,
                               on_update: Optional[Callable[[Dict[str, Any]], None]] = None,
                               on_complete: Optional[Callable[[Dict[str, Any]], None]] = None,

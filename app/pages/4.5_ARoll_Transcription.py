@@ -41,6 +41,7 @@ try:
     )
     # Import new utilities for Ollama integration and segmentation
     from utils.ai.ollama_client import OllamaClient
+    from utils.ai.comfyui_websocket import ComfyUIWebSocketClient, load_workflow_file, submit_workflow, wait_for_prompt_completion, get_output_images
     from utils.video.segmentation import (
         get_segment_timestamps,
         cut_video_segments,
@@ -220,6 +221,13 @@ if "auto_segmentation_complete" not in st.session_state:
     st.session_state.auto_segmentation_complete = False
 if "segment_files" not in st.session_state:
     st.session_state.segment_files = []
+# Add new session state variables for ComfyUI generation
+if "comfyui_generation_complete" not in st.session_state:
+    st.session_state.comfyui_generation_complete = False
+if "comfyui_generated_files" not in st.session_state:
+    st.session_state.comfyui_generated_files = {}
+if "comfyui_generation_status" not in st.session_state:
+    st.session_state.comfyui_generation_status = "not_started"
 
 # Function to save the transcription data
 def save_transcription_data(data):
@@ -924,6 +932,188 @@ def cleanup_broll_data():
     
     return True
 
+def generate_with_comfyui(prompts, media_type="video", image_template="flux_schnell"):
+    """
+    Generate media using ComfyUI based on the prompts
+    
+    Args:
+        prompts (dict): Dictionary of prompts where keys are segment indices and values are prompt strings
+        media_type (str): Either "video" or "image"
+        image_template (str): The image template to use (only applicable for image type)
+        
+    Returns:
+        dict: Dictionary of generated media files with segment indices as keys and file paths as values
+    """
+    project_path = get_project_path()
+    if not project_path:
+        return None
+    
+    # Create output directory for generated media
+    broll_dir = project_path / "media" / "b-roll"
+    os.makedirs(broll_dir, exist_ok=True)
+    
+    # Set API URLs based on media type
+    if media_type == "video":
+        comfyui_url = "http://100.86.185.76:8000"  # Video ComfyUI server
+        workflow_file = "wan.json"
+    else:
+        comfyui_url = "http://100.115.243.42:8000"  # Image ComfyUI server
+        workflow_file = f"{image_template}.json"
+    
+    # Load workflow file
+    try:
+        workflow = load_workflow_file(workflow_file)
+        if not workflow:
+            print(f"Error: Could not load workflow file {workflow_file}")
+            return None
+    except Exception as e:
+        print(f"Error loading workflow file: {str(e)}")
+        return None
+    
+    # Initialize client
+    client = ComfyUIWebSocketClient(server_url=comfyui_url)
+    if not client.connect():
+        print(f"Error: Could not connect to ComfyUI server at {comfyui_url}")
+        return None
+    
+    generated_files = {}
+    progress_text = st.empty()
+    progress_bar = st.progress(0)
+    
+    try:
+        total_prompts = len(prompts)
+        for i, (index, prompt) in enumerate(prompts.items()):
+            segment_index = int(index)
+            progress_text.text(f"Generating {media_type} for segment {segment_index+1}/{total_prompts}...")
+            
+            # Clean up the prompt (remove quotes if present)
+            if prompt.startswith('"') and prompt.endswith('"'):
+                prompt = prompt[1:-1]
+            
+            # Generate negative prompt (placeholder - could be enhanced)
+            negative_prompt = "blurry, low quality, low resolution, distorted, watermark, signature, cropped, bad art"
+            
+            # Modify workflow with prompt
+            modified_workflow = client.modify_workflow(
+                workflow=workflow,
+                prompt=prompt,
+                negative_prompt=negative_prompt
+            )
+            
+            # Submit workflow
+            prompt_id = submit_workflow(
+                workflow=modified_workflow,
+                server_url=comfyui_url
+            )
+            
+            if not prompt_id:
+                print(f"Error: Failed to submit workflow for segment {segment_index}")
+                continue
+            
+            # Wait for completion
+            result = wait_for_prompt_completion(
+                prompt_id=prompt_id,
+                server_url=comfyui_url,
+                on_update=lambda data: progress_bar.progress((i + data.get("progress", 0)/100) / total_prompts)
+            )
+            
+            if not result or result.get("status") != "complete":
+                print(f"Error: Generation failed for segment {segment_index}")
+                continue
+            
+            # Get output images/video
+            output_files = get_output_images(
+                prompt_id=prompt_id,
+                server_url=comfyui_url,
+                output_dir=broll_dir
+            )
+            
+            if output_files:
+                # Get the first file (there might be multiple outputs)
+                main_output = output_files[0]
+                
+                # Rename file to match segment index
+                file_ext = os.path.splitext(main_output)[1]
+                new_filename = f"broll_segment_{segment_index}{file_ext}"
+                new_filepath = os.path.join(broll_dir, new_filename)
+                
+                try:
+                    os.rename(main_output, new_filepath)
+                    generated_files[index] = new_filepath
+                except Exception as e:
+                    print(f"Error renaming file: {str(e)}")
+                    generated_files[index] = main_output
+            
+            # Update progress
+            progress_bar.progress((i + 1) / total_prompts)
+    
+    finally:
+        # Close client connection
+        client.disconnect()
+        progress_bar.empty()
+        progress_text.empty()
+    
+    # Save generated files info
+    try:
+        generation_info = {
+            "media_type": media_type,
+            "files": generated_files,
+            "template": workflow_file,
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+        }
+        
+        with open(project_path / "broll_generation.json", "w") as f:
+            json.dump(generation_info, f, indent=2)
+    except Exception as e:
+        print(f"Error saving generation info: {str(e)}")
+    
+    return generated_files
+
+# Function to load saved B-Roll prompts
+def load_broll_prompts():
+    prompts_file = project_path / "broll_prompts.json"
+    if prompts_file.exists():
+        with open(prompts_file, "r") as f:
+            st.session_state.broll_prompts = json.load(f)
+            if "broll_type" in st.session_state.broll_prompts:
+                st.session_state.broll_type = st.session_state.broll_prompts["broll_type"]
+            if "exclude_negative_prompts" in st.session_state.broll_prompts:
+                st.session_state.exclude_negative_prompts = st.session_state.broll_prompts["exclude_negative_prompts"]
+            if "image_template" in st.session_state.broll_prompts:
+                st.session_state.image_template = st.session_state.broll_prompts["image_template"]
+            if "map_broll_to_aroll" in st.session_state.broll_prompts:
+                st.session_state.map_broll_to_aroll = st.session_state.broll_prompts["map_broll_to_aroll"]
+            if "broll_aroll_mapping" in st.session_state.broll_prompts:
+                st.session_state.broll_aroll_mapping = st.session_state.broll_prompts["broll_aroll_mapping"]
+            return True
+    return False
+
+# Function to load previously generated ComfyUI media
+def load_comfyui_generation():
+    generation_file = project_path / "broll_generation.json"
+    if generation_file.exists():
+        try:
+            with open(generation_file, "r") as f:
+                generation_data = json.load(f)
+                
+                # Check if the files actually exist
+                files = generation_data.get("files", {})
+                existing_files = {}
+                
+                for idx, file_path in files.items():
+                    if os.path.exists(file_path):
+                        existing_files[idx] = file_path
+                
+                if existing_files:
+                    st.session_state.comfyui_generated_files = existing_files
+                    st.session_state.comfyui_generation_complete = True
+                    st.session_state.comfyui_generation_status = "complete"
+                    return True
+        except Exception as e:
+            print(f"Error loading ComfyUI generation data: {str(e)}")
+    
+    return False
+
 # Main function
 def main():
     # Header and instructions
@@ -1036,6 +1226,9 @@ def main():
                 st.session_state.a_roll_segments = existing_segments
                 st.session_state.segmentation_complete = True
                 st.success("Segments loaded from previous session.")
+            
+            # Load previously generated ComfyUI media if available
+            load_comfyui_generation()
             
             # New section for automatic vs manual segmentation
             st.header("Segmentation Options")
@@ -1561,6 +1754,90 @@ def main():
                                 {segment.get("content", "")}
                             </div>
                             """, unsafe_allow_html=True)
+                    
+                    # Add ComfyUI Generation Section
+                    st.header("ComfyUI Generation")
+                    
+                    st.write("Generate B-Roll media directly using ComfyUI with the prompts you've created.")
+                    
+                    # Load the broll_prompts.json file to get the prompts
+                    broll_prompts_file = project_path / "broll_prompts.json"
+                    if broll_prompts_file.exists():
+                        with open(broll_prompts_file, "r") as f:
+                            broll_prompts_data = json.load(f)
+                            
+                        prompts = broll_prompts_data.get("prompts", {})
+                        broll_type = broll_prompts_data.get("broll_type", "video")
+                        image_template = broll_prompts_data.get("image_template", "flux_schnell")
+                        
+                        # Display generation info
+                        info_cols = st.columns(2)
+                        with info_cols[0]:
+                            st.info(f"Media Type: **{broll_type.upper()}**")
+                        with info_cols[1]:
+                            if broll_type == "image":
+                                st.info(f"Template: **{image_template}**")
+                            else:
+                                st.info(f"Template: **wan.json**")
+                        
+                        # Show generation button
+                        if st.button("Generate with ComfyUI", type="primary"):
+                            with st.spinner(f"Generating {broll_type} content with ComfyUI... This may take a while."):
+                                st.session_state.comfyui_generation_status = "in_progress"
+                                
+                                # Call the generation function
+                                generated_files = generate_with_comfyui(
+                                    prompts=prompts,
+                                    media_type=broll_type,
+                                    image_template=image_template
+                                )
+                                
+                                if generated_files:
+                                    st.session_state.comfyui_generated_files = generated_files
+                                    st.session_state.comfyui_generation_complete = True
+                                    st.session_state.comfyui_generation_status = "complete"
+                                    
+                                    st.success(f"Successfully generated {len(generated_files)} {broll_type} files!")
+                                    
+                                    # Mark this step as complete
+                                    mark_step_complete("broll_generation")
+                                else:
+                                    st.session_state.comfyui_generation_status = "failed"
+                                    st.error("Failed to generate media with ComfyUI. Check logs for details.")
+                        
+                        # Display generated media if available
+                        if st.session_state.comfyui_generation_complete:
+                            st.subheader("Generated Media")
+                            
+                            # Create columns for the media preview
+                            num_files = len(st.session_state.comfyui_generated_files)
+                            cols_per_row = min(3, num_files)  # Max 3 columns per row
+                            
+                            # Split into rows of 3
+                            for i in range(0, num_files, cols_per_row):
+                                cols = st.columns(cols_per_row)
+                                for j in range(cols_per_row):
+                                    if i + j < num_files:
+                                        idx = str(i + j)
+                                        if idx in st.session_state.comfyui_generated_files:
+                                            file_path = st.session_state.comfyui_generated_files[idx]
+                                            
+                                            with cols[j]:
+                                                st.write(f"Segment {int(idx) + 1}")
+                                                
+                                                # Check file extension to determine display method
+                                                if file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
+                                                    st.image(file_path)
+                                                elif file_path.lower().endswith(('.mp4', '.mov', '.avi', '.webm')):
+                                                    st.video(file_path)
+                            
+                            # Add navigation to next step
+                            nav_col1, nav_col2 = st.columns([2, 1])
+                            with nav_col2:
+                                if st.button("Next: B-Roll Production ➡️", key="comfyui_next_button", type="primary", use_container_width=True):
+                                    st.switch_page("pages/5B_BRoll_Video_Production.py")
+                    else:
+                        st.warning("B-Roll prompts file not found. Please generate B-Roll prompts first.")
 
 # Helper function to format time in MM:SS format
 def format_time(seconds):

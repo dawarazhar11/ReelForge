@@ -237,21 +237,86 @@ def generate_content(settings, prompts):
             st.session_state.results.append(result)
             
             # Update UI with result
-            if result["status"] == "complete" and "downloaded_files" in result and result["downloaded_files"]:
-                st.success(f"✅ Generated B-Roll segment {i+1}")
-                
-                # Display the files
-                for file_info in result["downloaded_files"]:
-                    file_path = file_info["path"]
-                    file_type = file_info["type"]
+            if result["status"] == "complete":
+                if "downloaded_files" in result and result["downloaded_files"]:
+                    st.success(f"✅ Generated B-Roll segment {i+1}")
                     
-                    if file_type == "image":
-                        st.image(file_path, caption=f"Generated image {os.path.basename(file_path)}")
-                    elif file_type == "video":
-                        st.video(file_path)
+                    # Display the files
+                    for file_info in result["downloaded_files"]:
+                        file_path = file_info["path"]
+                        file_type = file_info["type"]
+                        
+                        if file_type == "image":
+                            st.image(file_path, caption=f"Generated image {os.path.basename(file_path)}")
+                        elif file_type == "video":
+                            st.video(file_path)
+                else:
+                    # Job completed but no files were downloaded
+                    st.warning(f"⚠️ Job completed for segment {i+1} but no output files were found")
+                    
+                    # Check if we have filenames but they weren't downloaded
+                    if "files" in result and result["files"]:
+                        st.info(f"Output files were detected but couldn't be downloaded: {[f['filename'] for f in result['files']]}")
+                        
+                        # Try to manually download them
+                        manually_downloaded = []
+                        for file_info in result["files"]:
+                            filename = file_info["filename"]
+                            file_path = direct_workflow.fetch_output_file(filename, output_dir, settings["comfyui_url"])
+                            if file_path:
+                                manually_downloaded.append({
+                                    "path": file_path, 
+                                    "type": file_info["type"],
+                                    "filename": filename
+                                })
+                                
+                        # If we managed to download any files, display them
+                        if manually_downloaded:
+                            st.success(f"✅ Successfully retrieved {len(manually_downloaded)} files manually")
+                            for file_info in manually_downloaded:
+                                file_path = file_info["path"]
+                                file_type = file_info["type"]
+                                
+                                if file_type == "image":
+                                    st.image(file_path, caption=f"Retrieved image {os.path.basename(file_path)}")
+                                elif file_type == "video":
+                                    st.video(file_path)
             
             elif result["status"] == "timeout":
                 st.warning(f"⚠️ Generation timed out after {settings['timeout']} seconds")
+                
+                # Try one last time to see if there are any output files
+                final_check = direct_workflow.find_output_files_by_pattern(
+                    result.get("prompt_id", "unknown"),
+                    settings["comfyui_url"]
+                )
+                
+                if final_check["status"] == "complete" and "files" in final_check and final_check["files"]:
+                    st.info(f"Found files after timeout: {[f['filename'] for f in final_check['files']]}")
+                    
+                    # Try to download them
+                    manually_downloaded = []
+                    for file_info in final_check["files"]:
+                        filename = file_info["filename"]
+                        file_path = direct_workflow.fetch_output_file(filename, output_dir, settings["comfyui_url"])
+                        if file_path:
+                            manually_downloaded.append({
+                                "path": file_path, 
+                                "type": file_info["type"],
+                                "filename": filename
+                            })
+                            
+                    # If we managed to download any files, display them
+                    if manually_downloaded:
+                        st.success(f"✅ Successfully retrieved {len(manually_downloaded)} files after timeout")
+                        for file_info in manually_downloaded:
+                            file_path = file_info["path"]
+                            file_type = file_info["type"]
+                            
+                            if file_type == "image":
+                                st.image(file_path, caption=f"Retrieved image {os.path.basename(file_path)}")
+                            elif file_type == "video":
+                                st.video(file_path)
                 
             else:
                 st.error(f"❌ Generation failed: {result.get('message', 'Unknown error')}")

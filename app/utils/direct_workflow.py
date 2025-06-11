@@ -187,7 +187,7 @@ def check_job_status(prompt_id, api_url=COMFYUI_SERVER_URL):
             
             # Check if the job is complete (has outputs)
             if "outputs" in data and data["outputs"]:
-                logger.info(f"✅ Job completed")
+                logger.info(f"✅ Job completed with outputs")
                 
                 # Find output files
                 output_files = []
@@ -205,43 +205,70 @@ def check_job_status(prompt_id, api_url=COMFYUI_SERVER_URL):
                 logger.info(f"Found {len(output_files)} output files")
                 return {"status": "complete", "files": output_files}
             
-            # Check for alternative indicators job is actually complete
-            # Sometimes the job is complete but outputs are structured differently
-            if "status" in data and isinstance(data["status"], dict):
-                if "completed" in data["status"] and data["status"]["completed"] == True:
-                    logger.info("✅ Job found with completed status flag")
+            # Method 1: Check for execution status completion
+            if "status" in data:
+                status_obj = data["status"]
+                if isinstance(status_obj, dict):
+                    # Check various completion indicators
+                    if "completed" in status_obj and status_obj["completed"] == True:
+                        logger.info("✅ Job found with 'completed' status flag")
+                        return find_output_files_by_pattern(prompt_id, api_url)
                     
-                    # Try to find output filenames using alternative methods
-                    try:
-                        # Check recent outputs view directory
-                        patterns = [
-                            f"ComfyUI_{prompt_id[:8]}.png",
-                            f"ComfyUI_{prompt_id[:8]}.jpg", 
-                            f"{prompt_id[:8]}.png",
-                            "ComfyUI.png"
-                        ]
+                    # Check for execution_complete
+                    if "execution_complete" in status_obj and status_obj["execution_complete"]:
+                        logger.info("✅ Job found with 'execution_complete' status flag")
+                        return find_output_files_by_pattern(prompt_id, api_url) 
                         
-                        # Try to check if these files exist
-                        for pattern in patterns:
-                            test_url = f"{api_url}/view?filename={pattern}"
-                            try:
-                                head_response = requests.head(test_url, timeout=3)
-                                if head_response.status_code == 200:
-                                    logger.info(f"✅ Found output file via pattern match: {pattern}")
-                                    return {
-                                        "status": "complete", 
-                                        "files": [{"filename": pattern, "type": "image"}]
-                                    }
-                            except:
-                                pass
+                    # Check for success message in status messages
+                    if "message" in status_obj and "complete" in str(status_obj["message"]).lower():
+                        logger.info("✅ Job found with 'complete' in status message")
+                        return find_output_files_by_pattern(prompt_id, api_url)
                         
-                        # If we got here but status is completed, return success anyway
-                        logger.info("Job marked complete but no files found via patterns. Reporting success.")
-                        return {"status": "complete", "files": []}
-                    except Exception as e:
-                        logger.warning(f"Error checking alternative file patterns: {str(e)}")
-                        # Still return complete status since the job is marked as completed
-                        return {"status": "complete", "files": []}
+            # Method 2: Check if the job is no longer in the queue
+            try:
+                queue_response = requests.get(f"{api_url}/queue", timeout=5)
+                if queue_response.status_code == 200:
+                    queue_data = queue_response.json()
+                    job_in_queue = False
+                    
+                    # Check running items
+                    running_fields = ["queue_running", "running_items", "running"]
+                    for field in running_fields:
+                        if field in queue_data and any(
+                            isinstance(item, dict) and item.get("prompt_id") == prompt_id 
+                            for item in queue_data[field]
+                        ):
+                            job_in_queue = True
+                    
+                    # Check pending items
+                    pending_fields = ["queue_pending", "pending_items", "pending"]
+                    for field in pending_fields:
+                        if field in queue_data and any(
+                            isinstance(item, dict) and item.get("prompt_id") == prompt_id 
+                            for item in queue_data[field]
+                        ):
+                            job_in_queue = True
+                    
+                    # If job is in history but not in queue, it might be completed
+                    if not job_in_queue and "prompt" in data:
+                        logger.info("✅ Job found in history but not in queue - likely complete")
+                        return find_output_files_by_pattern(prompt_id, api_url)
+            except Exception as e:
+                logger.warning(f"Error checking queue: {str(e)}")
+            
+            # Method 3: Check for node execution completion
+            # Some versions of ComfyUI track node execution
+            if "execution_cached_nodes" in data and "executed_nodes" in data:
+                if len(data["executed_nodes"]) > 0:
+                    # Get all nodes that were executed
+                    executed = set(data["executed_nodes"])
+                    # Get workflow nodes to check if all were executed
+                    if "prompt" in data and isinstance(data["prompt"], dict):
+                        workflow_nodes = set(data["prompt"].keys())
+                        # If most nodes have executed, consider it complete
+                        if len(executed) >= len(workflow_nodes) * 0.9:  # 90% of nodes executed
+                            logger.info("✅ Job has executed 90%+ of nodes - considering complete")
+                            return find_output_files_by_pattern(prompt_id, api_url)
             
             # If we get here, the job is still processing
             logger.info(f"⏳ Job still processing...")
@@ -275,6 +302,12 @@ def check_job_status(prompt_id, api_url=COMFYUI_SERVER_URL):
                                                 output_files.append({"filename": vid["filename"], "type": "video"})
                                 
                                 return {"status": "complete", "files": output_files}
+                            
+                            # If found in history but no outputs, check for other completion indicators
+                            if "status" in item_data and isinstance(item_data["status"], dict):
+                                if "completed" in item_data["status"] and item_data["status"]["completed"] == True:
+                                    logger.info("✅ Found job in full history with completed status")
+                                    return find_output_files_by_pattern(prompt_id, api_url)
         except Exception as e:
             logger.warning(f"Error checking full history: {str(e)}")
         
@@ -312,6 +345,73 @@ def check_job_status(prompt_id, api_url=COMFYUI_SERVER_URL):
     except Exception as e:
         logger.error(f"Error checking job status: {str(e)}")
         return {"status": "error", "message": str(e)}
+
+def find_output_files_by_pattern(prompt_id, api_url=COMFYUI_SERVER_URL):
+    """Find output files using various filename patterns when job is detected complete but no outputs reported"""
+    logger.info(f"Looking for output files by pattern matching for prompt: {prompt_id}")
+    
+    try:
+        # Common ComfyUI output filename patterns
+        patterns = [
+            f"ComfyUI_{prompt_id[:8]}.png",
+            f"ComfyUI_{prompt_id}.png",
+            f"{prompt_id[:8]}.png",
+            f"{prompt_id}.png",
+            "ComfyUI.png",  # Sometimes the latest output is just called ComfyUI.png
+            f"ComfyUI_{prompt_id[:8]}.jpg",
+            f"ComfyUI_{prompt_id}.jpg",
+            f"{prompt_id[:8]}.jpg",
+            f"{prompt_id}.jpg",
+            "ComfyUI.jpg",
+            # Video formats
+            f"ComfyUI_{prompt_id[:8]}.mp4",
+            f"ComfyUI_{prompt_id}.mp4",
+            f"{prompt_id[:8]}.mp4",
+            f"{prompt_id}.mp4"
+        ]
+        
+        # Try to find files by guessing common patterns
+        for pattern in patterns:
+            try:
+                test_url = f"{api_url}/view?filename={pattern}"
+                head_response = requests.head(test_url, timeout=3)
+                if head_response.status_code == 200:
+                    logger.info(f"✅ Found output file via pattern match: {pattern}")
+                    return {
+                        "status": "complete", 
+                        "files": [{"filename": pattern, "type": "image" if pattern.endswith((".png", ".jpg", ".jpeg")) else "video"}]
+                    }
+            except:
+                continue
+        
+        # If no specific file found, try checking the output directory contents
+        try:
+            # Some ComfyUI instances expose a /view_output_directory endpoint to list files
+            output_dir_url = f"{api_url}/view_output_directory"
+            dir_response = requests.get(output_dir_url, timeout=5)
+            if dir_response.status_code == 200:
+                files_data = dir_response.json()
+                # Look for files that contain the prompt ID
+                for file_info in files_data:
+                    if isinstance(file_info, dict) and "filename" in file_info:
+                        filename = file_info["filename"]
+                        if prompt_id[:8] in filename:
+                            file_type = "image" if filename.endswith((".png", ".jpg", ".jpeg")) else "video"
+                            logger.info(f"✅ Found output file via directory listing: {filename}")
+                            return {
+                                "status": "complete",
+                                "files": [{"filename": filename, "type": file_type}]
+                            }
+        except Exception as e:
+            logger.warning(f"Error checking output directory: {str(e)}")
+        
+        # If we get here but have confirmation the job completed, return empty file list
+        logger.info("Job marked complete but no output files found. Reporting success with empty file list.")
+        return {"status": "complete", "files": []}
+    except Exception as e:
+        logger.warning(f"Error in pattern matching for output files: {str(e)}")
+        # Return complete status anyway since we're already pretty sure the job is done
+        return {"status": "complete", "files": []}
 
 def fetch_output_file(filename, output_dir=None, api_url=COMFYUI_SERVER_URL):
     """Download an output file from ComfyUI"""
@@ -355,25 +455,80 @@ def fetch_output_file(filename, output_dir=None, api_url=COMFYUI_SERVER_URL):
 def wait_for_completion(prompt_id, timeout=600, check_interval=5, api_url=COMFYUI_SERVER_URL):
     """Wait for a job to complete, with timeout"""
     start_time = time.time()
+    elapsed = 0
     
-    while time.time() - start_time < timeout:
+    # Strategy: Check more frequently at the beginning
+    # Many quick jobs finish in under 10 seconds
+    while elapsed < 10:  # First 10 seconds: check every second
         status = check_job_status(prompt_id, api_url)
         
         if status["status"] == "complete":
-            elapsed = int(time.time() - start_time)
-            logger.info(f"✅ Job completed successfully after {elapsed} seconds")
+            logger.info(f"✅ Job completed successfully after {elapsed:.1f} seconds")
             return status
         
         elif status["status"] == "error":
             logger.error(f"❌ Job failed: {status.get('message', 'Unknown error')}")
             return status
         
-        # Wait before checking again
+        # Wait before checking again (short interval)
+        time.sleep(1)
+        elapsed = time.time() - start_time
+    
+    # For jobs that take a bit longer but still finish quickly (10-40 seconds range)
+    while elapsed < 40:  # Next 30 seconds: check every 3 seconds
+        status = check_job_status(prompt_id, api_url)
+        
+        if status["status"] == "complete":
+            logger.info(f"✅ Job completed successfully after {elapsed:.1f} seconds")
+            return status
+        
+        elif status["status"] == "error":
+            logger.error(f"❌ Job failed: {status.get('message', 'Unknown error')}")
+            return status
+        
+        # Additional check: Try direct file check for common patterns
+        # This can detect outputs faster than the API sometimes updates
+        result = find_output_files_by_pattern(prompt_id, api_url)
+        if result["status"] == "complete" and result.get("files"):
+            logger.info(f"✅ Job outputs detected directly after {elapsed:.1f} seconds")
+            return result
+        
+        # Wait before checking again (medium interval)
+        time.sleep(3)
+        elapsed = time.time() - start_time
+    
+    # For longer running jobs, use the standard interval
+    while elapsed < timeout:
+        status = check_job_status(prompt_id, api_url)
+        
+        if status["status"] == "complete":
+            logger.info(f"✅ Job completed successfully after {elapsed:.1f} seconds")
+            return status
+        
+        elif status["status"] == "error":
+            logger.error(f"❌ Job failed: {status.get('message', 'Unknown error')}")
+            return status
+        
+        # Additional periodic direct file check
+        if int(elapsed) % 15 == 0:  # Every 15 seconds
+            result = find_output_files_by_pattern(prompt_id, api_url)
+            if result["status"] == "complete" and result.get("files"):
+                logger.info(f"✅ Job outputs detected directly after {elapsed:.1f} seconds")
+                return result
+        
+        # Wait before checking again (standard interval)
         time.sleep(check_interval)
+        elapsed = time.time() - start_time
     
     # If we get here, we've timed out
-    elapsed = int(time.time() - start_time)
-    logger.warning(f"⚠️ Timed out after {elapsed} seconds")
+    logger.warning(f"⚠️ Timed out after {elapsed:.1f} seconds")
+    
+    # Last chance check - maybe the job finished but we missed it
+    final_check = find_output_files_by_pattern(prompt_id, api_url)
+    if final_check["status"] == "complete" and final_check.get("files"):
+        logger.info(f"✅ Job outputs found during final check after timeout")
+        return final_check
+        
     return {"status": "timeout", "message": f"Job timed out after {timeout} seconds"}
 
 def generate_content(workflow_path, prompt, negative_prompt=None, output_dir=None, timeout=600, api_url=COMFYUI_SERVER_URL, seed=None):
@@ -394,6 +549,9 @@ def generate_content(workflow_path, prompt, negative_prompt=None, output_dir=Non
     
     # Wait for completion
     result = wait_for_completion(prompt_id, timeout, api_url=api_url)
+    
+    # Add prompt_id to result for reference
+    result["prompt_id"] = prompt_id
     
     # If the job completed successfully, download the files
     if result["status"] == "complete" and "files" in result:

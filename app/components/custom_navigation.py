@@ -37,31 +37,25 @@ def render_custom_sidebar():
             "name": "A-Roll Transcription",
             "icon": "🎤",
             "path": "pages/4.5_ARoll_Transcription.py",
-            "step": 1  # Renumbered
-        },
-        {
-            "name": "B-Roll Video Production",
-            "icon": "🎬",
-            "path": "pages/5B_BRoll_Video_Production.py",
-            "step": 2  # Renumbered
+            "step": 1
         },
         {
             "name": "Video Assembly",
             "icon": "🎞️",
             "path": "pages/6_Video_Assembly.py",
-            "step": 3  # Renumbered
+            "step": 2  # Updated step number
         },
         {
             "name": "Captioning",
             "icon": "💬",
             "path": "pages/7_Caption_The_Dreams.py",
-            "step": 4  # Renumbered
+            "step": 3  # Updated step number
         },
         {
             "name": "Publishing",
             "icon": "🚀",
             "path": "pages/8_Social_Media_Upload.py",
-            "step": 5  # Renumbered
+            "step": 4  # Updated step number
         }
     ]
 
@@ -100,31 +94,25 @@ def render_horizontal_navigation():
                 "name": "A-Roll Transcription",
                 "icon": "🎤",
                 "path": "pages/4.5_ARoll_Transcription.py",
-                "step": 1  # Renumbered
-            },
-            {
-                "name": "B-Roll Video Production",
-                "icon": "🎬",
-                "path": "pages/5B_BRoll_Video_Production.py",
-                "step": 2  # Renumbered
+                "step": 1
             },
             {
                 "name": "Video Assembly",
                 "icon": "🎞️",
                 "path": "pages/6_Video_Assembly.py",
-                "step": 3  # Renumbered
+                "step": 2  # Updated step number
             },
             {
                 "name": "Captioning",
                 "icon": "💬",
                 "path": "pages/7_Caption_The_Dreams.py",
-                "step": 4  # Renumbered
+                "step": 3  # Updated step number
             },
             {
                 "name": "Publishing",
                 "icon": "🚀",
                 "path": "pages/8_Social_Media_Upload.py",
-                "step": 5  # Renumbered
+                "step": 4  # Updated step number
             }
         ]
         
@@ -173,9 +161,8 @@ def render_step_navigation(current_step, prev_step_path=None, next_step_path=Non
     # Current step indicator
     with col2:
         steps = [
-            # Updated step names to match the new order (without disabled pages)
+            # Updated step names to match the new order (without B-Roll Video Production)
             "A-Roll Transcription",
-            "B-Roll Video Production", 
             "Video Assembly",
             "Captioning",
             "Publishing"

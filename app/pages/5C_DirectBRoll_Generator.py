@@ -111,7 +111,7 @@ def render_settings_sidebar():
             height = st.number_input("Height", value=1920, step=8, min_value=320, max_value=2048)
         
         # Timeout
-        timeout = st.slider("Generation Timeout (seconds)", min_value=60, max_value=600, value=300, step=30)
+        timeout = st.slider("Generation Timeout (seconds)", min_value=60, max_value=1200, value=600, step=30)
         
         # Output settings
         output_dir = st.text_input("Output Directory", "outputs")

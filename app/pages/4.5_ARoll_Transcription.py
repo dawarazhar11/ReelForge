@@ -954,15 +954,15 @@ def generate_with_comfyui(prompts, media_type="video", image_template="flux_schn
     
     # Set API URLs based on media type
     image_server_url = "http://100.115.243.42:8000"  # Image ComfyUI server
-    video_server_url = "http://100.86.185.76:8000"   # Video ComfyUI server
+    video_server_url = "http://100.115.243.42:8000"   # Use the same server for video and image
     
     if media_type == "video":
         # Try video server first
         comfyui_url = video_server_url
-        workflow_file = "wan.json"
+        workflow_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "wan.json")
     else:
         comfyui_url = image_server_url
-        workflow_file = f"{image_template}.json"
+        workflow_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), f"{image_template}.json")
     
     # Load workflow file
     try:
@@ -987,7 +987,7 @@ def generate_with_comfyui(prompts, media_type="video", image_template="flux_schn
         
         comfyui_url = image_server_url
         media_type = "image"
-        workflow_file = "flux_schnell.json"
+        workflow_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "flux_schnell.json")
         
         # Try to load the image workflow file
         try:
@@ -1840,7 +1840,7 @@ def main():
                         with server_status_cols[1]:
                             # Try to connect to video server
                             try:
-                                video_client = ComfyUIWebSocketClient(server_url="http://100.86.185.76:8000")
+                                video_client = ComfyUIWebSocketClient(server_url="http://100.115.243.42:8000")
                                 video_server_available = video_client.connect()
                                 video_client.disconnect()
                                 if video_server_available:

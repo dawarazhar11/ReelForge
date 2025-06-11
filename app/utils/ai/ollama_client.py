@@ -186,29 +186,64 @@ class OllamaClient:
         Returns:
             Tuple of (success, broll_prompt)
         """
-        system_prompt = """
-        You are an expert visual director who creates compelling B-Roll prompts for video content.
-        The B-Roll should visualize exactly what's being said in the A-Roll segment.
-        Create detailed, vivid descriptions that would be perfect for image generation models.
-        Focus on creating visuals that complement and enhance the spoken content.
-        """
+        # Determine if this is for video (style contains cinematic or dynamic)
+        is_video = "cinematic" in style.lower() or "dynamic" in style.lower() or "motion" in style.lower()
+        
+        if is_video:
+            system_prompt = """
+            You are an expert film director who creates compelling B-Roll video prompts for video content.
+            The B-Roll should visualize exactly what's being said in the A-Roll segment, but in a DYNAMIC way.
+            Create detailed, vivid descriptions that will generate good video footage (not static images).
+            
+            Focus on creating prompts that:
+            1. Include camera movement (panning, tracking shots, dolly moves)
+            2. Have dynamic action within the scene 
+            3. Use cinematic lighting and composition
+            4. Avoid static/still imagery descriptions
+            5. Are specific about the movement and action in the scene
+            """
+        else:
+            system_prompt = """
+            You are an expert visual director who creates compelling B-Roll prompts for video content.
+            The B-Roll should visualize exactly what's being said in the A-Roll segment.
+            Create detailed, vivid descriptions that would be perfect for image generation models.
+            Focus on creating visuals that complement and enhance the spoken content.
+            """
         
         theme_context = f"The overall theme of the video is: {theme}. " if theme else ""
         
-        user_prompt = f"""
-        Create a detailed B-Roll visual prompt that perfectly illustrates the following A-Roll segment.
-        
-        {theme_context}The A-Roll segment says:
-        "{segment_text}"
-        
-        Your B-Roll prompt should:
-        1. Visualize exactly what's being discussed
-        2. Be highly detailed and specific
-        3. Include setting, mood, lighting, and key elements
-        4. Use the style: {style}
-        5. Be 1-3 sentences, focus on the most important visual elements
-        
-        Provide ONLY the B-Roll prompt text, no explanations or additional content.
-        """
+        if is_video:
+            user_prompt = f"""
+            Create a detailed B-Roll video prompt that dynamically illustrates the following A-Roll segment.
+            
+            {theme_context}The A-Roll segment says:
+            "{segment_text}"
+            
+            Your B-Roll prompt should:
+            1. Visualize exactly what's being discussed
+            2. Include specific camera movements (tracking, panning, zooming)
+            3. Have dynamic action in the scene (not static images)
+            4. Include setting, mood, cinematic lighting, and key elements
+            5. Use the style: {style}
+            6. Be 1-3 sentences, focus on the most important visual elements
+            
+            Provide ONLY the B-Roll prompt text, no explanations or additional content.
+            """
+        else:
+            user_prompt = f"""
+            Create a detailed B-Roll visual prompt that perfectly illustrates the following A-Roll segment.
+            
+            {theme_context}The A-Roll segment says:
+            "{segment_text}"
+            
+            Your B-Roll prompt should:
+            1. Visualize exactly what's being discussed
+            2. Be highly detailed and specific
+            3. Include setting, mood, lighting, and key elements
+            4. Use the style: {style}
+            5. Be 1-3 sentences, focus on the most important visual elements
+            
+            Provide ONLY the B-Roll prompt text, no explanations or additional content.
+            """
         
         return self.generate(user_prompt, system_prompt) 

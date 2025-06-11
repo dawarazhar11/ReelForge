@@ -529,6 +529,9 @@ def generate_broll_segments(a_roll_segments, theme, strategy="balanced", percent
     b_roll_segments = []
     total_aroll_segments = len(a_roll_segments)
     
+    # Determine if we're generating prompts for video or images
+    is_video = st.session_state.broll_type.lower() == "video"
+    
     # Convert legacy strategy to percentage if needed (for backward compatibility)
     if percentage is None:
         if strategy == "minimal":
@@ -550,9 +553,13 @@ def generate_broll_segments(a_roll_segments, theme, strategy="balanced", percent
         target_count = max(2, round(total_aroll_segments * 0.50))
     
     # Always include an intro B-Roll
+    intro_content = f"Introductory visual for {theme}"
+    if is_video:
+        intro_content = f"Cinematic opening shot introducing {theme} with dynamic camera movement"
+    
     intro_broll = {
         "type": "B-Roll",
-        "content": f"Introductory visual for {theme}",
+        "content": intro_content,
         "duration": 3.0,  # Default duration in seconds
         "is_intro": True
     }
@@ -561,9 +568,13 @@ def generate_broll_segments(a_roll_segments, theme, strategy="balanced", percent
     # For very small target counts, just add intro and outro
     if target_count <= 2:
         # Add outro B-Roll
+        outro_content = f"Concluding visual for {theme}"
+        if is_video:
+            outro_content = f"Dynamic closing shot of {theme} with smooth camera motion"
+            
         outro_broll = {
             "type": "B-Roll",
-            "content": f"Concluding visual for {theme}",
+            "content": outro_content,
             "duration": 3.0,
             "is_outro": True
         }
@@ -578,9 +589,13 @@ def generate_broll_segments(a_roll_segments, theme, strategy="balanced", percent
         # 25%: Place one near the beginning and the rest near the end
         # (We already added intro, so just add one before the end)
         if remaining_brolls >= 1:
+            outro_content = f"Concluding visual for {theme}"
+            if is_video:
+                outro_content = f"Dynamic closing shot of {theme} with smooth camera motion"
+                
             outro_broll = {
                 "type": "B-Roll",
-                "content": f"Concluding visual for {theme}",
+                "content": outro_content,
                 "duration": 3.0,
                 "is_outro": True,
                 "related_aroll": total_aroll_segments - 1
@@ -607,18 +622,26 @@ def generate_broll_segments(a_roll_segments, theme, strategy="balanced", percent
                 content = a_roll_segments[pos]["content"]
                 summary = content[:50] + "..." if len(content) > 50 else content
                 
+                prompt_content = f"Visual representation of: {summary}"
+                if is_video:
+                    prompt_content = f"Dynamic cinematic scene showing: {summary} with camera movement and action"
+                
                 broll = {
                     "type": "B-Roll",
-                    "content": f"Visual representation of: {summary}",
+                    "content": prompt_content,
                     "duration": 3.0,
                     "related_aroll": pos
                 }
                 b_roll_segments.append(broll)
             
             # Add outro B-Roll
+            outro_content = f"Concluding visual for {theme}"
+            if is_video:
+                outro_content = f"Dynamic closing shot of {theme} with smooth camera motion"
+                
             outro_broll = {
                 "type": "B-Roll",
-                "content": f"Concluding visual for {theme}",
+                "content": outro_content,
                 "duration": 3.0,
                 "is_outro": True,
                 "related_aroll": total_aroll_segments - 1
@@ -637,9 +660,13 @@ def generate_broll_segments(a_roll_segments, theme, strategy="balanced", percent
                 content = a_roll_segments[pos]["content"]
                 summary = content[:50] + "..." if len(content) > 50 else content
                 
+                prompt_content = f"Visual representation of: {summary}"
+                if is_video:
+                    prompt_content = f"Cinematic scene with motion showing: {summary}, dynamic camera work"
+                
                 broll = {
                     "type": "B-Roll",
-                    "content": f"Visual representation of: {summary}",
+                    "content": prompt_content,
                     "duration": 3.0,
                     "related_aroll": pos
                 }
@@ -647,9 +674,13 @@ def generate_broll_segments(a_roll_segments, theme, strategy="balanced", percent
             
             # Add outro B-Roll if it's not already covered by our distribution
             if int(remaining_brolls * step) < total_aroll_segments - 1:
+                outro_content = f"Concluding visual for {theme}"
+                if is_video:
+                    outro_content = f"Dynamic closing shot of {theme} with smooth camera motion"
+                    
                 outro_broll = {
                     "type": "B-Roll",
-                    "content": f"Concluding visual for {theme}",
+                    "content": outro_content,
                     "duration": 3.0,
                     "is_outro": True,
                     "related_aroll": total_aroll_segments - 1
@@ -862,6 +893,15 @@ def generate_broll_prompts_with_ollama(a_roll_segments, theme):
     
     b_roll_segments = []
     
+    # Determine if we're generating prompts for video or images
+    is_video = st.session_state.broll_type.lower() == "video"
+    
+    # Set the style based on media type
+    if is_video:
+        style = "cinematic, dynamic with motion and camera movement"
+    else:
+        style = "photorealistic"
+        
     with st.spinner("Generating B-Roll prompts with Ollama..."):
         progress_bar = st.progress(0)
         
@@ -875,17 +915,25 @@ def generate_broll_prompts_with_ollama(a_roll_segments, theme):
             # Skip empty segments
             if not content:
                 continue
-                
+            
             # Generate B-Roll prompt with Ollama
             success, prompt = st.session_state.ollama_client.generate_broll_prompt(
                 content,
                 theme=theme,
-                style="photorealistic"  # Default style
+                style=style
             )
             
             if not success:
                 st.warning(f"Failed to generate B-Roll prompt for segment {i+1}. Using default.")
-                prompt = f"Visual representation of: {content[:50]}..."
+                if is_video:
+                    prompt = f"Cinematic, dynamic scene showing: {content[:50]}... with camera movement and high production value"
+                else:
+                    prompt = f"Visual representation of: {content[:50]}..."
+            
+            # For video, enhance the prompt if needed
+            if is_video and "camera movement" not in prompt.lower() and "motion" not in prompt.lower():
+                # Add dynamic/cinematic elements if they're missing
+                prompt = f"{prompt.rstrip('.')}. Dynamic camera movement, cinematic lighting, motion in the scene."
             
             # Create B-Roll segment
             b_roll_segment = {

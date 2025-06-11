@@ -2860,7 +2860,7 @@ def main():
     st.info(f"B-Roll type: **{broll_type.upper()}**")
     
     # Create tabs to organize content
-    broll_tabs = st.tabs(["Content Generation", "Status & Preview"])
+    broll_tabs = st.tabs(["Content Generation"])
     
     with broll_tabs[0]:
         # Simple section for fetching existing B-Roll by ID
@@ -3071,64 +3071,6 @@ def main():
                     mark_step_complete('content_production')
                     st.balloons()  # Add some fun!
     
-    with broll_tabs[1]:
-        # Display generation status
-        st.subheader("B-Roll Status")
-        
-        if "broll" in st.session_state.content_status and st.session_state.content_status["broll"]:
-            for i, segment in enumerate(broll_segments):
-                segment_id = f"segment_{i}"
-                if segment_id in st.session_state.content_status["broll"]:
-                    status = st.session_state.content_status["broll"][segment_id]
-                    
-                    with st.expander(f"B-Roll Segment {i+1}", expanded=False):
-                        # Display prompt info
-                        if "prompts" in st.session_state.broll_prompts and segment_id in st.session_state.broll_prompts["prompts"]:
-                            prompt_data = st.session_state.broll_prompts["prompts"][segment_id]
-                            if isinstance(prompt_data, dict):
-                                prompt_text = prompt_data.get("prompt", "No prompt available")
-                            else:
-                                prompt_text = prompt_data
-                            st.markdown(f"**Prompt:** {prompt_text}")
-                        
-                        # Display status and result
-                        if status['status'] == "complete":
-                            st.markdown(f"**Status:** ✅ Completed")
-                            if 'file_path' in status:
-                                st.markdown(f"**File:** {status['file_path']}")
-                                # Try to display the video or image if available
-                                try:
-                                    if status['file_path'].endswith(('.mp4', '.mov')):
-                                        st.video(status['file_path'])
-                                    elif status['file_path'].endswith(('.png', '.jpg', '.jpeg')):
-                                        st.image(status['file_path'])
-                                except Exception as e:
-                                    st.error(f"Error displaying file: {str(e)}")
-                        elif status['status'] == "error":
-                            st.error(f"**Status:** ❌ Error")
-                            st.error(f"**Error:** {status.get('message', 'Unknown error')}")
-                        elif status['status'] == "processing":
-                            st.info(f"**Status:** ⚙️ Processing")
-                            st.info(f"**Message:** {status.get('message', 'Processing...')}")
-                        elif status['status'] == "waiting":
-                            st.info(f"**Status:** ⏳ Waiting")
-                            st.info(f"**Message:** {status.get('message', 'Waiting for ComfyUI...')}")
-                        elif status['status'] == "fetching":
-                            st.info(f"**Status:** 🔄 Fetching")
-                            st.info(f"**Message:** {status.get('message', 'Fetching content...')}")
-                        else:
-                            st.info(f"**Status:** ℹ️ {status['status']}")
-                            
-                        # Show retry button for error or waiting status
-                        if status['status'] in ["error", "waiting"]:
-                            if st.button(f"Retry for Segment {i+1}", key=f"retry_{segment_id}"):
-                                # Remove the status entry to allow retrying
-                                if segment_id in st.session_state.content_status["broll"]:
-                                    del st.session_state.content_status["broll"][segment_id]
-                                st.rerun()
-        else:
-            st.info("No B-Roll content has been generated yet.")
-    
     # Navigation buttons
     st.divider()
     render_step_navigation(
@@ -3147,5 +3089,14 @@ def get_correct_workflow_file(content_type):
             flux_path = os.path.join(os.getcwd(), "flux_schnell.json")
             if os.path.exists(flux_path):
                 print(f"Using image workflow: {flux_path}")
+        else:
+            # For video content, always use wan.json
+            wan_path = os.path.join(os.getcwd(), "wan.json")
+            if os.path.exists(wan_path):
+                print(f"Using video workflow: {wan_path}")
+    except Exception as e:
+        print(f"Error determining workflow file: {str(e)}")
+        return None
+
 if __name__ == "__main__":
     main()

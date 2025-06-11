@@ -452,10 +452,102 @@ def fetch_output_file(filename, output_dir=None, api_url=COMFYUI_SERVER_URL):
         logger.error(f"❌ Error downloading file: {str(e)}")
         return None
 
-def wait_for_completion(prompt_id, timeout=600, check_interval=5, api_url=COMFYUI_SERVER_URL):
+def detect_content_type(workflow):
+    """Detect if the workflow is for image or video generation"""
+    if not workflow:
+        return "unknown"
+        
+    # Look for video-specific nodes
+    video_node_types = [
+        "EmptyLatentVideo", 
+        "VHS_LoadVideo", 
+        "VHS_VideoCombine",
+        "WanLatentImage",
+        "WanCompositionalImageEncoder",
+        "EmptyHunyuanLatentVideo"
+    ]
+    
+    for node_id, node in workflow.items():
+        if "class_type" in node:
+            class_type = node["class_type"]
+            if any(video_type in class_type for video_type in video_node_types):
+                logger.info(f"Detected video workflow based on node type: {class_type}")
+                return "video"
+    
+    # Look for model references in workflow
+    video_model_keywords = ["wan", "hunyuan", "svd", "animatediff"]
+    for node_id, node in workflow.items():
+        if "inputs" in node:
+            inputs = node["inputs"]
+            for input_name, input_value in inputs.items():
+                if isinstance(input_value, str):
+                    if any(keyword in input_value.lower() for keyword in video_model_keywords):
+                        logger.info(f"Detected video workflow based on model reference: {input_value}")
+                        return "video"
+    
+    # Default to image if no video indicators found
+    return "image"
+
+def generate_content(workflow_path, prompt, negative_prompt=None, output_dir=None, timeout=None, api_url=COMFYUI_SERVER_URL, seed=None):
+    """Generate content using a workflow file"""
+    # Prepare negative prompt if not provided
+    if negative_prompt is None:
+        negative_prompt = "ugly, blurry, low quality"
+    
+    # Prepare the workflow
+    workflow = prepare_workflow(workflow_path, prompt, negative_prompt, width=1080, height=1920, seed=seed)
+    if not workflow:
+        return {"status": "error", "message": "Failed to prepare workflow"}
+    
+    # Detect content type and set appropriate timeout
+    content_type = detect_content_type(workflow)
+    if timeout is None:
+        if content_type == "video":
+            timeout = 1800  # 30 minutes for video generation
+            logger.info(f"Using extended timeout of {timeout} seconds for video generation")
+        else:
+            timeout = 600   # 10 minutes for image generation
+            logger.info(f"Using standard timeout of {timeout} seconds for image generation")
+    
+    # Submit the workflow
+    prompt_id = submit_workflow(workflow, api_url)
+    if not prompt_id:
+        return {"status": "error", "message": "Failed to submit workflow"}
+    
+    # Wait for completion
+    result = wait_for_completion(prompt_id, timeout, content_type=content_type, api_url=api_url)
+    
+    # Add prompt_id to result for reference
+    result["prompt_id"] = prompt_id
+    
+    # Add content type to result
+    result["content_type"] = content_type
+    
+    # If the job completed successfully, download the files
+    if result["status"] == "complete" and "files" in result:
+        downloaded_files = []
+        
+        for file_info in result["files"]:
+            filename = file_info["filename"]
+            file_path = fetch_output_file(filename, output_dir, api_url)
+            
+            if file_path:
+                downloaded_files.append({
+                    "path": file_path,
+                    "type": file_info["type"],
+                    "filename": filename
+                })
+        
+        # Add the downloaded files to the result
+        result["downloaded_files"] = downloaded_files
+    
+    return result
+
+def wait_for_completion(prompt_id, timeout=600, check_interval=5, content_type="unknown", api_url=COMFYUI_SERVER_URL):
     """Wait for a job to complete, with timeout"""
     start_time = time.time()
     elapsed = 0
+    last_progress = None
     
     # Strategy: Check more frequently at the beginning
     # Many quick jobs finish in under 10 seconds
@@ -493,11 +585,19 @@ def wait_for_completion(prompt_id, timeout=600, check_interval=5, api_url=COMFYU
             logger.info(f"✅ Job outputs detected directly after {elapsed:.1f} seconds")
             return result
         
+        # Check for progress data if this is a video generation
+        if content_type == "video":
+            progress_data = check_video_progress(prompt_id, api_url)
+            if progress_data and progress_data != last_progress:
+                last_progress = progress_data
+                logger.info(f"📊 Video generation progress: {progress_data}")
+        
         # Wait before checking again (medium interval)
         time.sleep(3)
         elapsed = time.time() - start_time
     
     # For longer running jobs, use the standard interval
+    check_count = 0
     while elapsed < timeout:
         status = check_job_status(prompt_id, api_url)
         
@@ -516,6 +616,26 @@ def wait_for_completion(prompt_id, timeout=600, check_interval=5, api_url=COMFYU
                 logger.info(f"✅ Job outputs detected directly after {elapsed:.1f} seconds")
                 return result
         
+        # Check for progress data if this is a video generation (every 5 checks)
+        check_count += 1
+        if content_type == "video" and check_count % 3 == 0:
+            progress_data = check_video_progress(prompt_id, api_url)
+            if progress_data and progress_data != last_progress:
+                last_progress = progress_data
+                logger.info(f"📊 Video generation progress: {progress_data}")
+                
+                # Extract progress percentage if possible
+                if isinstance(progress_data, str) and "%" in progress_data:
+                    try:
+                        percent = float(progress_data.split("%")[0].strip())
+                        # If we're making good progress, extend the timeout
+                        if percent > 50 and elapsed > timeout / 2:
+                            extra_time = min(600, timeout / 2)  # Add up to 10 more minutes
+                            timeout += extra_time
+                            logger.info(f"⏱️ Extended timeout by {extra_time} seconds due to active progress")
+                    except:
+                        pass
+        
         # Wait before checking again (standard interval)
         time.sleep(check_interval)
         elapsed = time.time() - start_time
@@ -531,44 +651,46 @@ def wait_for_completion(prompt_id, timeout=600, check_interval=5, api_url=COMFYU
         
     return {"status": "timeout", "message": f"Job timed out after {timeout} seconds"}
 
-def generate_content(workflow_path, prompt, negative_prompt=None, output_dir=None, timeout=600, api_url=COMFYUI_SERVER_URL, seed=None):
-    """Generate content using a workflow file"""
-    # Prepare negative prompt if not provided
-    if negative_prompt is None:
-        negative_prompt = "ugly, blurry, low quality"
-    
-    # Prepare the workflow
-    workflow = prepare_workflow(workflow_path, prompt, negative_prompt, width=1080, height=1920, seed=seed)
-    if not workflow:
-        return {"status": "error", "message": "Failed to prepare workflow"}
-    
-    # Submit the workflow
-    prompt_id = submit_workflow(workflow, api_url)
-    if not prompt_id:
-        return {"status": "error", "message": "Failed to submit workflow"}
-    
-    # Wait for completion
-    result = wait_for_completion(prompt_id, timeout, api_url=api_url)
-    
-    # Add prompt_id to result for reference
-    result["prompt_id"] = prompt_id
-    
-    # If the job completed successfully, download the files
-    if result["status"] == "complete" and "files" in result:
-        downloaded_files = []
+def check_video_progress(prompt_id, api_url=COMFYUI_SERVER_URL):
+    """Check for video generation progress information"""
+    try:
+        response = requests.get(f"{api_url}/history/{prompt_id}", timeout=10)
         
-        for file_info in result["files"]:
-            filename = file_info["filename"]
-            file_path = fetch_output_file(filename, output_dir, api_url)
+        if response.status_code == 200:
+            data = response.json()
             
-            if file_path:
-                downloaded_files.append({
-                    "path": file_path,
-                    "type": file_info["type"],
-                    "filename": filename
-                })
+            # Look for progress information in status
+            if "status" in data and isinstance(data["status"], dict):
+                status_data = data["status"]
+                
+                # Check for progress messages
+                if "message" in status_data:
+                    message = status_data["message"]
+                    if "progress" in str(message).lower() or "%" in str(message):
+                        return message
+                
+                # Check for executed nodes vs total nodes
+                if "executed_nodes" in data and "prompt" in data:
+                    executed = len(data["executed_nodes"])
+                    total = len(data["prompt"].keys())
+                    if total > 0:
+                        percent = (executed / total) * 100
+                        return f"{percent:.1f}% of nodes executed ({executed}/{total})"
+            
+            # Check for specific progress data format
+            if "progress" in data:
+                return data["progress"]
+                
+            # Special case for SVD/WAN models - they show frame progress
+            for node_id, node in data.get("prompt", {}).items():
+                if "class_type" in node:
+                    if "WAN" in node["class_type"] or "SVD" in node["class_type"] or "Video" in node["class_type"]:
+                        # For video nodes, check progress in executed node data
+                        for exec_node_id, exec_data in data.get("executed", {}).items():
+                            if exec_node_id == node_id and "progress" in exec_data:
+                                return f"Frame progress: {exec_data['progress']}"
         
-        # Add the downloaded files to the result
-        result["downloaded_files"] = downloaded_files
-    
-    return result 
+        return None
+    except Exception as e:
+        logger.warning(f"Error checking video progress: {str(e)}")
+        return None 

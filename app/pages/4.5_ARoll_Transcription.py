@@ -953,11 +953,15 @@ def generate_with_comfyui(prompts, media_type="video", image_template="flux_schn
     os.makedirs(broll_dir, exist_ok=True)
     
     # Set API URLs based on media type
+    image_server_url = "http://100.115.243.42:8000"  # Image ComfyUI server
+    video_server_url = "http://100.86.185.76:8000"   # Video ComfyUI server
+    
     if media_type == "video":
-        comfyui_url = "http://100.86.185.76:8000"  # Video ComfyUI server
+        # Try video server first
+        comfyui_url = video_server_url
         workflow_file = "wan.json"
     else:
-        comfyui_url = "http://100.115.243.42:8000"  # Image ComfyUI server
+        comfyui_url = image_server_url
         workflow_file = f"{image_template}.json"
     
     # Load workflow file
@@ -965,16 +969,54 @@ def generate_with_comfyui(prompts, media_type="video", image_template="flux_schn
         workflow = load_workflow_file(workflow_file)
         if not workflow:
             print(f"Error: Could not load workflow file {workflow_file}")
+            st.error(f"Could not load workflow file {workflow_file}. Please check if the file exists.")
             return None
     except Exception as e:
         print(f"Error loading workflow file: {str(e)}")
+        st.error(f"Error loading workflow file: {str(e)}")
         return None
     
     # Initialize client
     client = ComfyUIWebSocketClient(server_url=comfyui_url)
-    if not client.connect():
-        print(f"Error: Could not connect to ComfyUI server at {comfyui_url}")
+    connection_success = client.connect()
+    
+    # If video server connection fails, try to fall back to image server with flux_schnell template
+    if not connection_success and media_type == "video":
+        st.warning(f"⚠️ Could not connect to video server at {comfyui_url}. Falling back to image generation with flux_schnell template.")
+        print(f"Failed to connect to video server. Falling back to image generation.")
+        
+        comfyui_url = image_server_url
+        media_type = "image"
+        workflow_file = "flux_schnell.json"
+        
+        # Try to load the image workflow file
+        try:
+            workflow = load_workflow_file(workflow_file)
+            if not workflow:
+                print(f"Error: Could not load fallback workflow file {workflow_file}")
+                st.error(f"Could not load fallback workflow file {workflow_file}.")
+                return None
+            
+            # Try to connect to the image server
+            client = ComfyUIWebSocketClient(server_url=comfyui_url)
+            connection_success = client.connect()
+        except Exception as e:
+            print(f"Error loading fallback workflow: {str(e)}")
+            st.error(f"Error loading fallback workflow: {str(e)}")
+            return None
+    
+    # If still no connection, return error
+    if not connection_success:
+        error_msg = f"Error: Could not connect to ComfyUI server at {comfyui_url}"
+        print(error_msg)
+        st.error(error_msg)
         return None
+    
+    # Success message for the user
+    if media_type == "video":
+        st.success(f"✅ Connected to video generation server")
+    else:
+        st.success(f"✅ Connected to image generation server")
     
     generated_files = {}
     progress_text = st.empty()
@@ -1780,6 +1822,38 @@ def main():
                             else:
                                 st.info(f"Template: **wan.json**")
                         
+                        # Check server status
+                        server_status_cols = st.columns(2)
+                        with server_status_cols[0]:
+                            # Try to connect to image server
+                            try:
+                                image_client = ComfyUIWebSocketClient(server_url="http://100.115.243.42:8000")
+                                image_server_available = image_client.connect()
+                                image_client.disconnect()
+                                if image_server_available:
+                                    st.success("✅ Image Server: Available")
+                                else:
+                                    st.error("❌ Image Server: Not Available")
+                            except:
+                                st.error("❌ Image Server: Connection Error")
+                        
+                        with server_status_cols[1]:
+                            # Try to connect to video server
+                            try:
+                                video_client = ComfyUIWebSocketClient(server_url="http://100.86.185.76:8000")
+                                video_server_available = video_client.connect()
+                                video_client.disconnect()
+                                if video_server_available:
+                                    st.success("✅ Video Server: Available")
+                                else:
+                                    st.error("❌ Video Server: Not Available")
+                                    if broll_type == "video":
+                                        st.warning("⚠️ Note: Video generation will fall back to image generation")
+                            except:
+                                st.error("❌ Video Server: Connection Error")
+                                if broll_type == "video":
+                                    st.warning("⚠️ Note: Video generation will fall back to image generation")
+                        
                         # Show generation button
                         if st.button("Generate with ComfyUI", type="primary"):
                             with st.spinner(f"Generating {broll_type} content with ComfyUI... This may take a while."):
@@ -1797,7 +1871,7 @@ def main():
                                     st.session_state.comfyui_generation_complete = True
                                     st.session_state.comfyui_generation_status = "complete"
                                     
-                                    st.success(f"Successfully generated {len(generated_files)} {broll_type} files!")
+                                    st.success(f"Successfully generated {len(generated_files)} files!")
                                     
                                     # Mark this step as complete
                                     mark_step_complete("broll_generation")

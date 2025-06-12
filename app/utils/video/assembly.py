@@ -742,7 +742,23 @@ def assemble_video(sequence, target_resolution=(1080, 1920), output_dir=None, pr
                         audio_path = extracted_audio_paths[segment_id]
                         try:
                             print(f"Loading extracted A-Roll audio: {audio_path}")
-                            audio_clip = mp.AudioFileClip(audio_path)
+                            # Ensure audio_path is a string, not a dictionary
+                            if isinstance(audio_path, dict) and 'output_path' in audio_path:
+                                audio_path = audio_path['output_path']
+                                print(f"Corrected audio path to: {audio_path}")
+                            
+                            # Verify the audio file exists
+                            if not os.path.exists(audio_path):
+                                raise FileNotFoundError(f"Audio file not found: {audio_path}")
+                                
+                            # Try to load the audio with error handling
+                            try:
+                                audio_clip = mp.AudioFileClip(audio_path)
+                            except Exception as audio_error:
+                                print(f"Error loading audio file: {str(audio_error)}")
+                                print("Creating silent audio as fallback")
+                                # Create silent audio with the same duration as the clip
+                                audio_clip = mp.AudioClip(lambda t: 0, duration=clip.duration)
                             
                             # First, ensure the clip has no audio of its own
                             clip = clip.without_audio()
@@ -757,17 +773,25 @@ def assemble_video(sequence, target_resolution=(1080, 1920), output_dir=None, pr
                             audio_clip = audio_clip.subclip(0, exact_duration)
                             
                             # Apply audio to clip
-                            clip = clip.set_audio(audio_clip)
-                            print("Successfully applied extracted audio to A-Roll clip")
-                            
-                            # Mark this segment as used
-                            used_audio_segments.add(segment_id)
-                            
-                            # Update current audio position
-                            current_audio_position += clip.duration
-                            
+                            try:
+                                clip = clip.set_audio(audio_clip)
+                                print("Successfully applied extracted audio to A-Roll clip")
+                                
+                                # Mark this segment as used
+                                used_audio_segments.add(segment_id)
+                                
+                                # Update current audio position
+                                current_audio_position += clip.duration
+                            except Exception as e:
+                                print(f"Error applying extracted audio: {str(e)}")
+                                # Create silent audio as fallback
+                                silent_audio = mp.AudioClip(lambda t: 0, duration=clip.duration)
+                                clip = clip.set_audio(silent_audio)
                         except Exception as e:
                             print(f"Error applying extracted audio: {str(e)}")
+                            # Create silent audio as fallback
+                            silent_audio = mp.AudioClip(lambda t: 0, duration=clip.duration)
+                            clip = clip.set_audio(silent_audio)
                     elif not has_valid_audio(clip):
                         print(f"Warning: Clip {i+1} has no valid audio, replacing with silent audio")
                         # Create silent audio for the full duration
@@ -843,7 +867,23 @@ def assemble_video(sequence, target_resolution=(1080, 1920), output_dir=None, pr
                         audio_path = extracted_audio_paths[segment_id]
                         try:
                             print(f"Loading extracted A-Roll audio: {audio_path}")
-                            aroll_audio = mp.AudioFileClip(audio_path)
+                            # Ensure audio_path is a string, not a dictionary
+                            if isinstance(audio_path, dict) and 'output_path' in audio_path:
+                                audio_path = audio_path['output_path']
+                                print(f"Corrected audio path to: {audio_path}")
+                            
+                            # Verify the audio file exists
+                            if not os.path.exists(audio_path):
+                                raise FileNotFoundError(f"Audio file not found: {audio_path}")
+                                
+                            # Try to load the audio with error handling
+                            try:
+                                aroll_audio = mp.AudioFileClip(audio_path)
+                            except Exception as audio_error:
+                                print(f"Error loading audio file: {str(audio_error)}")
+                                print("Creating silent audio as fallback")
+                                # Create silent audio with the same duration as the B-roll clip
+                                aroll_audio = mp.AudioClip(lambda t: 0, duration=broll_clip.duration)
                             
                             # Extract just the segment using start_time and end_time if needed
                             start_time = item.get("start_time", 0)
@@ -852,35 +892,26 @@ def assemble_video(sequence, target_resolution=(1080, 1920), output_dir=None, pr
                             # If we have valid timestamps, extract just that portion of the audio
                             if end_time > start_time:
                                 print(f"Extracting audio segment from {start_time:.2f}s to {end_time:.2f}s")
-                                aroll_audio = aroll_audio.subclip(start_time, end_time)
+                                try:
+                                    aroll_audio = aroll_audio.subclip(start_time, end_time)
+                                except Exception as subclip_error:
+                                    print(f"Error extracting audio subclip: {str(subclip_error)}")
+                                    # Create silent audio with calculated duration
+                                    segment_duration = end_time - start_time
+                                    print(f"Creating silent audio with duration: {segment_duration}s")
+                                    aroll_audio = mp.AudioClip(lambda t: 0, duration=segment_duration)
                             
                             # First, ensure the B-Roll clip has no audio of its own
                             broll_clip = broll_clip.without_audio()
                             
-                            # Apply A-Roll audio to B-Roll video
-                            broll_clip = broll_clip.set_audio(aroll_audio)
-                            
-                            # If B-Roll is shorter than A-Roll audio, loop it
-                            if broll_clip.duration < aroll_audio.duration:
-                                # Calculate how many times to loop
-                                loops = int(aroll_audio.duration / broll_clip.duration) + 1
-                                # Create a list of the clip repeated
-                                loop_clips = [broll_clip] * loops
-                                # Concatenate clips
-                                broll_clip = mp.concatenate_videoclips(loop_clips)
-                                # Trim to match audio duration
-                                broll_clip = broll_clip.subclip(0, aroll_audio.duration)
-                            # If B-Roll is longer than A-Roll audio, trim it
-                            elif broll_clip.duration > aroll_audio.duration:
-                                broll_clip = broll_clip.subclip(0, aroll_audio.duration)
-                                
-                            # Ensure the clip duration exactly matches the audio duration
-                            exact_duration = min(broll_clip.duration, aroll_audio.duration)
-                            broll_clip = broll_clip.subclip(0, exact_duration)
-                            aroll_audio = aroll_audio.subclip(0, exact_duration)
-                            
-                            # Apply the precisely trimmed audio to the clip
+                            # Apply A-Roll audio to B-Roll video with error handling
                             try:
+                                # Ensure the clip duration exactly matches the audio duration
+                                exact_duration = min(broll_clip.duration, aroll_audio.duration)
+                                broll_clip = broll_clip.subclip(0, exact_duration)
+                                aroll_audio = aroll_audio.subclip(0, exact_duration)
+                                
+                                # Apply the precisely trimmed audio to the clip
                                 broll_clip = broll_clip.set_audio(aroll_audio)
                                 print("Successfully applied A-Roll audio to B-Roll clip")
                                 
@@ -889,8 +920,8 @@ def assemble_video(sequence, target_resolution=(1080, 1920), output_dir=None, pr
                                 
                                 # Update current audio position
                                 current_audio_position += aroll_audio.duration
-                            except Exception as audio_error:
-                                print(f"Error setting audio on B-Roll clip: {str(audio_error)}")
+                            except Exception as e:
+                                print(f"Error setting audio on B-Roll clip: {str(e)}")
                                 # Create silent audio as fallback
                                 print("Creating silent audio as fallback")
                                 silent_audio = mp.AudioClip(lambda t: 0, duration=broll_clip.duration)
@@ -909,18 +940,34 @@ def assemble_video(sequence, target_resolution=(1080, 1920), output_dir=None, pr
                                 # If we have valid timestamps, extract just that portion of the video/audio
                                 if end_time > start_time:
                                     print(f"Extracting A-Roll segment from {start_time:.2f}s to {end_time:.2f}s")
-                                    aroll_clip = aroll_clip.subclip(start_time, end_time)
+                                    try:
+                                        aroll_clip = aroll_clip.subclip(start_time, end_time)
+                                    except Exception as subclip_error:
+                                        print(f"Error extracting video subclip: {str(subclip_error)}")
                                 
                                 if has_valid_audio(aroll_clip):
-                                    broll_clip = broll_clip.set_audio(aroll_clip.audio)
-                                    if broll_clip.duration > aroll_clip.duration:
-                                        broll_clip = broll_clip.subclip(0, aroll_clip.duration)
-                                    
-                                    # Mark this segment as used
-                                    used_audio_segments.add(segment_id)
-                                    
-                                    # Update current audio position
-                                    current_audio_position += aroll_clip.duration
+                                    try:
+                                        # First, ensure the B-Roll clip has no audio of its own
+                                        broll_clip = broll_clip.without_audio()
+                                        
+                                        # Ensure the clip duration exactly matches the audio duration
+                                        exact_duration = min(broll_clip.duration, aroll_clip.duration)
+                                        broll_clip = broll_clip.subclip(0, exact_duration)
+                                        
+                                        # Set audio on B-roll clip
+                                        broll_clip = broll_clip.set_audio(aroll_clip.audio)
+                                        print("Successfully applied A-Roll audio to B-Roll clip")
+                                        
+                                        # Mark this segment as used
+                                        used_audio_segments.add(segment_id)
+                                        
+                                        # Update current audio position
+                                        current_audio_position += aroll_clip.duration
+                                    except Exception as e:
+                                        print(f"Error setting audio on B-Roll clip: {str(e)}")
+                                        # Create silent audio as fallback
+                                        silent_audio = mp.AudioClip(lambda t: 0, duration=broll_clip.duration)
+                                        broll_clip = broll_clip.set_audio(silent_audio)
                                 else:
                                     print(f"Fallback failed: A-Roll has no valid audio")
                                     # Create silent audio
@@ -947,18 +994,35 @@ def assemble_video(sequence, target_resolution=(1080, 1920), output_dir=None, pr
                             # If we have valid timestamps, extract just that portion of the video/audio
                             if end_time > start_time:
                                 print(f"Extracting A-Roll segment from {start_time:.2f}s to {end_time:.2f}s")
-                                aroll_clip = aroll_clip.subclip(start_time, end_time)
+                                try:
+                                    aroll_clip = aroll_clip.subclip(start_time, end_time)
+                                except Exception as subclip_error:
+                                    print(f"Error extracting video subclip: {str(subclip_error)}")
                             
                             if has_valid_audio(aroll_clip):
-                                broll_clip = broll_clip.set_audio(aroll_clip.audio)
-                                if broll_clip.duration > aroll_clip.duration:
-                                    broll_clip = broll_clip.subclip(0, aroll_clip.duration)
-                                
-                                # Mark this segment as used
-                                used_audio_segments.add(segment_id)
-                                
-                                # Update current audio position
-                                current_audio_position += aroll_clip.duration
+                                try:
+                                    # First, ensure the B-Roll clip has no audio of its own
+                                    broll_clip = broll_clip.without_audio()
+                                    
+                                    # Ensure the clip duration exactly matches the audio duration
+                                    exact_duration = min(broll_clip.duration, aroll_clip.duration)
+                                    broll_clip = broll_clip.subclip(0, exact_duration)
+                                    aroll_clip = aroll_clip.subclip(0, exact_duration)
+                                    
+                                    # Set audio on B-roll clip
+                                    broll_clip = broll_clip.set_audio(aroll_clip.audio)
+                                    print("Successfully applied A-Roll audio to B-Roll clip")
+                                    
+                                    # Mark this segment as used
+                                    used_audio_segments.add(segment_id)
+                                    
+                                    # Update current audio position
+                                    current_audio_position += aroll_clip.duration
+                                except Exception as e:
+                                    print(f"Error setting audio on B-Roll clip: {str(e)}")
+                                    # Create silent audio as fallback
+                                    silent_audio = mp.AudioClip(lambda t: 0, duration=broll_clip.duration)
+                                    broll_clip = broll_clip.set_audio(silent_audio)
                             else:
                                 print(f"A-Roll has no valid audio")
                                 # Create silent audio
@@ -985,8 +1049,34 @@ def assemble_video(sequence, target_resolution=(1080, 1920), output_dir=None, pr
         
         # Concatenate clips
         progress_callback(60, "Concatenating video segments")
+        
+        # Ensure all clips have valid audio
+        for i, clip in enumerate(clips):
+            try:
+                # Check if clip has audio
+                if clip.audio is None or not has_valid_audio(clip):
+                    print(f"Clip {i+1} has no valid audio, adding silent audio")
+                    silent_audio = mp.AudioClip(lambda t: 0, duration=clip.duration)
+                    clip = clip.set_audio(silent_audio)
+                    clips[i] = clip
+            except Exception as e:
+                print(f"Error checking audio for clip {i+1}: {str(e)}")
+                # Create silent audio
+                silent_audio = mp.AudioClip(lambda t: 0, duration=clip.duration)
+                clip = clip.set_audio(silent_audio)
+                clips[i] = clip
+        
         # Use method='compose' to ensure proper audio concatenation without overlaps
-        final_clip = mp.concatenate_videoclips(clips, method='compose', padding=0)
+        try:
+            final_clip = mp.concatenate_videoclips(clips, method='compose', padding=0)
+        except Exception as concat_error:
+            print(f"Error concatenating clips: {str(concat_error)}")
+            print("Trying alternate concatenation method...")
+            try:
+                # Try with method='chain' as fallback
+                final_clip = mp.concatenate_videoclips(clips, method='chain', padding=0)
+            except Exception as e:
+                return {"status": "error", "message": f"Failed to concatenate video clips: {str(e)}"}
         
         # Set output path
         if output_dir is None:
@@ -995,16 +1085,45 @@ def assemble_video(sequence, target_resolution=(1080, 1920), output_dir=None, pr
         
         output_path = os.path.join(output_dir, f"assembled_video_{timestamp}.mp4")
         
-        # Write final video
+        # Write final video with error handling
         progress_callback(80, "Writing final video")
-        final_clip.write_videofile(
-            output_path,
-            codec="libx264",
-            audio_codec="aac",
-            temp_audiofile="temp-audio.m4a",
-            remove_temp=True,
-            fps=30
-        )
+        try:
+            # Check if final clip has valid audio
+            if final_clip.audio is None or not has_valid_audio(final_clip):
+                print("Final clip has no valid audio, adding silent audio")
+                silent_audio = mp.AudioClip(lambda t: 0, duration=final_clip.duration)
+                final_clip = final_clip.set_audio(silent_audio)
+            
+            # Write video with explicit audio settings
+            final_clip.write_videofile(
+                output_path,
+                codec="libx264",
+                audio_codec="aac",
+                temp_audiofile="temp-audio.m4a",
+                remove_temp=True,
+                fps=30,
+                audio_fps=44100,  # Explicitly set audio sample rate
+                audio_nbytes=2,   # 16-bit audio
+                verbose=False,
+                logger=None
+            )
+        except Exception as write_error:
+            print(f"Error writing video file: {str(write_error)}")
+            print("Attempting to write without audio...")
+            try:
+                # Try writing without audio as fallback
+                final_clip_no_audio = final_clip.without_audio()
+                final_clip_no_audio.write_videofile(
+                    output_path,
+                    codec="libx264",
+                    audio=False,
+                    fps=30,
+                    verbose=False,
+                    logger=None
+                )
+                print("Video written successfully without audio")
+            except Exception as e:
+                return {"status": "error", "message": f"Failed to write video file: {str(e)}"}
         
         # Clean up
         progress_callback(95, "Cleaning up")

@@ -361,13 +361,15 @@ def render_video(input_path, output_path=None, target_resolution=(1080, 1920), f
         }
 
 @error_handler
-def extract_audio_track(video_path, output_dir=None):
+def extract_audio_track(video_path, output_dir=None, start_time=None, end_time=None):
     """
     Extract audio from a video file
     
     Args:
         video_path: Path to the video file
         output_dir: Directory to save the extracted audio (optional)
+        start_time: Start time in seconds for the segment (optional)
+        end_time: End time in seconds for the segment (optional)
         
     Returns:
         dict: Result containing status and output path
@@ -390,7 +392,13 @@ def extract_audio_track(video_path, output_dir=None):
     # Generate output filename
     basename = os.path.basename(video_path)
     filename, _ = os.path.splitext(basename)
-    output_path = os.path.join(output_dir, f"{filename}_audio.wav")
+    
+    # Add segment info to filename if using timestamps
+    if start_time is not None and end_time is not None and end_time > start_time:
+        segment_info = f"_segment_{start_time:.2f}_{end_time:.2f}"
+        output_path = os.path.join(output_dir, f"{filename}{segment_info}_audio.wav")
+    else:
+        output_path = os.path.join(output_dir, f"{filename}_audio.wav")
     
     try:
         # Load the video clip
@@ -403,6 +411,11 @@ def extract_audio_track(video_path, output_dir=None):
         
         # Extract audio
         audio_clip = video_clip.audio
+        
+        # If start and end times are provided, extract just that segment
+        if start_time is not None and end_time is not None and end_time > start_time:
+            print(f"Extracting audio segment from {start_time:.2f}s to {end_time:.2f}s")
+            audio_clip = audio_clip.subclip(start_time, end_time)
         
         # Write audio file
         audio_clip.write_audiofile(
@@ -421,7 +434,10 @@ def extract_audio_track(video_path, output_dir=None):
         return {
             "status": "success",
             "input_path": video_path,
-            "output_path": output_path
+            "output_path": output_path,
+            "start_time": start_time,
+            "end_time": end_time,
+            "duration": end_time - start_time if start_time is not None and end_time is not None else None
         }
     except Exception as e:
         return {
@@ -657,7 +673,18 @@ def assemble_video(sequence, target_resolution=(1080, 1920), output_dir=None, pr
         for i, item in enumerate(sequence):
             segment_id = item.get("segment_id", f"segment_{i}")
             if "aroll_path" in item:
-                audio_result = extract_audio_track(item["aroll_path"], audio_temp_dir)
+                # Get start and end times if available
+                start_time = item.get("start_time", None)
+                end_time = item.get("end_time", None)
+                
+                # Extract audio with timestamps if available
+                audio_result = extract_audio_track(
+                    item["aroll_path"], 
+                    audio_temp_dir,
+                    start_time=start_time,
+                    end_time=end_time
+                )
+                
                 if audio_result and audio_result["status"] == "success":
                     audio_path = audio_result["output_path"]
                     extracted_audio_paths[segment_id] = audio_path
@@ -695,7 +722,20 @@ def assemble_video(sequence, target_resolution=(1080, 1920), output_dir=None, pr
                 
                 try:
                     print(f"Loading A-Roll video: {aroll_path}")
-                    clip = mp.VideoFileClip(aroll_path)
+                    full_clip = mp.VideoFileClip(aroll_path)
+                    
+                    # Extract just the segment using start_time and end_time
+                    start_time = item.get("start_time", 0)
+                    end_time = item.get("end_time", 0)
+                    
+                    # Ensure we have valid start and end times
+                    if end_time > start_time:
+                        print(f"Extracting segment from {start_time:.2f}s to {end_time:.2f}s (duration: {end_time-start_time:.2f}s)")
+                        clip = full_clip.subclip(start_time, end_time)
+                    else:
+                        # If no valid timestamps, use the full clip
+                        print(f"No valid timestamps for segment {segment_id}, using full clip")
+                        clip = full_clip
                     
                     # Check if clip has valid audio, if not, try to use extracted audio
                     if not has_valid_audio(clip) and segment_id in extracted_audio_paths:
@@ -805,6 +845,15 @@ def assemble_video(sequence, target_resolution=(1080, 1920), output_dir=None, pr
                             print(f"Loading extracted A-Roll audio: {audio_path}")
                             aroll_audio = mp.AudioFileClip(audio_path)
                             
+                            # Extract just the segment using start_time and end_time if needed
+                            start_time = item.get("start_time", 0)
+                            end_time = item.get("end_time", 0)
+                            
+                            # If we have valid timestamps, extract just that portion of the audio
+                            if end_time > start_time:
+                                print(f"Extracting audio segment from {start_time:.2f}s to {end_time:.2f}s")
+                                aroll_audio = aroll_audio.subclip(start_time, end_time)
+                            
                             # First, ensure the B-Roll clip has no audio of its own
                             broll_clip = broll_clip.without_audio()
                             
@@ -852,6 +901,16 @@ def assemble_video(sequence, target_resolution=(1080, 1920), output_dir=None, pr
                             try:
                                 print(f"Fallback: Loading A-Roll directly: {aroll_path}")
                                 aroll_clip = mp.VideoFileClip(aroll_path)
+                                
+                                # Extract just the segment using start_time and end_time
+                                start_time = item.get("start_time", 0)
+                                end_time = item.get("end_time", 0)
+                                
+                                # If we have valid timestamps, extract just that portion of the video/audio
+                                if end_time > start_time:
+                                    print(f"Extracting A-Roll segment from {start_time:.2f}s to {end_time:.2f}s")
+                                    aroll_clip = aroll_clip.subclip(start_time, end_time)
+                                
                                 if has_valid_audio(aroll_clip):
                                     broll_clip = broll_clip.set_audio(aroll_clip.audio)
                                     if broll_clip.duration > aroll_clip.duration:
@@ -880,6 +939,16 @@ def assemble_video(sequence, target_resolution=(1080, 1920), output_dir=None, pr
                         # Fallback: Try loading A-Roll directly to extract audio
                         try:
                             aroll_clip = mp.VideoFileClip(aroll_path)
+                            
+                            # Extract just the segment using start_time and end_time
+                            start_time = item.get("start_time", 0)
+                            end_time = item.get("end_time", 0)
+                            
+                            # If we have valid timestamps, extract just that portion of the video/audio
+                            if end_time > start_time:
+                                print(f"Extracting A-Roll segment from {start_time:.2f}s to {end_time:.2f}s")
+                                aroll_clip = aroll_clip.subclip(start_time, end_time)
+                            
                             if has_valid_audio(aroll_clip):
                                 broll_clip = broll_clip.set_audio(aroll_clip.audio)
                                 if broll_clip.duration > aroll_clip.duration:

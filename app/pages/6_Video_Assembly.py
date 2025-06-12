@@ -246,6 +246,9 @@ from components.progress import render_step_header
 from components.custom_navigation import render_custom_sidebar, render_horizontal_navigation, render_step_navigation
 from utils.session_state import get_settings, get_project_path, mark_step_complete
 
+# Get project path once at the beginning to ensure it's available throughout the file
+project_path = get_project_path()
+
 # Rest of the imports
 import json
 from pathlib import Path
@@ -253,6 +256,212 @@ import subprocess
 
 # Add utils.video.broll_defaults import
 from utils.video.broll_defaults import apply_default_broll_ids, update_session_state_with_defaults
+
+# Add missing functions
+def load_segments():
+    """Load segments from script.json"""
+    project_path = get_project_path()
+    script_file = project_path / "script.json"
+    if not script_file.exists():
+        st.warning(f"Script file not found: {script_file}")
+        return []
+    
+    try:
+        with open(script_file, "r") as f:
+            data = json.load(f)
+            return data.get("segments", [])
+    except Exception as e:
+        st.warning(f"Error loading script: {str(e)}")
+        return []
+
+def load_content_status():
+    """Load content status from content_status.json"""
+    project_path = get_project_path()
+    status_file = project_path / "content_status.json"
+    if not status_file.exists():
+        st.warning(f"Content status file not found: {status_file}")
+        return {}
+    
+    try:
+        with open(status_file, "r") as f:
+            return json.load(f)
+    except Exception as e:
+        st.warning(f"Error loading content status: {str(e)}")
+        return {}
+
+def get_aroll_filepath(segment_id, segment_data):
+    """Get A-Roll filepath for a segment"""
+    project_path = get_project_path()
+    # First check if there's a direct file_path in the segment data
+    if "file_path" in segment_data and os.path.exists(segment_data["file_path"]):
+        return segment_data["file_path"], True, None
+    
+    # Check if this is a transcription-based A-Roll
+    if "transcription" in segment_data or "start_time" in segment_data:
+        # Look for the full A-Roll video
+        full_aroll_paths = [
+            project_path / "aroll_video.mp4",
+            project_path / "media" / "a-roll" / "main_aroll.mp4",
+            project_path / "media" / "aroll" / "main_aroll.mp4"
+        ]
+        for path in full_aroll_paths:
+            if path.exists():
+                return str(path), True, None
+    
+    # Check for segment-specific A-Roll in various locations
+    possible_paths = [
+        project_path / "aroll" / f"{segment_id}.mp4",
+        project_path / "media" / "aroll" / f"{segment_id}.mp4",
+        project_path / "media" / "a-roll" / f"{segment_id}.mp4",
+        project_path / "media" / "a-roll" / "segments" / f"main_aroll_{segment_id}.mp4"
+    ]
+    
+    for path in possible_paths:
+        if path.exists():
+            return str(path), True, None
+    
+    # Check for other video formats
+    for ext in [".mov", ".avi", ".webm"]:
+        alt_paths = [
+            project_path / "aroll" / f"{segment_id}{ext}",
+            project_path / "media" / "aroll" / f"{segment_id}{ext}",
+            project_path / "media" / "a-roll" / f"{segment_id}{ext}"
+        ]
+        for path in alt_paths:
+            if path.exists():
+                return str(path), True, None
+    
+    # Check content_status for A-Roll paths
+    content_status = load_content_status()
+    aroll_segments = content_status.get("aroll", {})
+    
+    if segment_id in aroll_segments:
+        aroll_data = aroll_segments[segment_id]
+        file_path = aroll_data.get("file_path")
+        
+        if file_path:
+            # Check if it's a relative path
+            if not os.path.isabs(file_path):
+                file_path = os.path.join(project_path, file_path)
+            
+            if os.path.exists(file_path):
+                return file_path, True, None
+            
+            # Check if it's in the media directory
+            media_paths = [
+                os.path.join(project_path, "media", "aroll", os.path.basename(file_path)),
+                os.path.join(project_path, "media", "a-roll", os.path.basename(file_path))
+            ]
+            for path in media_paths:
+                if os.path.exists(path):
+                    return path, True, None
+    
+    # A-Roll not found
+    return None, False, f"A-Roll file not found for {segment_id}"
+
+def get_broll_filepath(segment_id, segment_data):
+    """Get B-Roll filepath for a segment"""
+    project_path = get_project_path()
+    # First check if there's a direct file_path in the segment data
+    if "file_path" in segment_data and os.path.exists(segment_data["file_path"]):
+        return segment_data["file_path"]
+    
+    # Check for segment-specific B-Roll in the standard location
+    broll_dir = project_path / "broll"
+    if broll_dir.exists():
+        # Check for MP4 file
+        mp4_path = broll_dir / f"{segment_id}.mp4"
+        if mp4_path.exists():
+            return str(mp4_path)
+        
+        # Check for image files
+        for ext in [".png", ".jpg", ".jpeg"]:
+            img_path = broll_dir / f"{segment_id}{ext}"
+            if img_path.exists():
+                return str(img_path)
+        
+        # Check for other video formats
+        for ext in [".mov", ".avi", ".webm"]:
+            alt_path = broll_dir / f"{segment_id}{ext}"
+            if alt_path.exists():
+                return str(alt_path)
+    
+    # B-Roll not found
+    return None
+
+# Create assembly sequence
+def create_assembly_sequence():
+    """
+    Create a sequence of video segments for assembly
+    
+    Returns:
+        dict: Result with status and sequence
+    """
+    project_path = get_project_path()
+    
+    # Load content status and segments
+    content_status = load_content_status()
+    script_segments = load_segments()
+    
+    if not content_status:
+        return {"status": "error", "message": "Content status not found. Please complete previous steps first."}
+    
+    if not script_segments:
+        return {"status": "error", "message": "No segments found. Please complete the transcription step first."}
+    
+    aroll_segments = content_status.get("aroll", {})
+    broll_segments = content_status.get("broll", {})
+    
+    # Get A-Roll script segments
+    aroll_script_segments = [s for s in script_segments if isinstance(s, dict) and s.get("type") == "A-Roll"]
+    
+    if not aroll_script_segments:
+        return {"status": "error", "message": "No A-Roll segments found in script."}
+    
+    # Assembly sequence
+    assembly_sequence = []
+    
+    # Create an alternating sequence of A-Roll and B-Roll segments
+    for i, segment in enumerate(aroll_script_segments):
+        # Get segment_id
+        segment_id = segment.get("id", f"segment_{i}")
+        if not segment_id.startswith("segment_"):
+            segment_id = f"segment_{i}"
+        
+        # Get A-Roll path
+        aroll_path, aroll_success, aroll_error = get_aroll_filepath(segment_id, segment)
+        if aroll_path:
+            # Add A-Roll segment
+            assembly_sequence.append({
+                "type": "aroll_full",
+                "segment_id": segment_id,
+                "aroll_path": aroll_path,
+                "start_time": segment.get("start_time", 0),
+                "end_time": segment.get("end_time", 0),
+                "duration": segment.get("duration", 0)
+            })
+            
+            # Add B-Roll segment if available
+            broll_segment_id = f"segment_{i}"
+            broll_data = broll_segments.get(broll_segment_id, {})
+            broll_path = get_broll_filepath(broll_segment_id, broll_data)
+            
+            if broll_path:
+                assembly_sequence.append({
+                    "type": "broll_with_aroll_audio",
+                    "segment_id": segment_id,
+                    "broll_id": broll_segment_id,
+                    "broll_path": broll_path,
+                    "aroll_path": aroll_path,
+                    "start_time": segment.get("start_time", 0),
+                    "end_time": segment.get("end_time", 0),
+                    "duration": segment.get("duration", 0)
+                })
+    
+    if not assembly_sequence:
+        return {"status": "error", "message": "Could not create assembly sequence. No valid segments found."}
+    
+    return {"status": "success", "sequence": assembly_sequence}
 
 # Apply custom CSS to fix sidebar text color
 st.markdown("""
@@ -354,6 +563,10 @@ Create your final video by assembling A-Roll and B-Roll segments.
 This step will combine all the visual assets into a single, coherent video.
 """)
 
+# Initialize video_assembly if it doesn't exist
+if "video_assembly" not in st.session_state:
+    st.session_state.video_assembly = {"sequence": []}
+
 # Check if MoviePy is available
 if not MOVIEPY_AVAILABLE:
     st.error("⚠️ MoviePy is not available. Video assembly requires MoviePy.")
@@ -399,6 +612,13 @@ if not MOVIEPY_AVAILABLE:
 # Load content status and segments
 content_status = load_content_status()
 segments = load_segments()
+
+# Initialize video_assembly if it doesn't exist
+if "video_assembly" not in st.session_state:
+    st.session_state.video_assembly = {"sequence": []}
+
+if "content_status" not in st.session_state:
+    content_status = load_content_status()
 
 if content_status and segments:
     # Display summary of available content
@@ -452,6 +672,9 @@ if content_status and segments:
         ]
         
         # Look for files matching patterns in a-roll directories
+        # Get project path for directory matching
+        project_path = get_project_path()
+        
         potential_dirs = [
             project_path / "media" / "a-roll",
             project_path / "media" / "a-roll" / "segments",
@@ -976,6 +1199,286 @@ if content_status and segments:
         key="resolution_selectbox_secondary"
     )
 
+    # Add sequence template options
+    st.subheader("Assembly Templates")
+    sequence_options = [
+        "A-Roll Only", 
+        "Alternating A-Roll and B-Roll",
+        "B-Roll Bookends", 
+        "B-Roll Interlude"
+    ]
+    selected_sequence = st.selectbox(
+        "Select a sequence template:", 
+        sequence_options,
+        index=0,
+        key="sequence_template_selectbox"
+    )
+
+    # Update sequence based on selected template
+    if selected_sequence != st.session_state.get("last_selected_sequence", ""):
+        # Load content status and segments if not already loaded
+        if "loaded_segments" not in st.session_state:
+            st.session_state.loaded_segments = load_segments()
+            st.session_state.loaded_content_status = load_content_status()
+        
+        # Get A-Roll and B-Roll segments
+        aroll_segments = [s for s in st.session_state.loaded_segments if isinstance(s, dict) and s.get("type") == "A-Roll"]
+        
+        # Create new sequence based on template
+        new_sequence = []
+        
+        if selected_sequence == "A-Roll Only":
+            # Create sequence with only A-Roll segments
+            for i, segment in enumerate(aroll_segments):
+                segment_id = segment.get("id", f"segment_{i}")
+                aroll_path, success, _ = get_aroll_filepath(segment_id, segment)
+                
+                if success and aroll_path:
+                    new_sequence.append({
+                        "type": "aroll_full",
+                        "segment_id": segment_id,
+                        "aroll_path": aroll_path,
+                        "start_time": segment.get("start_time", 0),
+                        "end_time": segment.get("end_time", 0),
+                        "duration": segment.get("duration", 0)
+                    })
+        
+        elif selected_sequence == "Alternating A-Roll and B-Roll":
+            # Create alternating sequence of A-Roll and B-Roll
+            for i, segment in enumerate(aroll_segments):
+                segment_id = segment.get("id", f"segment_{i}")
+                aroll_path, success, _ = get_aroll_filepath(segment_id, segment)
+                
+                if success and aroll_path:
+                    # Add A-Roll
+                    new_sequence.append({
+                        "type": "aroll_full",
+                        "segment_id": segment_id,
+                        "aroll_path": aroll_path,
+                        "start_time": segment.get("start_time", 0),
+                        "end_time": segment.get("end_time", 0),
+                        "duration": segment.get("duration", 0)
+                    })
+                    
+                    # Try to find matching B-Roll
+                    broll_segment_id = f"segment_{i}"
+                    broll_data = st.session_state.loaded_content_status.get("broll", {}).get(broll_segment_id, {})
+                    broll_path = get_broll_filepath(broll_segment_id, broll_data)
+                    
+                    # Add B-Roll if available
+                    if broll_path:
+                        new_sequence.append({
+                            "type": "broll_with_aroll_audio",
+                            "segment_id": segment_id,
+                            "broll_id": broll_segment_id,
+                            "broll_path": broll_path,
+                            "aroll_path": aroll_path,
+                            "start_time": segment.get("start_time", 0),
+                            "end_time": segment.get("end_time", 0),
+                            "duration": segment.get("duration", 0)
+                        })
+        
+        elif selected_sequence == "B-Roll Bookends":
+            # Add B-Roll at beginning and end, A-Roll in middle
+            
+            # Try to find first B-Roll
+            first_broll = None
+            for i in range(len(aroll_segments)):
+                broll_segment_id = f"segment_{i}"
+                broll_data = st.session_state.loaded_content_status.get("broll", {}).get(broll_segment_id, {})
+                broll_path = get_broll_filepath(broll_segment_id, broll_data)
+                
+                if broll_path:
+                    segment = aroll_segments[i]
+                    segment_id = segment.get("id", f"segment_{i}")
+                    aroll_path, success, _ = get_aroll_filepath(segment_id, segment)
+                    
+                    if success and aroll_path:
+                        first_broll = {
+                            "type": "broll_with_aroll_audio",
+                            "segment_id": segment_id,
+                            "broll_id": broll_segment_id,
+                            "broll_path": broll_path,
+                            "aroll_path": aroll_path,
+                            "start_time": segment.get("start_time", 0),
+                            "end_time": segment.get("end_time", 0),
+                            "duration": segment.get("duration", 0)
+                        }
+                        break
+            
+            # Try to find last B-Roll
+            last_broll = None
+            for i in range(len(aroll_segments) - 1, -1, -1):
+                broll_segment_id = f"segment_{i}"
+                broll_data = st.session_state.loaded_content_status.get("broll", {}).get(broll_segment_id, {})
+                broll_path = get_broll_filepath(broll_segment_id, broll_data)
+                
+                if broll_path and (first_broll is None or broll_segment_id != first_broll["broll_id"]):
+                    segment = aroll_segments[i]
+                    segment_id = segment.get("id", f"segment_{i}")
+                    aroll_path, success, _ = get_aroll_filepath(segment_id, segment)
+                    
+                    if success and aroll_path:
+                        last_broll = {
+                            "type": "broll_with_aroll_audio",
+                            "segment_id": segment_id,
+                            "broll_id": broll_segment_id,
+                            "broll_path": broll_path,
+                            "aroll_path": aroll_path,
+                            "start_time": segment.get("start_time", 0),
+                            "end_time": segment.get("end_time", 0),
+                            "duration": segment.get("duration", 0)
+                        }
+                        break
+            
+            # Build sequence with B-Roll bookends
+            if first_broll:
+                new_sequence.append(first_broll)
+                
+            # Add all A-Roll segments
+            for i, segment in enumerate(aroll_segments):
+                segment_id = segment.get("id", f"segment_{i}")
+                aroll_path, success, _ = get_aroll_filepath(segment_id, segment)
+                
+                if success and aroll_path:
+                    new_sequence.append({
+                        "type": "aroll_full",
+                        "segment_id": segment_id,
+                        "aroll_path": aroll_path,
+                        "start_time": segment.get("start_time", 0),
+                        "end_time": segment.get("end_time", 0),
+                        "duration": segment.get("duration", 0)
+                    })
+                    
+            if last_broll:
+                new_sequence.append(last_broll)
+        
+        elif selected_sequence == "B-Roll Interlude":
+            # First half A-Roll, middle B-Roll, second half A-Roll
+            
+            # Add first half of A-Roll segments
+            halfway = len(aroll_segments) // 2
+            
+            for i in range(halfway):
+                segment = aroll_segments[i]
+                segment_id = segment.get("id", f"segment_{i}")
+                aroll_path, success, _ = get_aroll_filepath(segment_id, segment)
+                
+                if success and aroll_path:
+                    new_sequence.append({
+                        "type": "aroll_full",
+                        "segment_id": segment_id,
+                        "aroll_path": aroll_path,
+                        "start_time": segment.get("start_time", 0),
+                        "end_time": segment.get("end_time", 0),
+                        "duration": segment.get("duration", 0)
+                    })
+            
+            # Find a middle B-Roll segment
+            middle_index = halfway
+            middle_broll = None
+            
+            for offset in range(3):  # Try middle, middle+1, middle-1
+                idx = middle_index
+                if offset == 1:
+                    idx = min(middle_index + 1, len(aroll_segments) - 1)
+                elif offset == 2:
+                    idx = max(middle_index - 1, 0)
+                    
+                broll_segment_id = f"segment_{idx}"
+                broll_data = st.session_state.loaded_content_status.get("broll", {}).get(broll_segment_id, {})
+                broll_path = get_broll_filepath(broll_segment_id, broll_data)
+                
+                if broll_path:
+                    segment = aroll_segments[idx]
+                    segment_id = segment.get("id", f"segment_{idx}")
+                    aroll_path, success, _ = get_aroll_filepath(segment_id, segment)
+                    
+                    if success and aroll_path:
+                        middle_broll = {
+                            "type": "broll_with_aroll_audio",
+                            "segment_id": segment_id,
+                            "broll_id": broll_segment_id,
+                            "broll_path": broll_path,
+                            "aroll_path": aroll_path,
+                            "start_time": segment.get("start_time", 0),
+                            "end_time": segment.get("end_time", 0),
+                            "duration": segment.get("duration", 0)
+                        }
+                        break
+            
+            # Add middle B-Roll if found
+            if middle_broll:
+                new_sequence.append(middle_broll)
+            
+            # Add second half of A-Roll segments
+            for i in range(halfway, len(aroll_segments)):
+                segment = aroll_segments[i]
+                segment_id = segment.get("id", f"segment_{i}")
+                aroll_path, success, _ = get_aroll_filepath(segment_id, segment)
+                
+                if success and aroll_path:
+                    new_sequence.append({
+                        "type": "aroll_full",
+                        "segment_id": segment_id,
+                        "aroll_path": aroll_path,
+                        "start_time": segment.get("start_time", 0),
+                        "end_time": segment.get("end_time", 0),
+                        "duration": segment.get("duration", 0)
+                    })
+        
+        # Update sequence in session state
+        if new_sequence:
+            st.session_state.video_assembly["sequence"] = new_sequence
+            st.session_state.video_assembly["selected_sequence"] = selected_sequence
+        
+        # Save last selected sequence
+        st.session_state.last_selected_sequence = selected_sequence
+        
+        # Force a rerun to update the UI
+        st.rerun()
+
+    # Add assembly button
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.markdown("### Assemble Video")
+        st.markdown("Click the button below to assemble your video with the selected options.")
+    with col2:
+        # Add assemble button with different styling
+        if st.button("🎬 Assemble Video", type="primary", key="assemble_button", help="Start the assembly process"):
+            with st.spinner("Assembling video..."):
+                try:
+                    # Get sequence and output resolution
+                    sequence = st.session_state.video_assembly.get("sequence", [])
+                    
+                    if not sequence:
+                        st.error("No sequence defined. Please select a sequence template or create a custom arrangement.")
+                        st.stop()
+                    
+                    # Get resolution settings
+                    resolution_str = st.session_state.selected_resolution
+                    width, height = map(int, resolution_str.split(" ")[0].split("x"))
+                    
+                    # Create output path
+                    output_dir = os.path.join(project_path, "media", "output")
+                    os.makedirs(output_dir, exist_ok=True)
+                    
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    output_path = os.path.join(output_dir, f"assembled_video_{timestamp}.mp4")
+                    
+                    # Call assembly function
+                    result = helper_assemble_video(sequence, output_path, width=width, height=height)
+                    
+                    if result["status"] == "success":
+                        st.success(f"Video assembled successfully!")
+                        st.video(result["output_path"])
+                        st.markdown(f"Video saved to: `{result['output_path']}`")
+                    else:
+                        st.error(f"Error assembling video: {result['message']}")
+                except Exception as e:
+                    st.error(f"Error assembling video: {str(e)}")
+                    st.error(traceback.format_exc())
+
     # Add a dependency check option
     if st.button("Check Dependencies", type="secondary", help="Check if all required packages are installed", key="check_deps_secondary"):
         with st.spinner("Checking dependencies..."):
@@ -989,6 +1492,9 @@ if content_status and segments:
 # Add call to apply default B-roll IDs in the initialization section
 # ... existing code ...
 # Initialize content status
+# Get project path
+project_path = get_project_path()
+
 if "content_status" not in st.session_state:
     content_status = load_content_status()
     if content_status:
@@ -1028,6 +1534,9 @@ render_step_navigation(
 with st.expander("Debug Information", expanded=False):
     st.subheader("A-Roll Segments Debug Info")
     st.write("This information can help diagnose issues with segment paths and identification")
+    
+    # Get project path
+    project_path = get_project_path()
     
     # Debug A-Roll segments from script.json
     st.markdown("### A-Roll Segments from Script")

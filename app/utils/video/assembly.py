@@ -560,12 +560,17 @@ def image_to_video(image_path, duration=5.0, target_resolution=(1080, 1920)):
     try:
         # Load image as clip with exact specified duration
         print(f"Converting image to video with exact duration: {duration}s - {image_path}")
-        image_clip = mp.ImageClip(image_path, duration=duration)
+        clip = mp.ImageClip(image_path, duration=duration)
         
         # Resize to target resolution
-        image_clip = resize_video(image_clip, target_resolution)
-        
-        return image_clip
+        if target_resolution:
+            clip = resize_video(clip, target_resolution)
+            
+        # Ensure clip has the correct duration
+        if clip.duration != duration:
+            clip = clip.set_duration(duration)
+            
+        return clip
     except Exception as e:
         print(f"❌ Error converting image to video: {str(e)}")
         print(traceback.format_exc())
@@ -652,8 +657,9 @@ def assemble_video(sequence, target_resolution=(1080, 1920), output_dir=None, pr
         for i, item in enumerate(sequence):
             segment_id = item.get("segment_id", f"segment_{i}")
             if "aroll_path" in item:
-                audio_path = extract_audio_track(item["aroll_path"], audio_temp_dir)
-                if audio_path:
+                audio_result = extract_audio_track(item["aroll_path"], audio_temp_dir)
+                if audio_result and audio_result["status"] == "success":
+                    audio_path = audio_result["output_path"]
                     extracted_audio_paths[segment_id] = audio_path
                     # Get audio duration
                     try:
@@ -663,6 +669,8 @@ def assemble_video(sequence, target_resolution=(1080, 1920), output_dir=None, pr
                         print(f"Audio segment {segment_id} duration: {audio_durations[segment_id]:.2f}s")
                     except Exception as e:
                         print(f"Error getting audio duration for segment {segment_id}: {str(e)}")
+                else:
+                    print(f"Failed to extract audio for segment {segment_id}: {audio_result.get('message', 'Unknown error')}")
         
         # Load and assemble video clips
         progress_callback(20, "Loading video segments")
@@ -823,14 +831,21 @@ def assemble_video(sequence, target_resolution=(1080, 1920), output_dir=None, pr
                             aroll_audio = aroll_audio.subclip(0, exact_duration)
                             
                             # Apply the precisely trimmed audio to the clip
-                            broll_clip = broll_clip.set_audio(aroll_audio)
-                            
-                            # Mark this segment as used
-                            used_audio_segments.add(segment_id)
-                
-                            # Update current audio position
-                            current_audio_position += aroll_audio.duration
-                
+                            try:
+                                broll_clip = broll_clip.set_audio(aroll_audio)
+                                print("Successfully applied A-Roll audio to B-Roll clip")
+                                
+                                # Mark this segment as used
+                                used_audio_segments.add(segment_id)
+                                
+                                # Update current audio position
+                                current_audio_position += aroll_audio.duration
+                            except Exception as audio_error:
+                                print(f"Error setting audio on B-Roll clip: {str(audio_error)}")
+                                # Create silent audio as fallback
+                                print("Creating silent audio as fallback")
+                                silent_audio = mp.AudioClip(lambda t: 0, duration=broll_clip.duration)
+                                broll_clip = broll_clip.set_audio(silent_audio)
                         except Exception as e:
                             print(f"Error applying A-Roll audio to B-Roll: {str(e)}")
                             # Fallback: Try loading A-Roll directly to extract audio

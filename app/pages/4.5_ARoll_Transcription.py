@@ -1679,8 +1679,8 @@ def main():
                                     # Add direct navigation to B-Roll production with a more prominent style
                                     nav_col1, nav_col2 = st.columns([2, 1])
                                     with nav_col2:
-                                        if st.button("Next: B-Roll Production ➡️", key="auto_next_button", type="primary", use_container_width=True):
-                                            st.switch_page("pages/5B_BRoll_Video_Production.py")
+                                        if st.button("Next: Video Assembly ➡️", key="auto_next_button", type="primary", use_container_width=True):
+                                            st.switch_page("pages/6_Video_Assembly.py")
                                 else:
                                     st.error("Failed to generate B-Roll prompts.")
                     
@@ -1794,8 +1794,8 @@ def main():
                                 # Add direct navigation to B-Roll production with a more prominent style
                                 nav_col1, nav_col2 = st.columns([2, 1])
                                 with nav_col2:
-                                    if st.button("Next: B-Roll Production ➡️", key="manual_next_button", type="primary", use_container_width=True):
-                                        st.switch_page("pages/5B_BRoll_Video_Production.py")
+                                    if st.button("Next: Video Assembly ➡️", key="manual_next_button", type="primary", use_container_width=True):
+                                        st.switch_page("pages/6_Video_Assembly.py")
                 
                 # If B-Roll segments have been generated, display them
                 if st.session_state.b_roll_segments:
@@ -1930,8 +1930,8 @@ def main():
                             # Add navigation to next step
                             nav_col1, nav_col2 = st.columns([2, 1])
                             with nav_col2:
-                                if st.button("Next: B-Roll Production ➡️", key="comfyui_next_button", type="primary", use_container_width=True):
-                                    st.switch_page("pages/5B_BRoll_Video_Production.py")
+                                if st.button("Next: Video Assembly ➡️", key="comfyui_next_button", type="primary", use_container_width=True):
+                                    st.switch_page("pages/6_Video_Assembly.py")
                     else:
                         st.warning("B-Roll prompts file not found. Please generate B-Roll prompts first.")
 

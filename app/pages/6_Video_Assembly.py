@@ -1118,7 +1118,7 @@ if content_status and segments:
                         )
                     else:  # broll_with_aroll_audio
                         a_segment_num = item["aroll_segment_num"]
-                        b_segment_num = item["broll_segment_num"]
+                        segment_id = item["aroll_segment_id"]
                         
                         # Add warning color if this is an overlap
                         border_color = "#FF5733" if is_overlap else "#2196F3"
@@ -1128,7 +1128,7 @@ if content_status and segments:
                         cols[0].markdown(
                             f"""
                             <div style="text-align:center; border:2px solid {border_color}; padding:8px; border-radius:5px; background-color:{bg_color};">
-                            <strong>B-Roll {b_segment_num + 1} + A-Roll {a_segment_num + 1} Audio</strong><br>
+                            <strong>B-Roll {a_segment_num + 1} + A-Roll {segment_num + 1} Audio</strong><br>
                             <small>B-Roll visuals with A-Roll audio{warning_text}</small>
                             </div>
                             """, 
@@ -1361,15 +1361,16 @@ if content_status and segments:
                     resolution_str = st.session_state.selected_resolution
                     width, height = map(int, resolution_str.split(" ")[0].split("x"))
                     
-                    # Create output path
+                    # Create output directory
                     output_dir = os.path.join(project_path, "media", "output")
                     os.makedirs(output_dir, exist_ok=True)
                     
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    output_path = os.path.join(output_dir, f"assembled_video_{timestamp}.mp4")
-                    
-                    # Call assembly function
-                    result = helper_assemble_video(sequence, output_path, target_resolution=(width, height))
+                    # Call assembly function with output_dir
+                    result = helper_assemble_video(
+                        sequence=sequence,
+                        target_resolution=(width, height),
+                        output_dir=output_dir
+                    )
                     
                     if result["status"] == "success":
                         st.success(f"Video assembled successfully!")

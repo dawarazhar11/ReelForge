@@ -441,22 +441,23 @@ def create_assembly_sequence():
                 "duration": segment.get("duration", 0)
             })
             
-            # Add B-Roll segment if available
-            broll_segment_id = f"segment_{i}"
-            broll_data = broll_segments.get(broll_segment_id, {})
-            broll_path = get_broll_filepath(broll_segment_id, broll_data)
-            
-            if broll_path:
-                assembly_sequence.append({
-                    "type": "broll_with_aroll_audio",
-                    "segment_id": segment_id,
-                    "broll_id": broll_segment_id,
-                    "broll_path": broll_path,
-                    "aroll_path": aroll_path,
-                    "start_time": segment.get("start_time", 0),
-                    "end_time": segment.get("end_time", 0),
-                    "duration": segment.get("duration", 0)
-                })
+            # Add B-Roll segment if available and i >= 1 (skip for first segment)
+            if i >= 1:  # Only add B-roll starting from segment 2 (index 1)
+                broll_segment_id = f"segment_{i}"
+                broll_data = broll_segments.get(broll_segment_id, {})
+                broll_path = get_broll_filepath(broll_segment_id, broll_data)
+                
+                if broll_path:
+                    assembly_sequence.append({
+                        "type": "broll_with_aroll_audio",
+                        "segment_id": segment_id,
+                        "broll_id": broll_segment_id,
+                        "broll_path": broll_path,
+                        "aroll_path": aroll_path,
+                        "start_time": segment.get("start_time", 0),
+                        "end_time": segment.get("end_time", 0),
+                        "duration": segment.get("duration", 0)
+                    })
     
     if not assembly_sequence:
         return {"status": "error", "message": "Could not create assembly sequence. No valid segments found."}

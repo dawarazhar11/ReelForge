@@ -543,79 +543,45 @@ def generate_broll_segments(a_roll_segments, theme, strategy="balanced", percent
     
     # Calculate number of B-Roll segments based on percentage
     if percentage == 25:
-        # 25%: Intro after first segment, outro before last segment
-        target_count = max(2, round(total_aroll_segments * 0.25))
+        # 25%: Some B-rolls starting from segment 2
+        target_count = max(1, round(total_aroll_segments * 0.25))
     elif percentage == 75:
         # 75%: More B-Roll dominant
-        target_count = max(2, round(total_aroll_segments * 0.75))
+        target_count = max(1, round(total_aroll_segments * 0.75))
     else:
         # 50%: Balanced approach
-        target_count = max(2, round(total_aroll_segments * 0.50))
+        target_count = max(1, round(total_aroll_segments * 0.50))
     
-    # Always include an intro B-Roll
-    intro_content = f"Introductory visual for {theme}"
-    if is_video:
-        intro_content = f"Cinematic opening shot introducing {theme} with dynamic camera movement"
-    
-    intro_broll = {
-        "type": "B-Roll",
-        "content": intro_content,
-        "duration": 3.0,  # Default duration in seconds
-        "is_intro": True
-    }
-    b_roll_segments.append(intro_broll)
-    
-    # For very small target counts, just add intro and outro
-    if target_count <= 2:
-        # Add outro B-Roll
-        outro_content = f"Concluding visual for {theme}"
-        if is_video:
-            outro_content = f"Dynamic closing shot of {theme} with smooth camera motion"
+    # For very small target counts or when we have few segments, adjust accordingly
+    if target_count <= 1 or total_aroll_segments <= 3:
+        # If we have at least 2 segments, add B-roll for segment 2 (index 1)
+        if total_aroll_segments > 1:
+            content = a_roll_segments[1]["content"]
+            summary = content[:50] + "..." if len(content) > 50 else content
             
-        outro_broll = {
-            "type": "B-Roll",
-            "content": outro_content,
-            "duration": 3.0,
-            "is_outro": True
-        }
-        b_roll_segments.append(outro_broll)
+            prompt_content = f"Visual representation of: {summary}"
+            if is_video:
+                prompt_content = f"Cinematic scene with motion showing: {summary}, dynamic camera work"
+            
+            broll = {
+                "type": "B-Roll",
+                "content": prompt_content,
+                "duration": 3.0,
+                "related_aroll": 1  # This corresponds to segment 2 (index 1)
+            }
+            b_roll_segments.append(broll)
         return b_roll_segments
-    
-    # For the remaining B-Roll segments, we'll distribute them based on the percentage
-    remaining_brolls = target_count - 1  # Subtract 1 for the intro
     
     # Distribution logic based on percentage
     if percentage == 25:
-        # 25%: Place one near the beginning and the rest near the end
-        # (We already added intro, so just add one before the end)
-        if remaining_brolls >= 1:
-            outro_content = f"Concluding visual for {theme}"
-            if is_video:
-                outro_content = f"Dynamic closing shot of {theme} with smooth camera motion"
-                
-            outro_broll = {
-                "type": "B-Roll",
-                "content": outro_content,
-                "duration": 3.0,
-                "is_outro": True,
-                "related_aroll": total_aroll_segments - 1
-            }
-            b_roll_segments.append(outro_broll)
-    
-    elif percentage == 75:
-        # 75%: Dense B-Roll coverage
-        # Place remaining B-Rolls at regular intervals, but exclude positions right after intro and before outro
-        if total_aroll_segments > 2:
-            available_positions = list(range(1, total_aroll_segments - 1))
-            
-            # If we have more remaining_brolls than available positions, we'll just use all positions
-            if remaining_brolls >= len(available_positions):
-                positions_to_use = available_positions
-            else:
-                # Otherwise, distribute evenly
-                step = len(available_positions) / remaining_brolls
-                positions_to_use = [available_positions[min(int(i * step), len(available_positions) - 1)] 
-                                   for i in range(remaining_brolls)]
+        # 25%: Place B-rolls sparingly, starting from segment 2
+        # Select positions starting from index 1 (segment 2)
+        available_positions = list(range(1, total_aroll_segments))
+        if available_positions:
+            # Distribute evenly
+            step = len(available_positions) / target_count
+            positions_to_use = [available_positions[min(int(i * step), len(available_positions) - 1)] 
+                               for i in range(target_count)]
             
             # Create B-Roll segments at the selected positions
             for pos in positions_to_use:
@@ -633,29 +599,48 @@ def generate_broll_segments(a_roll_segments, theme, strategy="balanced", percent
                     "related_aroll": pos
                 }
                 b_roll_segments.append(broll)
+    
+    elif percentage == 75:
+        # 75%: Dense B-Roll coverage
+        # Place B-Rolls at regular intervals, starting from segment 2 (index 1)
+        available_positions = list(range(1, total_aroll_segments))
+        
+        # If we have more target_count than available positions, we'll just use all positions
+        if target_count >= len(available_positions):
+            positions_to_use = available_positions
+        else:
+            # Otherwise, distribute evenly
+            step = len(available_positions) / target_count
+            positions_to_use = [available_positions[min(int(i * step), len(available_positions) - 1)] 
+                               for i in range(target_count)]
+        
+        # Create B-Roll segments at the selected positions
+        for pos in positions_to_use:
+            content = a_roll_segments[pos]["content"]
+            summary = content[:50] + "..." if len(content) > 50 else content
             
-            # Add outro B-Roll
-            outro_content = f"Concluding visual for {theme}"
+            prompt_content = f"Visual representation of: {summary}"
             if is_video:
-                outro_content = f"Dynamic closing shot of {theme} with smooth camera motion"
-                
-            outro_broll = {
+                prompt_content = f"Dynamic cinematic scene showing: {summary} with camera movement and action"
+            
+            broll = {
                 "type": "B-Roll",
-                "content": outro_content,
+                "content": prompt_content,
                 "duration": 3.0,
-                "is_outro": True,
-                "related_aroll": total_aroll_segments - 1
+                "related_aroll": pos
             }
-            b_roll_segments.append(outro_broll)
+            b_roll_segments.append(broll)
     
     else:
         # 50%: Balanced distribution
-        # Distribute remaining B-Rolls evenly across the video
-        if total_aroll_segments > 2:
-            step = total_aroll_segments / (remaining_brolls + 1)
+        # Distribute B-Rolls evenly across the video, starting from segment 2 (index 1)
+        available_positions = list(range(1, total_aroll_segments))
+        
+        if available_positions:
+            step = len(available_positions) / target_count
             
-            for i in range(1, remaining_brolls + 1):
-                pos = min(int(i * step), total_aroll_segments - 1)
+            for i in range(target_count):
+                pos = available_positions[min(int(i * step), len(available_positions) - 1)]
                 
                 content = a_roll_segments[pos]["content"]
                 summary = content[:50] + "..." if len(content) > 50 else content
@@ -671,21 +656,6 @@ def generate_broll_segments(a_roll_segments, theme, strategy="balanced", percent
                     "related_aroll": pos
                 }
                 b_roll_segments.append(broll)
-            
-            # Add outro B-Roll if it's not already covered by our distribution
-            if int(remaining_brolls * step) < total_aroll_segments - 1:
-                outro_content = f"Concluding visual for {theme}"
-                if is_video:
-                    outro_content = f"Dynamic closing shot of {theme} with smooth camera motion"
-                    
-                outro_broll = {
-                    "type": "B-Roll",
-                    "content": outro_content,
-                    "duration": 3.0,
-                    "is_outro": True,
-                    "related_aroll": total_aroll_segments - 1
-                }
-                b_roll_segments.append(outro_broll)
     
     return b_roll_segments
 

@@ -1,0 +1,10 @@
+{
+  "prompts": {
+    "0": " \"Close-up shots of a curious cat, its emerald green eyes gleaming with intelligence and mischief. The scene transitions to various rooms in a cozy home, each one subtly revealing signs of the cat's presence: a fallen vase here, a knocked-over lamp there, a trail of fur leading away. Throughout, the cat's eyes are visible through keyholes, peeking from behind curtains or reflecting in polished surfaces. The lighting is soft and warm, casting shadows that add to the mysterious atmosphere.\"",
+    "1": " Close-up shots of a curious cat, with dilated pupils reflecting a room lit by the soft glow of early morning sunlight. The camera pans to show the cat's alert ears twitching, hinting at its keen senses. Cut to a series of clips showing the cat watching the household routines: the turning off of lights, the opening and closing of doors, and the flushing sound of a toilet in the distance. Each scene is framed to emphasize the cat's focused gaze, reinforcing its ability to observe daily activities with precision.",
+    "2": " Close-up shots of a curious cat observing a sunlit indoor garden. The plants sway gently in the soft breeze, leaves rustling as if whispering back to the cat. The cat's focused gaze lingers on a succulent plant, its bright green leaves contrasting with the cat's yellow eyes that seem to sparkle with interest and understanding. Overhead shot of the garden at dusk, twilight casting long shadows, highlighting the interplay between the cat and the plants.",
+    "3": " A photorealistic close-up of a curious cat perched on a cluttered shelf, its alert eyes scanning the room with an air of quiet observation, as if scrutinizing every detail from its vantage point above. The setting is dimly lit by a single overhead light, casting long shadows and creating an atmosphere of stillness and contemplation. A doorway is partially visible in the frame, suggesting the cat's habit of surveying its domain from various locations, including doorways and high places like the top of the fridge, reminiscent of a silent, judgemental gargoyle."
+  },
+  "broll_type": "image",
+  "image_template": "flux_schnell"
+}

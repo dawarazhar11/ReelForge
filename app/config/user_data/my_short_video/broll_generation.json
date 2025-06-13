@@ -1,0 +1,11 @@
+{
+  "media_type": "image",
+  "files": {
+    "0": "config/user_data/my_short_video/media/b-roll/broll_segment_0.png",
+    "1": "config/user_data/my_short_video/media/b-roll/broll_segment_1.png",
+    "2": "config/user_data/my_short_video/media/b-roll/broll_segment_2.png",
+    "3": "config/user_data/my_short_video/media/b-roll/broll_segment_3.png"
+  },
+  "template": "/Users/dawarazhar/Desktop/AI-Money-Printer-Shorts/app/flux_schnell.json",
+  "timestamp": "2025-06-13 09:28:48"
+}

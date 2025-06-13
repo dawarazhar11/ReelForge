@@ -1,0 +1,10 @@
+{
+  "prompts": {
+    "0": " \"A close-up of a curious cat with piercing green eyes, subtly listening from a strategically placed vantage point in a warmly lit living room. The scene slowly reveals various hidden nooks and crannies where small cameras and listening devices are cleverly concealed, hinting at the cat's claim about privacy.\"",
+    "1": " \"Close-up shots of a curious cat's vibrant eyes adjusting to early morning light streaming in through an open window. Sequence of the cat blinking and focusing, emphasizing its keen perception. Time-lapse of twilight over a cityscape, symbolizing the cat's nocturnal awareness. Detailed shots of the cat using a litter box with precision, visualizing its regular bathroom habits.\"",
+    "2": " \"Close-up of a curious cat observing a room filled with various potted plants, with sunlight streaming through the window, creating a warm and inviting atmosphere. The cat's alert eyes are fixed on a plant, as if engaged in a conversation.\"",
+    "3": " A sleek, silver cat figure perched atop a weathered wooden shelf, its piercing green eyes scrutinizing the room below with quiet intensity. The setting is dimly lit, casting long shadows that accentuate the cat's regal silhouette against the backdrop of an old, dusty bookshelf. Alternatively, the cat could be shown standing on a stone threshold, its ears pricked as it surveys a grand hall, resembling a judgemental gargoyle, with a chandelier casting flickering light across its fur and features."
+  },
+  "broll_type": "image",
+  "image_template": "flux_schnell"
+}

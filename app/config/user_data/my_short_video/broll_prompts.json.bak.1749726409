@@ -1,0 +1,106 @@
+{
+    "prompts": {
+        "segment_0": {
+            "prompt": "In a warmly lit, cozy living room, a curious cat peeks out from behind intricately patterned drapes, its eyes gleaming with intelligence. The scene unfolds as the camera gradually reveals the room filled with high-tech devices and gadgets, each screen displaying different activities.\n\n   As time passes, slow motion captures the cat's ears twitching subtely, betraying its heightened senses. Panning slowly follows the cat as it moves stealthily from behind the drapes towards a gleaming laptop on the coffee table. The camera tracks its movements, highlighting the playful yet mischievous mood with shadows dancing around the room.\n\n   Gradually revealing more of the scene, vibrant yellows and browns dominate the color palette, creating a comforting atmosphere that belies the cat's potential scheming. In the background, the gentle hum of electronic devices provides an undercurrent of anticipation. The cat finally settles down on the table, its gaze fixed intently on the laptop screen, ready to talk about its eyes and ears in this digital world.",
+            "negative_prompt": "\"Avoid generating images/videos with poor quality, blurry or distorted faces, unrealistic deformations, bad anatomy, an ugly aesthetic, low resolution, signs of amateurism, poorly composed framing, and any other elements that might negatively impact the overall visual appeal.\"",
+            "is_video": true,
+            "segment_text": " \"Close-up shots of a curious cat in a cozy living room, subtly observing from behind intricately patterned drapes. The camera gradually zooms out to reveal multiple high-tech devices and gadgets, each with screens displaying different activities, providing subtle hints that the cat's privacy might be compromised. Mood is playful, yet slightly mischievous, emphasized by soft, warm lighting casting shadows around the room.\""
+        },
+        "segment_1": {
+            "prompt": "At twilight, a sleek Siamese cat named Luna sits poised on an antique wooden windowsill, her emerald eyes fixed intently on a vintage digital clock. As the camera moves in for a close-up, the minute hand ticks closer to dawn, casting a soft glow across Luna's fur and highlighting her alert gaze. The scene transitions to a series of slow-motion shots capturing Luna's lithe form as she pads gracefully to her litter box, each visit occurring at different intervals throughout the day.\n\n   A gentle shift in the lighting signals the approach of dusk, bathing the room in warm hues that accentuate the cat's nocturnal nature. Intriguing sounds echo around the house - a distant alarm clock ringing, a creaking door opening - causing Luna's ears to twitch with keen interest. The camera tracks her movements, capturing the subtle changes in her expression as she listens attentively, underscoring her heightened senses.\n\n   As the video unfolds, we delve deeper into Luna's world, observing her keen eyes and sensitive ears at work, all within a richly detailed setting that evokes a sense of serene mystery. The clean, photorealistic style emphasizes every whisker, furry paw print, and sparkle in her eyes, creating an immersive, cinematic experience that transports viewers into the life of this curious feline.",
+            "negative_prompt": "\"Avoid generating poor quality images or videos featuring blurry, distorted faces, bad anatomy, unnatural colors, deformed features, low resolution, amateurish style, poorly composed framing, grainy textures, harsh lighting, or any elements that may detract from the intended sleek and cinematic portrayal of a Siamese cat named Luna in a vintage setting.\"",
+            "is_video": true,
+            "segment_text": " Close-ups of a curious cat with alert eyes, watching a digital clock's minute hand move as it approaches dawn and dusk. Overlays of images of a cat using a litter box at different intervals throughout the day. A series of shots capturing the cat's ears twitching in response to various sounds around the house, such as an alarm clock ringing or a door creaking open. All scenes are captured in soft, warm lighting, with a clean, photorealistic style that emphasizes the cat's keen senses and nocturnal nature."
+        },
+        "segment_2": {
+            "prompt": "At midnight, a sleek black cat perches on a windowsill, ears pricked up and gaze fixed intently outside. The room is dimly lit, casting long shadows that dance across the cat's form. A soft glow filters in from streetlights outside, illuminating crumbs of an empty snack bag scattered around it. As the camera moves gradually, it reveals a cityscape beyond the window, twinkling with life.\n\n   The cat, seemingly lost in thought, turns its head towards the viewer, eyes reflecting the city lights with a knowing and playful expression. Its pupils dilate slightly, glowing like tiny stars within its irises. In slow motion, the cat raises a paw and touches the window, leaving a paw print that catches the light for an instant before fading away.\n\n   The scene shifts subtly, focusing on the cat's ears. They twitch sporadically, as if listening to unheard sounds. One ear swivels towards the viewer, then back to the cityscape, creating a rhythmic pulse that mirrors the heartbeat of the metropolis below.\n\n   The camera pans out slowly, leaving behind the captivating cat and its nocturnal vigil, as it moves through the urban jungle beyond. The video ends with the city lights fading to black, save for the last lingering reflection in the cat's eyes, a testament to its endless curiosity.",
+            "negative_prompt": "\"Generate a high-definition image/video featuring a clearly visible, well-proportioned sleek black cat perched on a windowsill, with accurate anatomy and natural lighting that avoids distortions. Ensure the scene is composed skillfully, capturing both the dimly lit room's shadows and the cityscape beyond the window. Refrain from using low resolution, unrealistic or deformed features, and maintain clear focus on the cat and its surroundings throughout. The cat's expression should be lifelike, with a knowing and playful gaze that doesn't appear amateurish or poorly executed.\"",
+            "is_video": true,
+            "segment_text": " A cat sitting on a windowsill at midnight, staring intently outside with its ears perked up. Crumbs of an empty snack bag are scattered around it, subtly illuminated by the soft glow of streetlights filtering through the window. The cat's alert eyes reflect the city lights, suggesting a knowing and playful expression."
+        },
+        "segment_3": {
+            "prompt": "As the camera gently glides into focus, it reveals a sleek feline perched atop a sun-drenched windowsill overlooking an expansive room brimming with verdant foliage. The cat's attentive gaze shifts from one plant to another, each time zeroing in on the specimen highlighted by the A-Roll segment.\n\n   With deliberate slowness, the camera pans across the room, capturing how sunlight filters through the window, casting warm golden hues that dance and flicker over the vibrant greenery. The cat's keen eyes reflect this radiant light, adding a captivating sparkle to the scene.\n\n   Gradually revealing additional background elements, the camera tracks towards the cat, framing its intent gaze within the rich setting of the lush room filled with life. As time unfolds in this photorealistic tableau, one can almost hear the symphony of nature resonating through the air.",
+            "negative_prompt": "Avoid poor quality images/videos. Prevent blurry, distorted faces, bad anatomy, ugly compositions, unrealistic scenes, deformed features, low resolution, amateur work, and ensure a clear, well-composed, high-definition depiction of a sleek feline perched atop a sun-drenched windowsill overlooking an expansive room filled with verdant foliage. The cat's gaze should shift delicately from one plant to another, with the A-Roll segment focusing on the highlighted specimen. Refrain from casting warm golden hues that appear distorted or unnatural, and ensure the cat's eyes reflect a captivating sparkle without adding unwanted artifacts or aberrations. Gradually pan across the room, capturing how sunlight filters through the window without creating harsh shadows or glare, while framing the cat within the rich setting of the lush room filled with life. Avoid any elements that would lower the overall quality and aesthetic appeal of the scene, ensuring a realistic, professional, and immersive tableau that resonates with the symphony of nature.",
+            "is_video": true,
+            "segment_text": " Close-up of a cat observing a room filled with various plants, its ears perked up in interest. The camera pans to show the cat's intent gaze shifting from one plant to another, each time focusing on the plant being spoken about in the A-Roll segment. Sunlight filters through the window, casting warm, golden hues across the room and highlighting the vibrant greenery of the plants. The image is captured in a photorealistic style, emphasizing the detail of the cat's keen eyes and the lush setting."
+        },
+        "segment_4": {
+            "prompt": "In a dimly-lit living room, a sleek black cat sits poised on a worn armchair, its keen ears twitching subtely as it listens intently to an unseen device. As the camera moves in slow motion, we observe the cat's eyes narrowing and dilating with interest, reflecting the soft glow of a nearby lamp.\n\n   Gradually revealing itself through the reflection on the smartphone screen, the room's atmosphere is filled with rich shades of charcoal grey, offset by warm tones from the lamp light. The cat's curious gaze darts back and forth between the device and its surroundings, creating a sense of intrigue.\n\n   In the background, the subtle sound of memes loading can be heard, each one displayed on the screen for a brief moment before being silently deleted with a small 'swipe' motion. The phone screen's reflection flickers, casting long shadows on the cat's fur as it continues to listen intently, waiting for its next move in this captivating conversation between man and feline.",
+            "negative_prompt": "\"Avoid creating images/videos with poor quality, blurry details, distorted faces, bad anatomy, unnatural appearances, deformities, low resolution, amateurish compositions, and elements that might lower visual appeal such as pixelation, excessive noise, or incorrect lighting.\"",
+            "is_video": true,
+            "segment_text": " Close-ups of a sleek black cat, its keen ears twitching subtly as it listens intently to an unseen device. The scene transitions to a smartphone screen displaying a series of cringe-worthy memes, each one being deleted silently with a small 'swipe' motion. The phone screen's reflection shows the cat's curious gaze and the dim, soft light from a nearby lamp casting long shadows on its fur."
+        },
+        "segment_5": {
+            "prompt": "As the camera gently glides upward, it reveals a dusty bookshelf where a cat perches silently, its keen eyes scanning the room below like a gargoyle sentinel in the dim twilight. The silhouette of the cat is etched against the faint glow, an imposing presence high above the bustling household.\n\n   Gradually revealing more of the scene, we see the cat precariously balanced atop a refrigerator's edge, its alert ears twitching as it observes. The room hums with life, yet the cat remains still, a calm observer amidst the chaos below. As the camera moves closer, the cat turns its head slowly, its eyes gleaming like twin emeralds in the dim light.\n\n   In this cinematic moment, the cat begins to speak, sharing tales of its keen senses and the secrets they've uncovered, adding a whisper of mystery to the otherwise ordinary household scene. The video ends with a close-up of the cat's eyes, reflecting the dim room like tiny mirrors, before slowly fading to black.",
+            "negative_prompt": "Avoid creating images/videos with poor quality, blurry or distorted faces, bad anatomy, unrealistic or deformed features, low resolution, amateurish finish, poorly composed scenes, and any other elements that may lower the overall quality of the final product.",
+            "is_video": true,
+            "segment_text": " A cat perched silently on a dusty bookshelf, observing the room with keen, attentive eyes. In the dim light, its silhouette appears as an imposing gargoyle statue, watching over the bustling household below from a high vantage point. The scene shifts to show the cat precariously balanced atop a refrigerator's edge, its alert ears twitching, and a sense of quiet observation lingers in the air."
+        },
+        "segment_6": {
+            "prompt": "In a dimly lit room, the camera gradually reveals a domestic cat, its keen green eyes wide and introspective, subtly twitching ears absorbing sounds from the environment. As the camera pans slowly, long shadows dance across the cat's face, illuminated by the soft glow of a table lamp, highlighting each whisker and adding an air of mystery. The minimalist decor of the room unfolds gradually, emphasizing the cat's solitude and quiet observation. A closer look at the cat reveals its eyes shifting focus, as if it's engaging in a silent conversation with the viewer about the intricate world perceived through them, while its ears perk up subtly, attentive to every subtle sound. The video concludes with a lingering close-up of the cat, its gaze softening, suggesting understanding and wisdom beyond its years.",
+            "negative_prompt": "\"Avoid generating images/videos featuring poor quality, blurry or distorted visuals, incorrect cat anatomy, unattractive aesthetics, unrealistic appearances, deformed features, low resolution, amateurish production, poorly composed framing, or any elements that may compromise the overall quality and immersiveness of the depicted scene.\"",
+            "is_video": true,
+            "segment_text": " A close-up of a domestic cat, sitting calmly and alert in a dimly lit room. The cat's keen, green eyes are wide and introspective, while its pointed ears twitch subtly, absorbing subtle sounds from the surrounding environment. The soft glow of a table lamp casts long shadows, highlighting the whiskers on the cat's face and adding a sense of mystery and depth to the scene. The camera then pans slowly to reveal the room's minimalist decor, emphasizing the cat's solitude and quiet observation."
+        },
+        "segment_7": {
+            "prompt": "In a dimly lit room, the camera gradually reveals a sleek, regal cat positioned on an antique wooden crate, its eyes shining like polished gemstones in the subdued light. The close-up focuses on the cat's intense gaze, revealing swirling images from its past experiences reflected within, like ancient memories captured in amber.\n\n   As the camera moves, it follows the cat as it slowly tilts its head, drawing attention to its large, pointed ears that twitch attentively, seemingly still listening to long-forgotten sounds. The room's atmosphere is filled with a sense of wisdom and quiet strength, the air thick with tales untold.\n\n   A soft, warm light filtering through the dusty windows casts intricate shadows on the walls, creating a visual narrative of time passed. As the cat speaks, its story unfolds, weaving itself into the tapestry of images and sounds surrounding it, immortalized in its captivating eyes.",
+            "negative_prompt": "\"Avoid producing a low-quality image/video featuring poor lighting, blurry or distorted faces, incorrect anatomy, unattractive appearances, unrealistic or deformed features, low resolution, signs of amateur work, poorly composed framing, and any other elements that might negatively impact the visual appeal and realism.\"",
+            "is_video": true,
+            "segment_text": " \"Close-up shot of a cat's intense, unblinking eyes, subtly reflecting various images from its past experiences in their depths. Fade to medium shot of the cat in a dimly lit room, ears twitching attentively as if still listening to long-forgotten sounds.\""
+        }
+    },
+    "broll_type": "video",
+    "exclude_negative_prompts": false,
+    "image_template": "flux_schnell",
+    "map_broll_to_aroll": false,
+    "broll_aroll_mapping": {
+        "segment_0": {
+            "broll_idx": 0,
+            "aroll_idx": 1,
+            "broll_content": " A close-up of a curious cat, sitting in a dimly l...",
+            "aroll_content": "You think you have privacy in this house? That's c..."
+        },
+        "segment_1": {
+            "broll_idx": 2,
+            "aroll_idx": 3,
+            "broll_content": " Close-ups of a curious cat, with its alert eyes b...",
+            "aroll_content": "I know when you wake up when you go to bed and how..."
+        },
+        "segment_2": {
+            "broll_idx": 4,
+            "aroll_idx": 5,
+            "broll_content": "1. Close-up shots of a cat sitting in a dimly lit ...",
+            "aroll_content": "I know you eat snacks at midnight and pretend it d..."
+        },
+        "segment_3": {
+            "broll_idx": 6,
+            "aroll_idx": 7,
+            "broll_content": " Close-up shot of a cat observing a lush indoor ga...",
+            "aroll_content": "None"
+        },
+        "segment_4": {
+            "broll_idx": 8,
+            "aroll_idx": 9,
+            "broll_content": " \"Close-up of a cat's ears twitching subtly, follo...",
+            "aroll_content": "I hear your cringe-voice memos before you delete t..."
+        },
+        "segment_5": {
+            "broll_idx": 10,
+            "aroll_idx": 11,
+            "broll_content": " A sleek, black cat perched on a dusty wooden shel...",
+            "aroll_content": "I am always watching silently from a shelf, or a d..."
+        },
+        "segment_6": {
+            "broll_idx": 12,
+            "aroll_idx": 13,
+            "broll_content": " \"Close-ups of a curious cat, subtly observing its...",
+            "aroll_content": "I don't judge out loud, but I do absorb everything..."
+        },
+        "segment_7": {
+            "broll_idx": 14,
+            "aroll_idx": 15,
+            "broll_content": " A close-up of a domestic cat, with its piercing g...",
+            "aroll_content": "So when I stare at you with dead pan eyes, just kn..."
+        }
+    }
+}

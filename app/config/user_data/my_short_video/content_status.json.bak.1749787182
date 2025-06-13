@@ -39,19 +39,9 @@
       "prompt_id": "59a1ff51-482c-43f0-a04e-bba5b5963e21",
       "content_type": "video",
       "timestamp": 1748985679.0708613
-    },
-    "segment_2": {
-      "status": "not_started",
-      "asset_paths": [],
-      "selected_asset": null
-    },
-    "segment_3": {
-      "status": "not_started",
-      "asset_paths": [],
-      "selected_asset": null
     }
   },
-  "broll_segment_count": 4,
+  "broll_segment_count": 2,
   "synced_with_script": true,
-  "last_updated": 1749787182.859257
+  "last_updated": 1749728077.827484
 }

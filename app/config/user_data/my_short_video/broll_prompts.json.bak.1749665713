@@ -1,0 +1,8 @@
+{
+  "prompts": {
+    "0": " \"Close-up shots of a curious cat, its piercing green eyes glancing around the room with a knowing smirk. The camera pans to reveal various parts of the house - a window slightly ajar, a half-drawn curtain, a crack beneath the door, and a wireless microphone hidden in a plant. The shots transition to show the cat's twitching ears perked up, sensing unheard sounds, all set against a dimly lit room with warm ambient lighting.\"",
+    "1": " \"Close-up of a cat's face, with its intense gaze fixed on the camera, capturing the 'dead pan eyes' mentioned in the A-Roll segment. The background is dimly lit, casting deep shadows across the cat's face, emphasizing the solemnity and mystery behind its stare. A quick shot of a bird or mouse trapped within a cage serves as a symbol of the 'things' the cat has seen.\""
+  },
+  "broll_type": "image",
+  "image_template": "flux_schnell"
+}

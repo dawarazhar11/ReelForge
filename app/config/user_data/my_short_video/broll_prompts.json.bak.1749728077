@@ -1,0 +1,8 @@
+{
+  "prompts": {
+    "0": " \"Close-up shots of a curious cat, its emerald green eyes glinting with mischief in dim, warm lighting, subtly observing from behind a half-drawn drapery curtain within a cozy living room. Cut to various angles showing the cat's pointed ears twitching subtly as they swivel towards different sounds in the room, suggesting its heightened sense of hearing.\"",
+    "1": " \"Close-up of a cat with piercing green eyes, subtly reflecting various memories and experiences as it stares directly at the camera. The scene is set in a dimly lit room with a hint of a moonlight beam casting a soft glow on the feline's fur. A slow pan reveals intricate detailing of the cat's ears - one tilted slightly back, perhaps from hearing something unseen, adding to the mysterious atmosphere.\""
+  },
+  "broll_type": "image",
+  "image_template": "flux_schnell"
+}

@@ -1,0 +1,8 @@
+{
+  "prompts": {
+    "0": "Introductory visual for a cat talks about its eyes and ears",
+    "1": "Concluding visual for a cat talks about its eyes and ears"
+  },
+  "broll_type": "video",
+  "image_template": null
+}

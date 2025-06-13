@@ -1,0 +1,8 @@
+{
+  "prompts": {
+    "0": " \"Close-ups of a curious cat, its emerald green eyes gleaming with intelligence, subtly scanning a room filled with shadows and half-opened curtains. The camera pans to reveal various nooks and crannies where the cat's keen ears are hidden, listening intently in the dim light.\"",
+    "1": " \"Close-up shots of a curious cat, its intelligent green eyes reflecting distant memories and experiences. The scene transitions to a series of still images - a moonlit forest, a bustling city skyline, a serene lake at dawn - suggesting the diverse locations where these 'things' the cat has seen might have occurred. The shots are illuminated by soft, warm light, creating a mystical and thought-provoking atmosphere.\""
+  },
+  "broll_type": "image",
+  "image_template": "flux_schnell"
+}

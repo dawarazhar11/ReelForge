@@ -1,0 +1,10 @@
+{
+  "prompts": {
+    "0": " A sleek, black cat sits on a plush armchair in a dimly lit living room, its piercing green eyes reflecting the glimmer of a strategically placed mirror, which captures the entire room. The cat's twitching ears perk up subtly, hinting at its heightened senses, as it subtly scans its surroundings, suggesting an unseen presence or activity within the seemingly private space.",
+    "1": " Close-up shots of a curious cat, with its alert eyes blinking intermittently, watching a digital clock displaying different times (morning and night). Superimpose images of a cat's urine markings on various surfaces to symbolize the frequency of urination. Capture low-angle shots of the cat's ears twitching in response to unheard sounds, and include footage of the cat stretching and yawning to depict wake-up and bedtime routines. Use soft, warm lighting to create a cozy atmosphere, and incorporate various indoor settings like a living room or bedroom for context.",
+    "2": " A garden at sunset, a cat perched on a window sill overlooking vibrant foliage and potted plants. The plants are swaying gently in the soft evening breeze. The cat's keen eyes, gleaming like emeralds, fixate on one particular plant where it seems to be engaged in a whispered conversation, mouth slightly moving as if conversing. A close-up shot of the plant reveals it subtly nodding or rustling in response, creating an enchanting scene of interspecies communication.",
+    "3": " A sleek, slate-gray bookshelf with a single window casting an ethereal, dappled light from outside. Perched atop the shelf, a polished, regal Siamese cat with piercing green eyes watches silently from a nook, its tall, pointed ears twitching as if listening. The room's dim, warm lighting casts elongated shadows, creating an eerie and judgmental atmosphere reminiscent of a gargoyle poised to observe."
+  },
+  "broll_type": "image",
+  "image_template": "flux_schnell"
+}

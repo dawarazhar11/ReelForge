@@ -1,0 +1,8 @@
+{
+  "prompts": {
+    "0": " \"Close-up shots of a curious cat, its emerald green eyes subtly glowing in low-light surroundings as it surveys its surroundings from a high vantage point. The setting is a dimly lit living room with shadows dancing on the walls and furniture. Wide angle shots reveal multiple strategically placed mirrors and reflective surfaces, hinting at the cat's keen sense of awareness.\"",
+    "1": " Close-ups of a curious cat, with its reflective eyes capturing various scenes from around the house - dusty shelves, flickering candlelight, birds outside the window. The shots transition to a dark alleyway at night, where the cat's keen ears perk up towards an unseen sound. A slow pan reveals the source: a shadowy figure moving stealthily in the distance. Back inside, the cat's eyes glow intensely as it stares into the camera, hinting at secrets witnessed beyond human comprehension."
+  },
+  "broll_type": "image",
+  "image_template": "flux_schnell"
+}

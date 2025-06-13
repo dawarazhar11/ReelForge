@@ -31,7 +31,7 @@ if str(app_dir) not in sys.path:
 try:
     from components.progress import render_step_header
     from utils.session_state import mark_step_complete
-    from components.navigation import render_workflow_navigation, render_step_navigation
+    from components.custom_navigation import render_custom_sidebar, render_horizontal_navigation, render_step_navigation
     from utils.video.captions import (
         check_dependencies, 
         add_captions_to_video, 
@@ -155,8 +155,15 @@ def get_font_path(font_name):
 # Main function
 def main():
     # Header and navigation
-    render_step_header(5, "Caption The Dreams", 6)
-    render_workflow_navigation()
+    render_step_header(3, "Caption The Dreams", 4)
+    
+    # Add horizontal navigation
+    st.markdown("<div class='horizontal-nav'>", unsafe_allow_html=True)
+    render_horizontal_navigation()
+    st.markdown("</div>", unsafe_allow_html=True)
+    
+    # Render sidebar navigation
+    render_custom_sidebar()
     
     # Introduction
     st.markdown("""
@@ -912,7 +919,7 @@ def main():
     # Add navigation buttons
     st.markdown("---")
     render_step_navigation(
-        current_step=5,
+        current_step=3,
         prev_step_path="pages/6_Video_Assembly.py",
         next_step_path="pages/8_Social_Media_Upload.py"
     )

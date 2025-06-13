@@ -32,7 +32,7 @@ if str(app_dir) not in sys.path:
 try:
     from components.progress import render_step_header
     from utils.session_state import mark_step_complete
-    from components.navigation import render_workflow_navigation, render_step_navigation
+    from components.custom_navigation import render_custom_sidebar, render_horizontal_navigation, render_step_navigation
     print("Successfully imported local modules")
 except ImportError as e:
     st.error(f"Error importing modules: {e}")
@@ -241,8 +241,15 @@ def upload_to_instagram(video_path, caption):
 def main():
     """Main function for the Social Media Upload page"""
     # Header and navigation
-    render_step_header(6, "Social Media Upload", 6)
-    render_workflow_navigation()
+    render_step_header(4, "Social Media Upload", 4)
+    
+    # Add horizontal navigation
+    st.markdown("<div class='horizontal-nav'>", unsafe_allow_html=True)
+    render_horizontal_navigation()
+    st.markdown("</div>", unsafe_allow_html=True)
+    
+    # Render sidebar navigation
+    render_custom_sidebar()
     
     # Introduction
     st.markdown("""
@@ -512,7 +519,7 @@ def main():
     # Add navigation buttons
     st.markdown("---")
     render_step_navigation(
-        current_step=6,
+        current_step=4,
         prev_step_path="pages/7_Caption_The_Dreams.py"
     )
 

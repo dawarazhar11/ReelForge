@@ -1373,6 +1373,9 @@ if content_status and segments:
                     )
                     
                     if result["status"] == "success":
+                        # Store the output path in session state for the Caption Dreams page to access
+                        st.session_state.video_assembly["output_path"] = result["output_path"]
+                        
                         st.success(f"Video assembled successfully!")
                         st.video(result["output_path"])
                         st.markdown(f"Video saved to: `{result['output_path']}`")

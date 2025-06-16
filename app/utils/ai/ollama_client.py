@@ -8,13 +8,16 @@ import requests
 from typing import List, Dict, Any, Optional, Tuple
 import logging
 
+# Import config
+from utils.config import get_ollama_api_url
+
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # Default Ollama settings
 DEFAULT_MODEL = "mistral:7b-instruct-v0.3-q4_K_M"
-DEFAULT_HOST = "http://100.115.243.42:11434"  # Custom Ollama server address
+DEFAULT_HOST = get_ollama_api_url()  # Get Ollama API URL from config
 DEFAULT_TEMPERATURE = 0.7
 DEFAULT_TIMEOUT = 120  # seconds
 

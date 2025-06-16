@@ -16,7 +16,7 @@ echo -e "${BLUE}└────────────────────�
 echo ""
 
 # Ensure all scripts are executable
-chmod +x *.sh fix_moviepy.py clear_broll_cache.py fix_assembly_sequence.py manual_start.command robust_installer.command 2>/dev/null || true
+chmod +x *.sh fix_moviepy.py clear_broll_cache.py fix_assembly_sequence.py manual_start.command robust_installer.command direct_run_app.command emergency_run.command web_launcher.command 2>/dev/null || true
 
 # Check if required tools are installed
 if ! command -v zip &> /dev/null; then
@@ -52,8 +52,16 @@ cp start.sh "$DIST_DIR/" 2>/dev/null || echo -e "${RED}Warning: start.sh not fou
 cp build_macos_app.sh "$DIST_DIR/" 2>/dev/null || echo -e "${RED}Warning: build_macos_app.sh not found${NC}"
 cp setup.py "$DIST_DIR/" 2>/dev/null || echo -e "${RED}Warning: setup.py not found${NC}"
 cp README.md "$DIST_DIR/" 2>/dev/null || echo -e "${YELLOW}Warning: README.md not found${NC}"
+cp SERVER_CONFIG.md "$DIST_DIR/" 2>/dev/null || echo -e "${YELLOW}Warning: SERVER_CONFIG.md not found${NC}"
+cp OLLAMA_INSTALLATION.md "$DIST_DIR/" 2>/dev/null || echo -e "${YELLOW}Warning: OLLAMA_INSTALLATION.md not found${NC}"
+cp README_OLLAMA_SETUP.md "$DIST_DIR/" 2>/dev/null || echo -e "${YELLOW}Warning: README_OLLAMA_SETUP.md not found${NC}"
 cp manual_start.command "$DIST_DIR/" 2>/dev/null || echo -e "${RED}Warning: manual_start.command not found${NC}"
 cp robust_installer.command "$DIST_DIR/" 2>/dev/null || echo -e "${RED}Warning: robust_installer.command not found${NC}"
+cp direct_run_app.command "$DIST_DIR/" 2>/dev/null || echo -e "${RED}Warning: direct_run_app.command not found${NC}"
+cp emergency_run.command "$DIST_DIR/" 2>/dev/null || echo -e "${RED}Warning: emergency_run.command not found${NC}"
+cp web_launcher.py "$DIST_DIR/" 2>/dev/null || echo -e "${RED}Warning: web_launcher.py not found${NC}"
+cp web_launcher.command "$DIST_DIR/" 2>/dev/null || echo -e "${RED}Warning: web_launcher.command not found${NC}"
+cp launcher.html "$DIST_DIR/" 2>/dev/null || echo -e "${RED}Warning: launcher.html not found${NC}"
 
 # Copy the fix scripts
 cp fix_dependencies.sh "$DIST_DIR/" 2>/dev/null || echo -e "${RED}Warning: fix_dependencies.sh not found${NC}"
@@ -65,6 +73,8 @@ cp fix_repeated_segments.sh "$DIST_DIR/" 2>/dev/null || echo -e "${RED}Warning: 
 cp install_video_deps.sh "$DIST_DIR/" 2>/dev/null || echo -e "${RED}Warning: install_video_deps.sh not found${NC}"
 cp fix_whisper.sh "$DIST_DIR/" 2>/dev/null || echo -e "${RED}Warning: fix_whisper.sh not found${NC}"
 cp complete_installer.sh "$DIST_DIR/" 2>/dev/null || echo -e "${RED}Warning: complete_installer.sh not found${NC}"
+cp configure_servers.sh "$DIST_DIR/" 2>/dev/null || echo -e "${RED}Warning: configure_servers.sh not found${NC}"
+cp install_ollama.sh "$DIST_DIR/" 2>/dev/null || echo -e "${RED}Warning: install_ollama.sh not found${NC}"
 
 # Copy the main application file
 if [ -f "$MAIN_APP_FILE" ]; then
@@ -91,6 +101,24 @@ if [ -f "$MAIN_APP_FILE" ]; then
     if [ -f "$DIST_DIR/build_macos_app.sh" ]; then
         sed -i '' "s/[A-Za-z0-9_]*.py/$MAIN_APP_FILENAME/g" "$DIST_DIR/build_macos_app.sh"
         echo -e "${GREEN}Updated build_macos_app.sh to use $MAIN_APP_FILENAME${NC}"
+    fi
+    
+    # Update direct_run_app.command to use the correct filename
+    if [ -f "$DIST_DIR/direct_run_app.command" ]; then
+        sed -i '' "s/Home.py/$MAIN_APP_FILENAME/g" "$DIST_DIR/direct_run_app.command"
+        echo -e "${GREEN}Updated direct_run_app.command to use $MAIN_APP_FILENAME${NC}"
+    fi
+    
+    # Update emergency_run.command to use the correct filename
+    if [ -f "$DIST_DIR/emergency_run.command" ]; then
+        sed -i '' "s/Home.py/$MAIN_APP_FILENAME/g" "$DIST_DIR/emergency_run.command"
+        echo -e "${GREEN}Updated emergency_run.command to use $MAIN_APP_FILENAME${NC}"
+    fi
+    
+    # Update web_launcher.py to use the correct filename
+    if [ -f "$DIST_DIR/web_launcher.py" ]; then
+        sed -i '' "s/MAIN_APP = \"Home.py\"/MAIN_APP = \"$MAIN_APP_FILENAME\"/g" "$DIST_DIR/web_launcher.py"
+        echo -e "${GREEN}Updated web_launcher.py to use $MAIN_APP_FILENAME${NC}"
     fi
 else
     echo -e "${RED}Error: Main application file not found. Distribution will be incomplete.${NC}"
@@ -197,6 +225,22 @@ echo "Running Whisper fix installer..."
 EOL
 chmod +x "$DIST_DIR/fix_whisper.command"
 
+# Create a server configuration script
+cat > "$DIST_DIR/configure_servers.command" << EOL
+#!/bin/bash
+cd "\$(dirname "\$0")"
+./configure_servers.sh
+EOL
+chmod +x "$DIST_DIR/configure_servers.command"
+
+# Create an Ollama installation script
+cat > "$DIST_DIR/install_ollama.command" << EOL
+#!/bin/bash
+cd "\$(dirname "\$0")"
+./install_ollama.sh
+EOL
+chmod +x "$DIST_DIR/install_ollama.command"
+
 # Create ZIP archive
 VERSION=$(date +"%Y%m%d")
 ZIP_NAME="AI_Money_Printer_Fixed_${VERSION}.zip"
@@ -209,14 +253,21 @@ cd ..
 echo -e "${GREEN}Fixed distribution package created successfully: ${YELLOW}$ZIP_NAME${NC}"
 echo -e "${YELLOW}Instructions for users:${NC}"
 echo -e "1. Unzip the archive"
-echo -e "2. Double-click robust_install.command for the most reliable installation (RECOMMENDED)"
-echo -e "3. OR double-click complete_install.command for a full installation including Homebrew and Python"
-echo -e "4. OR double-click install.command for a standard installation (requires Python)"
-echo -e "5. If the app doesn't start automatically, double-click manual_start.command"
-echo -e "6. If you encounter dependency issues, double-click fix_app.command"
-echo -e "7. If B-roll content isn't showing correctly, double-click refresh_broll.command"
-echo -e "8. If the first segment repeats at the end, double-click fix_repeated_segments.command"
-echo -e "9. If you have issues with Whisper/captioning, double-click fix_whisper.command"
+echo -e "2. If you're having trouble with installation, try these launchers in order:"
+echo -e "   a. direct_run_app.command - Runs the app directly without installation"
+echo -e "   b. emergency_run.command - Super simple launcher for emergency use"
+echo -e "   c. web_launcher.command - Web-based launcher with more options"
+echo -e "3. For full installation, try these installers in order:"
+echo -e "   a. robust_install.command - Most reliable installation (RECOMMENDED)"
+echo -e "   b. complete_install.command - Full installation including Homebrew and Python"
+echo -e "   c. install.command - Standard installation (requires Python)"
+echo -e "4. If the app doesn't start automatically, double-click manual_start.command"
+echo -e "5. If you encounter dependency issues, double-click fix_app.command"
+echo -e "6. If B-roll content isn't showing correctly, double-click refresh_broll.command"
+echo -e "7. If the first segment repeats at the end, double-click fix_repeated_segments.command"
+echo -e "8. If you have issues with Whisper/captioning, double-click fix_whisper.command"
+echo -e "9. To configure Ollama and ComfyUI server addresses, double-click configure_servers.command"
+echo -e "10. To install Ollama and the required model, double-click install_ollama.command"
 
 # Cleanup
 echo -e "${YELLOW}Cleaning up temporary files...${NC}"

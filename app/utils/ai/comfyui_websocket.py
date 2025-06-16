@@ -14,20 +14,24 @@ import logging
 from pathlib import Path
 from typing import Dict, Any, Optional, Callable, List, Tuple, Union
 
+# Import config
+from utils.config import get_comfyui_api_url
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 class ComfyUIWebSocketClient:
-    def __init__(self, server_url: str = "http://100.115.243.42:8000"):
+    def __init__(self, server_url: str = None):
         """
         Initialize ComfyUI WebSocket client.
         
         Args:
             server_url: Base URL of the ComfyUI server
         """
-        self.server_url = server_url
-        self.ws_url = f"ws{server_url[4:]}/ws" if server_url.startswith('http') else f"ws://{server_url}/ws"
+        # Use provided server_url or get from config
+        self.server_url = server_url or get_comfyui_api_url()
+        self.ws_url = f"ws{self.server_url[4:]}/ws" if self.server_url.startswith('http') else f"ws://{self.server_url}/ws"
         self.client_id = str(uuid.uuid4())
         self.ws = None
         self.ws_thread = None
@@ -774,7 +778,7 @@ class ComfyUIWebSocketClient:
 # Create a singleton instance
 _comfyui_client = None
 
-def get_client(server_url: str = "http://100.115.243.42:8000") -> ComfyUIWebSocketClient:
+def get_client(server_url: str = None) -> ComfyUIWebSocketClient:
     """
     Get ComfyUI WebSocket client singleton instance.
     
@@ -785,6 +789,10 @@ def get_client(server_url: str = "http://100.115.243.42:8000") -> ComfyUIWebSock
         ComfyUIWebSocketClient instance
     """
     global _comfyui_client
+    
+    # Use provided server_url or get from config
+    server_url = server_url or get_comfyui_api_url()
+    
     if _comfyui_client is None:
         _comfyui_client = ComfyUIWebSocketClient(server_url)
     elif _comfyui_client.server_url != server_url:
@@ -797,7 +805,7 @@ def get_client(server_url: str = "http://100.115.243.42:8000") -> ComfyUIWebSock
 # Helper functions for direct use without creating a client instance
 
 def submit_workflow(workflow: Dict[str, Any], 
-                   server_url: str = "http://100.115.243.42:8000",
+                   server_url: str = None,
                    extra_data: Optional[Dict[str, Any]] = None,
                    on_update: Optional[Callable[[Dict[str, Any]], None]] = None,
                    on_complete: Optional[Callable[[Dict[str, Any]], None]] = None,
@@ -816,6 +824,8 @@ def submit_workflow(workflow: Dict[str, Any],
     Returns:
         Prompt ID if successful, None otherwise
     """
+    # Use provided server_url or get from config
+    server_url = server_url or get_comfyui_api_url()
     client = get_client(server_url)
     
     try:
@@ -882,7 +892,7 @@ def submit_workflow(workflow: Dict[str, Any],
         return None
 
 def get_output_images(prompt_id: str, 
-                     server_url: str = "http://100.115.243.42:8000",
+                     server_url: str = None,
                      output_dir: Union[str, Path] = None,
                      node_id: str = None) -> List[str]:
     """
@@ -897,6 +907,9 @@ def get_output_images(prompt_id: str,
     Returns:
         List of paths to saved images
     """
+    # Use provided server_url or get from config
+    server_url = server_url or get_comfyui_api_url()
+    
     try:
         # Get history for this prompt
         logger.debug(f"Getting output images for prompt ID: {prompt_id}")
@@ -1018,7 +1031,7 @@ def get_output_images(prompt_id: str,
         logger.error(f"Error getting output images: {str(e)}")
         return []
 
-def get_image(filename: str, subfolder: str = "", folder_type: str = "output", server_url: str = "http://100.115.243.42:8000") -> Optional[bytes]:
+def get_image(filename: str, subfolder: str = "", folder_type: str = "output", server_url: str = None) -> Optional[bytes]:
     """
     Get image data from ComfyUI server.
     
@@ -1031,6 +1044,9 @@ def get_image(filename: str, subfolder: str = "", folder_type: str = "output", s
     Returns:
         Image data if successful, None otherwise
     """
+    # Use provided server_url or get from config
+    server_url = server_url or get_comfyui_api_url()
+    
     try:
         data = {"filename": filename, "subfolder": subfolder, "type": folder_type}
         response = requests.get(f"{server_url}/view", params=data)
@@ -1050,7 +1066,7 @@ def modify_workflow(workflow: Dict[str, Any],
                    resolution: str = "1080x1920",
                    seed: int = None,
                    steps: int = None,
-                   server_url: str = "http://100.115.243.42:8000") -> Dict[str, Any]:
+                   server_url: str = None) -> Dict[str, Any]:
     """
     Modify a workflow with the given parameters.
     
@@ -1066,6 +1082,8 @@ def modify_workflow(workflow: Dict[str, Any],
     Returns:
         Modified workflow
     """
+    # Use provided server_url or get from config
+    server_url = server_url or get_comfyui_api_url()
     client = get_client(server_url)
     return client.modify_workflow(workflow, prompt, negative_prompt, resolution, seed, steps)
 
@@ -1095,7 +1113,7 @@ def load_workflow_file(file_path: Union[str, Path]) -> Dict[str, Any]:
         logger.error(f"Error loading workflow file: {str(e)}")
         return {}
 
-def check_prompt_status(prompt_id: str, server_url: str = "http://100.115.243.42:8000") -> Dict[str, Any]:
+def check_prompt_status(prompt_id: str, server_url: str = None) -> Dict[str, Any]:
     """
     Check the status of a prompt using the HTTP API.
     
@@ -1106,6 +1124,9 @@ def check_prompt_status(prompt_id: str, server_url: str = "http://100.115.243.42
     Returns:
         Status information dictionary
     """
+    # Use provided server_url or get from config
+    server_url = server_url or get_comfyui_api_url()
+    
     try:
         # Log the prompt ID we're checking
         logger.info(f"Checking status for prompt ID: {prompt_id}")
@@ -1231,7 +1252,7 @@ def check_prompt_status(prompt_id: str, server_url: str = "http://100.115.243.42
         }
 
 def wait_for_prompt_completion(prompt_id: str, 
-                              server_url: str = "http://100.115.243.42:8000",
+                              server_url: str = None,
                               max_wait_time: int = 1000,
                               check_interval: int = 5,
                               on_update: Optional[Callable[[Dict[str, Any]], None]] = None,
@@ -1252,6 +1273,9 @@ def wait_for_prompt_completion(prompt_id: str,
     Returns:
         Status information dictionary
     """
+    # Use provided server_url or get from config
+    server_url = server_url or get_comfyui_api_url()
+    
     # Initialize the WebSocket client in case we need to use it
     client = get_client(server_url)
     

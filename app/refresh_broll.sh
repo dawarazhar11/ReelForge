@@ -12,10 +12,19 @@ echo -e "${BLUE}│  ${GREEN}AI Money Printer - B-Roll Cache Refresh${BLUE}  │
 echo -e "${BLUE}└───────────────────────────────────────────┘${NC}"
 echo ""
 
-# Check if we're in the right directory
-if [ ! -f "clear_broll_cache.py" ]; then
-    echo -e "${RED}Error: clear_broll_cache.py not found in current directory.${NC}"
-    echo -e "${YELLOW}Please run this script from the application directory.${NC}"
+# Get the directory of this script
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$SCRIPT_DIR"
+
+# Check if clear_broll_cache.py exists in various locations
+if [ -f "clear_broll_cache.py" ]; then
+    CACHE_SCRIPT="clear_broll_cache.py"
+elif [ -f "$SCRIPT_DIR/clear_broll_cache.py" ]; then
+    CACHE_SCRIPT="$SCRIPT_DIR/clear_broll_cache.py"
+else
+    echo -e "${RED}Error: clear_broll_cache.py not found.${NC}"
+    echo -e "${YELLOW}Looking in: $SCRIPT_DIR${NC}"
+    echo -e "${YELLOW}Please make sure the script is in the same directory as this shell script.${NC}"
     exit 1
 fi
 
@@ -27,11 +36,11 @@ if ! command -v python3 &> /dev/null; then
 fi
 
 # Make sure the script is executable
-chmod +x clear_broll_cache.py
+chmod +x "$CACHE_SCRIPT"
 
 # Run the cache clearing script
 echo -e "${YELLOW}Running B-Roll cache clearing script...${NC}"
-python3 clear_broll_cache.py
+python3 "$CACHE_SCRIPT"
 
 # Check if the script ran successfully
 if [ $? -eq 0 ]; then
@@ -44,6 +53,9 @@ if [ $? -eq 0 ]; then
         if [ -f "run_app.sh" ]; then
             echo -e "${YELLOW}Starting the app...${NC}"
             ./run_app.sh
+        elif [ -f "$SCRIPT_DIR/run_app.sh" ]; then
+            echo -e "${YELLOW}Starting the app...${NC}"
+            "$SCRIPT_DIR/run_app.sh"
         else
             echo -e "${RED}Error: run_app.sh not found.${NC}"
             echo -e "${YELLOW}Please run the app manually.${NC}"

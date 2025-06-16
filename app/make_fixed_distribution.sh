@@ -16,7 +16,7 @@ echo -e "${BLUE}└────────────────────�
 echo ""
 
 # Ensure all scripts are executable
-chmod +x *.sh fix_moviepy.py clear_broll_cache.py fix_assembly_sequence.py 2>/dev/null || true
+chmod +x *.sh fix_moviepy.py clear_broll_cache.py fix_assembly_sequence.py manual_start.command 2>/dev/null || true
 
 # Check if required tools are installed
 if ! command -v zip &> /dev/null; then
@@ -52,6 +52,7 @@ cp start.sh "$DIST_DIR/" 2>/dev/null || echo -e "${RED}Warning: start.sh not fou
 cp build_macos_app.sh "$DIST_DIR/" 2>/dev/null || echo -e "${RED}Warning: build_macos_app.sh not found${NC}"
 cp setup.py "$DIST_DIR/" 2>/dev/null || echo -e "${RED}Warning: setup.py not found${NC}"
 cp README.md "$DIST_DIR/" 2>/dev/null || echo -e "${YELLOW}Warning: README.md not found${NC}"
+cp manual_start.command "$DIST_DIR/" 2>/dev/null || echo -e "${RED}Warning: manual_start.command not found${NC}"
 
 # Copy the fix scripts
 cp fix_dependencies.sh "$DIST_DIR/" 2>/dev/null || echo -e "${RED}Warning: fix_dependencies.sh not found${NC}"
@@ -201,10 +202,11 @@ echo -e "${YELLOW}Instructions for users:${NC}"
 echo -e "1. Unzip the archive"
 echo -e "2. Double-click complete_install.command for a full installation including Homebrew and Python"
 echo -e "3. OR double-click install.command for a standard installation (requires Python)"
-echo -e "4. If you encounter dependency issues, double-click fix_app.command"
-echo -e "5. If B-roll content isn't showing correctly, double-click refresh_broll.command"
-echo -e "6. If the first segment repeats at the end, double-click fix_repeated_segments.command"
-echo -e "7. If you have issues with Whisper/captioning, double-click fix_whisper.command"
+echo -e "4. If the app doesn't start automatically, double-click manual_start.command"
+echo -e "5. If you encounter dependency issues, double-click fix_app.command"
+echo -e "6. If B-roll content isn't showing correctly, double-click refresh_broll.command"
+echo -e "7. If the first segment repeats at the end, double-click fix_repeated_segments.command"
+echo -e "8. If you have issues with Whisper/captioning, double-click fix_whisper.command"
 
 # Cleanup
 echo -e "${YELLOW}Cleaning up temporary files...${NC}"

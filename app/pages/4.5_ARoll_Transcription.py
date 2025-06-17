@@ -1336,59 +1336,125 @@ def main():
                 st.error("No transcription engines available. Please install whisper or vosk.")
                 st.stop()
             
-            selected_engine = st.selectbox("Select Transcription Engine", engine_options)
+            transcription_tabs = st.tabs(["Automatic Transcription", "Manual Entry"])
             
-            if st.button("Generate Transcript"):
-                status_placeholder = st.empty()
-                status_placeholder.info("Initializing transcription...")
+            with transcription_tabs[0]:
+                selected_engine = st.selectbox("Select Transcription Engine", engine_options)
                 
-                with st.spinner("Generating transcript... This may take a while for longer videos."):
-                    try:
-                        # Extract audio from video
-                        status_placeholder.info("Extracting audio from video...")
-                        print(f"Starting audio extraction from: {video_path}")
-                        audio_path = extract_audio(video_path)
-                        print(f"Audio extraction complete: {audio_path}")
-                        
-                        if audio_path:
-                            # Transcribe the audio
-                            status_placeholder.info(f"Transcribing audio using {selected_engine}...")
-                            print(f"Starting transcription with engine: {selected_engine}")
-                            transcription_data = transcribe_video(audio_path, engine=selected_engine)
-                            print(f"Transcription result: {type(transcription_data)}")
-                            if transcription_data:
-                                print(f"Transcription status: {transcription_data.get('status', 'unknown')}")
-                                print(f"Transcription keys: {transcription_data.keys() if isinstance(transcription_data, dict) else 'not a dict'}")
+                if st.button("Generate Transcript"):
+                    status_placeholder = st.empty()
+                    status_placeholder.info("Initializing transcription...")
+                    
+                    with st.spinner("Generating transcript... This may take a while for longer videos."):
+                        try:
+                            # Extract audio from video
+                            status_placeholder.info("Extracting audio from video...")
+                            print(f"Starting audio extraction from: {video_path}")
+                            audio_path = extract_audio(video_path)
+                            print(f"Audio extraction complete: {audio_path}")
                             
-                            if transcription_data and transcription_data.get("status") == "success":
-                                # Save and display the transcription
-                                print("Transcription successful, saving data...")
-                                success = save_transcription_data(transcription_data)
-                                print(f"Save result: {success}")
+                            if audio_path:
+                                # Transcribe the audio
+                                status_placeholder.info(f"Transcribing audio using {selected_engine}...")
+                                print(f"Starting transcription with engine: {selected_engine}")
+                                transcription_data = transcribe_video(audio_path, engine=selected_engine)
+                                print(f"Transcription result: {type(transcription_data)}")
+                                if transcription_data:
+                                    print(f"Transcription status: {transcription_data.get('status', 'unknown')}")
+                                    print(f"Transcription keys: {transcription_data.keys() if isinstance(transcription_data, dict) else 'not a dict'}")
                                 
-                                # Update session state and make sure it persists
-                                st.session_state.transcription_data = transcription_data
-                                st.session_state.transcription_complete = True
-                                print("Session state updated with transcription data")
-                                
-                                # Display success message
-                                status_placeholder.success("Transcription complete! You can now proceed to segmentation.")
-                                
-                                # Force an update of the UI (but don't use rerun)
-                                st.session_state.show_segmentation = True
+                                if transcription_data and transcription_data.get("status") == "success":
+                                    # Check if the transcription actually has content
+                                    if not transcription_data.get("text", "").strip():
+                                        status_placeholder.warning("⚠️ No speech detected in the video. The audio may be silent, very quiet, or in a format Whisper cannot recognize.")
+                                        print("Transcription returned empty text")
+                                        
+                                        # Add troubleshooting tips
+                                        st.error("Troubleshooting tips:")
+                                        st.markdown("""
+                                        1. Ensure your video has clear speech audio
+                                        2. Check if the video plays with audio in other applications
+                                        3. Try a different video file
+                                        4. Try a different transcription engine if available
+                                        """)
+                                        
+                                        # Add an option to proceed anyway with empty transcription
+                                        st.info("If you want to proceed with an empty transcription (for testing), click below:")
+                                        if st.button("Proceed with Empty Transcription"):
+                                            # Save the empty transcription anyway
+                                            success = save_transcription_data(transcription_data)
+                                            st.session_state.transcription_data = transcription_data
+                                            st.session_state.transcription_complete = True
+                                            st.session_state.show_segmentation = True
+                                            status_placeholder.success("Proceeding with empty transcription")
+                                        else:
+                                            # Don't set transcription as complete if it's empty
+                                            st.session_state.transcription_complete = False
+                                    else:
+                                        # Save and display the transcription
+                                        print("Transcription successful, saving data...")
+                                        success = save_transcription_data(transcription_data)
+                                        print(f"Save result: {success}")
+                                        
+                                        # Update session state and make sure it persists
+                                        st.session_state.transcription_data = transcription_data
+                                        st.session_state.transcription_complete = True
+                                        print("Session state updated with transcription data")
+                                        
+                                        # Display success message
+                                        status_placeholder.success("Transcription complete! You can now proceed to segmentation.")
+                                        
+                                        # Force an update of the UI (but don't use rerun)
+                                        st.session_state.show_segmentation = True
+                                else:
+                                    error_msg = transcription_data.get("message", "Unknown error") if transcription_data else "Transcription failed"
+                                    status_placeholder.error(f"Transcription failed: {error_msg}")
+                                    print(f"Transcription failed: {error_msg}")
                             else:
-                                error_msg = transcription_data.get("message", "Unknown error") if transcription_data else "Transcription failed"
-                                status_placeholder.error(f"Transcription failed: {error_msg}")
-                                print(f"Transcription failed: {error_msg}")
-                        else:
-                            status_placeholder.error("Failed to extract audio from video. Please ensure the video file is valid and has an audio track.")
-                            print("Audio extraction failed or returned None")
-                    except Exception as e:
-                        import traceback
-                        print(f"Exception during transcription: {str(e)}")
-                        print(f"Traceback: {traceback.format_exc()}")
-                        status_placeholder.error(f"Error during transcription process: {str(e)}")
-                        st.info("Try using a different video file or transcription engine.")
+                                status_placeholder.error("Failed to extract audio from video. Please ensure the video file is valid and has an audio track.")
+                                print("Audio extraction failed or returned None")
+                        except Exception as e:
+                            import traceback
+                            print(f"Exception during transcription: {str(e)}")
+                            print(f"Traceback: {traceback.format_exc()}")
+                            status_placeholder.error(f"Error during transcription process: {str(e)}")
+                            st.info("Try using a different video file or transcription engine.")
+            
+            with transcription_tabs[1]:
+                st.write("If automatic transcription isn't working, you can manually enter text here:")
+                manual_text = st.text_area("Enter your script text", height=200, 
+                                          placeholder="Enter the text of your video here...")
+                
+                if st.button("Use Manual Text"):
+                    if not manual_text.strip():
+                        st.error("Please enter some text before proceeding.")
+                    else:
+                        # Create a transcription object with the manual text
+                        manual_transcription = {
+                            "status": "success",
+                            "engine": "manual",
+                            "text": manual_text,
+                            "segments": [{
+                                "start": 0,
+                                "end": 60,  # Assume 1 minute
+                                "text": manual_text
+                            }],
+                            "words": [{
+                                "word": manual_text,
+                                "start": 0,
+                                "end": 60,
+                                "probability": 1.0
+                            }]
+                        }
+                        
+                        # Save and update session state
+                        save_transcription_data(manual_transcription)
+                        st.session_state.transcription_data = manual_transcription
+                        st.session_state.transcription_complete = True
+                        st.session_state.show_segmentation = True
+                        
+                        st.success("Manual text saved as transcription!")
+                        st.rerun()
         
         # If transcription is complete, show the text and segmentation options
         if st.session_state.transcription_complete and isinstance(st.session_state.transcription_data, dict):

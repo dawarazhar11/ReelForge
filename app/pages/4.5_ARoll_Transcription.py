@@ -1208,7 +1208,7 @@ def main():
         if st.button("🔄 Start New Video", type="primary"):
             reset_session_state_for_new_video()
             st.success("Session reset. You can upload a new video now.")
-            st.experimental_rerun()
+            st.rerun()
     
     # Check for video from the previous step
     aroll_video_path = None
@@ -1228,7 +1228,7 @@ def main():
             st.warning("New video detected. Click 'Process New Video' to reset previous transcription and start fresh.")
             if st.button("Process New Video"):
                 reset_session_state_for_new_video()
-                st.experimental_rerun()
+                st.rerun()
     
     if uploaded_file or aroll_video_path:
         video_path = aroll_video_path
@@ -1527,11 +1527,11 @@ def main():
                                 if st.button(f"Save Segment {i+1}"):
                                     update_segment_content(i, new_content)
                                     st.session_state.segment_edit_index = -1
-                                    st.experimental_rerun()
+                                    st.rerun()
                             with col2:
                                 if st.button(f"Cancel Editing {i+1}"):
                                     st.session_state.segment_edit_index = -1
-                                    st.experimental_rerun()
+                                    st.rerun()
                         else:
                             # Display mode
                             st.markdown(f"""
@@ -1547,7 +1547,7 @@ def main():
                             with col1:
                                 if st.button(f"Edit Segment {i+1}"):
                                     st.session_state.segment_edit_index = i
-                                    st.experimental_rerun()
+                                    st.rerun()
                             
                             # If we have the video file, add a preview button
                             if video_path and "file_path" not in segment:

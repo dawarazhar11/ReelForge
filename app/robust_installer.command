@@ -64,9 +64,20 @@ setup_venv() {
     return 0
 }
 
+# Function to upgrade pip to latest version
+upgrade_pip() {
+    echo -e "${YELLOW}Upgrading pip to latest version...${NC}"
+    python3 -m pip install --upgrade pip || {
+        echo -e "${RED}Failed to upgrade pip. Continuing with current version...${NC}"
+    }
+}
+
 # Function to install Python packages
 install_python_packages() {
     echo -e "${YELLOW}Installing Python packages...${NC}"
+    
+    # Upgrade pip first
+    upgrade_pip
     
     # Install from requirements.txt if it exists
     if [ -f "requirements.txt" ]; then
@@ -86,50 +97,90 @@ install_python_packages() {
             echo -e "${RED}Failed to install essential packages.${NC}"
             return 1
         }
-    fi
+    }
     
     return 0
 }
 
-# Function to install video dependencies with timeout
+# Function to install video dependencies directly
 install_video_deps() {
-    echo -e "${YELLOW}Installing video dependencies...${NC}"
+    echo -e "${YELLOW}Installing video dependencies (option 2 - all dependencies)...${NC}"
     
-    # Check if the dependencies script exists
-    if [ -f "utils/video/dependencies.py" ]; then
-        # Create a temporary script to automatically select option 2 (all dependencies)
-        cat > temp_auto_select.py << EOL
+    # Create a direct install script that doesn't require user input
+    cat > direct_install_deps.py << EOL
+#!/usr/bin/env python3
 import sys
-import time
+import subprocess
+import platform
 
-# Wait for the script to start
-time.sleep(1)
+def install_package(package, version=None):
+    """Install a Python package using pip"""
+    try:
+        package_spec = f"{package}=={version}" if version else package
+        print(f"Installing {package_spec}...")
+        subprocess.run([sys.executable, "-m", "pip", "install", package_spec], 
+                      check=True)
+        print(f"✅ Successfully installed {package}")
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Failed to install {package}: {str(e)}")
+        return False
 
-# Send "2" to select all dependencies
-sys.stdout.write("2\n")
-sys.stdout.flush()
+def install_video_dependencies():
+    """Install required dependencies for video processing"""
+    requirements = {
+        "moviepy": "1.0.3",
+        "numpy": None,
+        "ffmpeg-python": "0.2.0", 
+        "pillow": None,
+        "imageio-ffmpeg": "0.4.7"
+    }
+    
+    # Install Python packages
+    for package, version in requirements.items():
+        install_package(package, version)
 
-# Keep the script running to capture output
-while True:
-    time.sleep(0.1)
+def install_whisper_dependencies():
+    """Install Whisper and its dependencies"""
+    try:
+        print("Installing Whisper dependencies...")
+        subprocess.run([sys.executable, "-m", "pip", "install", "torch", "tqdm", "more-itertools", "numpy", "transformers>=4.19.0"], 
+                      check=True)
+        
+        # Then install Whisper from GitHub
+        print("Installing Whisper from GitHub (this may take a while)...")
+        subprocess.run([sys.executable, "-m", "pip", "install", "git+https://github.com/openai/whisper.git"], 
+                      check=True)
+        
+        print("✅ Successfully installed Whisper")
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Failed to install Whisper: {str(e)}")
+        return False
+
+if __name__ == "__main__":
+    print("=== Installing All Video Dependencies Automatically ===")
+    # Install basic video dependencies
+    install_video_dependencies()
+    # Install Whisper and its dependencies
+    install_whisper_dependencies()
+    print("Installation completed!")
 EOL
 
-        # Run the dependencies script with a timeout
-        echo -e "${YELLOW}Running video dependencies installer (with 60 second timeout)...${NC}"
-        timeout 60 python3 temp_auto_select.py | python3 utils/video/dependencies.py || {
-            echo -e "${YELLOW}Video dependencies installation timed out or failed.${NC}"
-            echo -e "${YELLOW}This is often normal - the script may have completed successfully.${NC}"
-        }
-        
-        rm temp_auto_select.py
-        
-        # Force install key packages
-        echo -e "${YELLOW}Ensuring key video packages are installed...${NC}"
-        pip install ffmpeg-python imageio-ffmpeg || true
-    else
-        echo -e "${YELLOW}Video dependencies script not found. Installing basic video packages...${NC}"
-        pip install ffmpeg-python imageio-ffmpeg || true
-    fi
+    # Make the script executable
+    chmod +x direct_install_deps.py
+    
+    # Run the direct installation script
+    python3 direct_install_deps.py || {
+        echo -e "${YELLOW}Direct installation method failed, trying alternative method...${NC}"
+        # Alternative: Install key packages directly
+        pip install moviepy numpy ffmpeg-python pillow imageio-ffmpeg
+        pip install torch tqdm more-itertools transformers>=4.19.0
+        pip install git+https://github.com/openai/whisper.git || true
+    }
+    
+    # Clean up
+    rm direct_install_deps.py
 }
 
 # Function to fix Whisper installation
@@ -212,16 +263,18 @@ main() {
         echo -e "${YELLOW}Continuing without virtual environment...${NC}"
     }
     
-    # 10. Install Python packages
+    # 10. Upgrade pip and install Python packages
+    upgrade_pip
+    
     install_python_packages || {
         echo -e "${RED}Failed to install Python packages.${NC}"
         echo -e "${YELLOW}The application may not work properly.${NC}"
     }
     
-    # 11. Install video dependencies (with timeout to prevent hanging)
+    # 11. Install video dependencies directly (all dependencies including Whisper)
     install_video_deps
     
-    # 12. Fix Whisper installation
+    # 12. Fix Whisper installation if needed
     fix_whisper
     
     # 13. Deactivate virtual environment if active

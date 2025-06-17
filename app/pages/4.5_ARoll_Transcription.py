@@ -789,11 +789,29 @@ def automatic_segment_transcription(transcription_data, video_path=None):
     Returns:
         List of segments with content, start_time, and end_time
     """
-    if not isinstance(transcription_data, dict) or "text" not in transcription_data:
-        st.error("Transcription data is missing or invalid")
+    if transcription_data is None:
+        st.error("No transcription data available. Please generate a transcript first.")
+        return []
+        
+    if not isinstance(transcription_data, dict):
+        st.error("Transcription data is in an invalid format.")
+        print(f"Unexpected transcription data format: {type(transcription_data)}")
+        return []
+        
+    if "text" not in transcription_data:
+        st.error("Transcription data does not contain text. Please regenerate the transcript.")
+        print(f"Missing 'text' in transcription data. Keys: {transcription_data.keys()}")
         return []
     
     full_text = transcription_data["text"]
+    if not full_text or full_text.strip() == "":
+        st.error("Transcription text is empty. Please regenerate the transcript.")
+        return []
+    
+    # Print debug info about the transcription data
+    print(f"Transcription data type: {type(transcription_data)}")
+    print(f"Transcription text length: {len(full_text)}")
+    print(f"First 100 chars of transcription: {full_text[:100]}")
     
     # Get video duration if possible
     video_duration = None
@@ -820,6 +838,10 @@ def automatic_segment_transcription(transcription_data, video_path=None):
             max_segment_length=30  # Maximum words per segment
         )
         
+        if not segments:
+            st.warning("Ollama failed to segment the text. Falling back to basic segmentation.")
+            return segment_transcription(transcription_data)
+            
         # Map segments to timestamps
         segments_with_timestamps = get_segment_timestamps(
             transcription_data,
@@ -830,6 +852,9 @@ def automatic_segment_transcription(transcription_data, video_path=None):
         # Add type field to each segment
         for segment in segments_with_timestamps:
             segment["type"] = "A-Roll"
+            
+        # Print debug info about the generated segments
+        print(f"Generated {len(segments_with_timestamps)} segments")
             
         return segments_with_timestamps
 
@@ -1325,11 +1350,18 @@ def main():
                             if transcription_data and transcription_data.get("status") == "success":
                                 # Save and display the transcription
                                 save_transcription_data(transcription_data)
+                                
+                                # Update session state and make sure it persists
                                 st.session_state.transcription_data = transcription_data
                                 st.session_state.transcription_complete = True
                                 
                                 # Display success message
                                 st.success("Transcription complete!")
+                                
+                                # Add a forced rerun to ensure UI updates properly
+                                import time
+                                time.sleep(1)  # Brief pause to ensure message is displayed
+                                st.rerun()
                             else:
                                 error_msg = transcription_data.get("message", "Unknown error") if transcription_data else "Transcription failed"
                                 st.error(f"Transcription failed: {error_msg}")
@@ -1403,6 +1435,10 @@ def main():
                             save_a_roll_segments(segments)
                             
                             st.success(f"Successfully created {len(segments)} logical segments!")
+                            # Add a forced rerun to ensure UI updates properly
+                            import time
+                            time.sleep(1)  # Brief pause to ensure message is displayed
+                            st.rerun()
                         else:
                             st.error("Automatic segmentation failed.")
                 
@@ -1468,6 +1504,10 @@ def main():
                             save_a_roll_segments(segments)
                             
                             st.success(f"Successfully created {len(segments)} segments!")
+                            # Add a forced rerun to ensure UI updates properly
+                            import time
+                            time.sleep(1)  # Brief pause to ensure message is displayed
+                            st.rerun()
                 else:
                     st.info("Segmentation has already been completed. You can edit segments below.")
             

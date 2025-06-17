@@ -208,6 +208,17 @@ def reset_session_state_for_new_video():
     st.session_state.comfyui_generation_complete = False
     st.session_state.comfyui_generated_files = {}
     st.session_state.comfyui_generation_status = "not_started"
+    
+    # Try to delete the transcription file to ensure a clean state
+    try:
+        transcription_file = project_path / "transcription.json"
+        if transcription_file.exists():
+            import os
+            os.remove(transcription_file)
+            print(f"Deleted existing transcription file: {transcription_file}")
+    except Exception as e:
+        print(f"Error deleting transcription file: {str(e)}")
+        
     print("Session state reset for new video upload")
 
 # Initialize session state variables
@@ -261,13 +272,16 @@ def save_transcription_data(data):
 
 # Function to load transcription data if it exists
 def load_transcription_data():
+    # Don't load transcription if we just reset the session state
+    if st.session_state.get("transcription_data") is None and st.session_state.get("transcription_complete") is False:
+        print("Session was reset, not loading previous transcription data")
+        return None
+        
     transcription_file = project_path / "transcription.json"
     if transcription_file.exists():
         try:
             with open(transcription_file, "r") as f:
                 data = json.load(f)
-                st.session_state.transcription_data = data
-                st.session_state.transcription_complete = True
                 return data
         except (json.JSONDecodeError, IOError) as e:
             print(f"Error loading transcription: {str(e)}")
@@ -1224,9 +1238,16 @@ def main():
     
     # Check if the user has uploaded a new video
     if uploaded_file and st.session_state.uploaded_video is not None and st.session_state.transcription_complete:
-        if uploaded_file.name not in st.session_state.uploaded_video:
-            st.warning("New video detected. Click 'Process New Video' to reset previous transcription and start fresh.")
-            if st.button("Process New Video"):
+        is_new_video = False
+        if isinstance(st.session_state.uploaded_video, str):
+            is_new_video = uploaded_file.name not in st.session_state.uploaded_video
+        else:
+            is_new_video = True
+            
+        if is_new_video:
+            st.warning("⚠️ New video detected! Current transcription is from a different video.")
+            st.info("Click 'Process New Video' below to reset previous transcription and start fresh.")
+            if st.button("Process New Video", type="primary"):
                 reset_session_state_for_new_video()
                 st.rerun()
     
@@ -1269,13 +1290,15 @@ def main():
         # Transcription section
         st.header("Video Transcription")
         
-        # Check if transcription already exists
-        transcription_data = load_transcription_data()
-        
-        if transcription_data is not None:
-            st.session_state.transcription_data = transcription_data
-            st.session_state.transcription_complete = True
-            st.success("Transcription loaded from previous session.")
+        # Only check for existing transcription if we haven't just uploaded a new file or reset the session
+        if not st.session_state.get("transcription_complete"):
+            # Check if transcription already exists
+            transcription_data = load_transcription_data()
+            
+            if transcription_data is not None:
+                st.session_state.transcription_data = transcription_data
+                st.session_state.transcription_complete = True
+                st.success("Transcription loaded from previous session.")
         
         if not st.session_state.transcription_complete:
             # Transcription engine options

@@ -192,6 +192,24 @@ render_custom_sidebar()
 settings = get_settings()
 project_path = get_project_path()
 
+# Function to reset session state for a new video
+def reset_session_state_for_new_video():
+    """Reset session state variables when a new video is uploaded"""
+    st.session_state.transcription_data = None
+    st.session_state.a_roll_segments = []
+    st.session_state.b_roll_segments = []
+    st.session_state.uploaded_video = None
+    st.session_state.transcription_complete = False
+    st.session_state.segmentation_complete = False
+    st.session_state.segment_edit_index = -1
+    st.session_state.script_theme = ""
+    st.session_state.auto_segmentation_complete = False
+    st.session_state.segment_files = []
+    st.session_state.comfyui_generation_complete = False
+    st.session_state.comfyui_generated_files = {}
+    st.session_state.comfyui_generation_status = "not_started"
+    print("Session state reset for new video upload")
+
 # Initialize session state variables
 if "transcription_data" not in st.session_state:
     st.session_state.transcription_data = None
@@ -1185,6 +1203,13 @@ def main():
     
     st.write("Upload your A-Roll video to generate a transcript and split it into segments.")
     
+    # Add a button to start a new video session
+    if st.session_state.transcription_complete:
+        if st.button("🔄 Start New Video", type="primary"):
+            reset_session_state_for_new_video()
+            st.success("Session reset. You can upload a new video now.")
+            st.experimental_rerun()
+    
     # Check for video from the previous step
     aroll_video_path = None
     project_path = get_project_path()
@@ -1197,11 +1222,23 @@ def main():
     # Upload widget for A-Roll video
     uploaded_file = st.file_uploader("Upload A-Roll Video", type=["mp4", "mov", "avi", "mkv"])
     
+    # Check if the user has uploaded a new video
+    if uploaded_file and st.session_state.uploaded_video is not None and st.session_state.transcription_complete:
+        if uploaded_file.name not in st.session_state.uploaded_video:
+            st.warning("New video detected. Click 'Process New Video' to reset previous transcription and start fresh.")
+            if st.button("Process New Video"):
+                reset_session_state_for_new_video()
+                st.experimental_rerun()
+    
     if uploaded_file or aroll_video_path:
         video_path = aroll_video_path
         
         # Process uploaded file if present
         if uploaded_file:
+            # Reset session state when a new video is uploaded
+            if st.session_state.uploaded_video is None or st.session_state.uploaded_video != uploaded_file.name:
+                reset_session_state_for_new_video()
+            
             # Create the a-roll directory if it doesn't exist
             aroll_dir = os.path.join(project_path, "media", "a-roll")
             os.makedirs(aroll_dir, exist_ok=True)
@@ -1221,6 +1258,10 @@ def main():
             
             # Show success message for the upload
             st.success(f"Video uploaded and saved to project.")
+            
+            # Add reminder to generate transcript if transcription is not complete
+            if not st.session_state.transcription_complete:
+                st.info("👉 Now select a transcription engine and click 'Generate Transcript' below to transcribe this video.")
         
         # Display the video
         st.video(video_path)

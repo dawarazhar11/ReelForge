@@ -1,19 +1,36 @@
-#!/usr/bin/env python3
+#!/Users/dawarazhar/Desktop/AI-Money-Printer-Shorts/app/.venv/bin/python
 import json
 import os
 from pathlib import Path
+
+print("Starting update_content_status_absolute.py")
 
 # Current directory is assumed to be the app directory
 app_dir = Path(os.getcwd())
 aroll_dir = app_dir / "media" / "a-roll"
 broll_dir = app_dir / "config" / "user_data" / "my_short_video" / "media" / "broll"
 
+print(f"App directory: {app_dir}")
+print(f"A-Roll directory: {aroll_dir}")
+print(f"B-Roll directory: {broll_dir}")
+
 # Path to the content status JSON file
 content_status_path = app_dir / "config" / "user_data" / "my_short_video" / "content_status.json"
+print(f"Content status path: {content_status_path}")
+
+# Check if the content status file exists
+if not content_status_path.exists():
+    print(f"ERROR: Content status file not found at {content_status_path}")
+    exit(1)
 
 # Load the content status data
-with open(content_status_path, "r") as f:
-    content_status = json.load(f)
+try:
+    with open(content_status_path, "r") as f:
+        content_status = json.load(f)
+    print("Successfully loaded content status file")
+except Exception as e:
+    print(f"ERROR: Failed to load content status file: {str(e)}")
+    exit(1)
 
 # Define the mapping between segment IDs and full HeyGen IDs
 id_mapping = {

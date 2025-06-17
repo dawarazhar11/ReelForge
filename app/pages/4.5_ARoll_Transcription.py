@@ -192,35 +192,6 @@ render_custom_sidebar()
 settings = get_settings()
 project_path = get_project_path()
 
-# Function to reset session state for a new video
-def reset_session_state_for_new_video():
-    """Reset session state variables when a new video is uploaded"""
-    st.session_state.transcription_data = None
-    st.session_state.a_roll_segments = []
-    st.session_state.b_roll_segments = []
-    st.session_state.uploaded_video = None
-    st.session_state.transcription_complete = False
-    st.session_state.segmentation_complete = False
-    st.session_state.segment_edit_index = -1
-    st.session_state.script_theme = ""
-    st.session_state.auto_segmentation_complete = False
-    st.session_state.segment_files = []
-    st.session_state.comfyui_generation_complete = False
-    st.session_state.comfyui_generated_files = {}
-    st.session_state.comfyui_generation_status = "not_started"
-    
-    # Try to delete the transcription file to ensure a clean state
-    try:
-        transcription_file = project_path / "transcription.json"
-        if transcription_file.exists():
-            import os
-            os.remove(transcription_file)
-            print(f"Deleted existing transcription file: {transcription_file}")
-    except Exception as e:
-        print(f"Error deleting transcription file: {str(e)}")
-        
-    print("Session state reset for new video upload")
-
 # Initialize session state variables
 if "transcription_data" not in st.session_state:
     st.session_state.transcription_data = None
@@ -257,9 +228,6 @@ if "comfyui_generated_files" not in st.session_state:
     st.session_state.comfyui_generated_files = {}
 if "comfyui_generation_status" not in st.session_state:
     st.session_state.comfyui_generation_status = "not_started"
-# Add flag to control segmentation display
-if "show_segmentation" not in st.session_state:
-    st.session_state.show_segmentation = False
 
 # Function to save the transcription data
 def save_transcription_data(data):
@@ -275,16 +243,13 @@ def save_transcription_data(data):
 
 # Function to load transcription data if it exists
 def load_transcription_data():
-    # Don't load transcription if we just reset the session state
-    if st.session_state.get("transcription_data") is None and st.session_state.get("transcription_complete") is False:
-        print("Session was reset, not loading previous transcription data")
-        return None
-        
     transcription_file = project_path / "transcription.json"
     if transcription_file.exists():
         try:
             with open(transcription_file, "r") as f:
                 data = json.load(f)
+                st.session_state.transcription_data = data
+                st.session_state.transcription_complete = True
                 return data
         except (json.JSONDecodeError, IOError) as e:
             print(f"Error loading transcription: {str(e)}")
@@ -792,29 +757,11 @@ def automatic_segment_transcription(transcription_data, video_path=None):
     Returns:
         List of segments with content, start_time, and end_time
     """
-    if transcription_data is None:
-        st.error("No transcription data available. Please generate a transcript first.")
-        return []
-        
-    if not isinstance(transcription_data, dict):
-        st.error("Transcription data is in an invalid format.")
-        print(f"Unexpected transcription data format: {type(transcription_data)}")
-        return []
-        
-    if "text" not in transcription_data:
-        st.error("Transcription data does not contain text. Please regenerate the transcript.")
-        print(f"Missing 'text' in transcription data. Keys: {transcription_data.keys()}")
+    if not isinstance(transcription_data, dict) or "text" not in transcription_data:
+        st.error("Transcription data is missing or invalid")
         return []
     
     full_text = transcription_data["text"]
-    if not full_text or full_text.strip() == "":
-        st.error("Transcription text is empty. Please regenerate the transcript.")
-        return []
-    
-    # Print debug info about the transcription data
-    print(f"Transcription data type: {type(transcription_data)}")
-    print(f"Transcription text length: {len(full_text)}")
-    print(f"First 100 chars of transcription: {full_text[:100]}")
     
     # Get video duration if possible
     video_duration = None
@@ -841,10 +788,6 @@ def automatic_segment_transcription(transcription_data, video_path=None):
             max_segment_length=30  # Maximum words per segment
         )
         
-        if not segments:
-            st.warning("Ollama failed to segment the text. Falling back to basic segmentation.")
-            return segment_transcription(transcription_data)
-            
         # Map segments to timestamps
         segments_with_timestamps = get_segment_timestamps(
             transcription_data,
@@ -855,9 +798,6 @@ def automatic_segment_transcription(transcription_data, video_path=None):
         # Add type field to each segment
         for segment in segments_with_timestamps:
             segment["type"] = "A-Roll"
-            
-        # Print debug info about the generated segments
-        print(f"Generated {len(segments_with_timestamps)} segments")
             
         return segments_with_timestamps
 
@@ -1245,13 +1185,6 @@ def main():
     
     st.write("Upload your A-Roll video to generate a transcript and split it into segments.")
     
-    # Add a button to start a new video session
-    if st.session_state.transcription_complete:
-        if st.button("🔄 Start New Video", type="primary"):
-            reset_session_state_for_new_video()
-            st.success("Session reset. You can upload a new video now.")
-            st.rerun()
-    
     # Check for video from the previous step
     aroll_video_path = None
     project_path = get_project_path()
@@ -1264,30 +1197,11 @@ def main():
     # Upload widget for A-Roll video
     uploaded_file = st.file_uploader("Upload A-Roll Video", type=["mp4", "mov", "avi", "mkv"])
     
-    # Check if the user has uploaded a new video
-    if uploaded_file and st.session_state.uploaded_video is not None and st.session_state.transcription_complete:
-        is_new_video = False
-        if isinstance(st.session_state.uploaded_video, str):
-            is_new_video = uploaded_file.name not in st.session_state.uploaded_video
-        else:
-            is_new_video = True
-            
-        if is_new_video:
-            st.warning("⚠️ New video detected! Current transcription is from a different video.")
-            st.info("Click 'Process New Video' below to reset previous transcription and start fresh.")
-            if st.button("Process New Video", type="primary"):
-                reset_session_state_for_new_video()
-                st.rerun()
-    
     if uploaded_file or aroll_video_path:
         video_path = aroll_video_path
         
         # Process uploaded file if present
         if uploaded_file:
-            # Reset session state when a new video is uploaded
-            if st.session_state.uploaded_video is None or st.session_state.uploaded_video != uploaded_file.name:
-                reset_session_state_for_new_video()
-            
             # Create the a-roll directory if it doesn't exist
             aroll_dir = os.path.join(project_path, "media", "a-roll")
             os.makedirs(aroll_dir, exist_ok=True)
@@ -1307,10 +1221,6 @@ def main():
             
             # Show success message for the upload
             st.success(f"Video uploaded and saved to project.")
-            
-            # Add reminder to generate transcript if transcription is not complete
-            if not st.session_state.transcription_complete:
-                st.info("👉 Now select a transcription engine and click 'Generate Transcript' below to transcribe this video.")
         
         # Display the video
         st.video(video_path)
@@ -1318,15 +1228,13 @@ def main():
         # Transcription section
         st.header("Video Transcription")
         
-        # Only check for existing transcription if we haven't just uploaded a new file or reset the session
-        if not st.session_state.get("transcription_complete"):
-            # Check if transcription already exists
-            transcription_data = load_transcription_data()
-            
-            if transcription_data is not None:
-                st.session_state.transcription_data = transcription_data
-                st.session_state.transcription_complete = True
-                st.success("Transcription loaded from previous session.")
+        # Check if transcription already exists
+        transcription_data = load_transcription_data()
+        
+        if transcription_data is not None:
+            st.session_state.transcription_data = transcription_data
+            st.session_state.transcription_complete = True
+            st.success("Transcription loaded from previous session.")
         
         if not st.session_state.transcription_complete:
             # Transcription engine options
@@ -1336,132 +1244,40 @@ def main():
                 st.error("No transcription engines available. Please install whisper or vosk.")
                 st.stop()
             
-            transcription_tabs = st.tabs(["Automatic Transcription", "Manual Entry"])
+            selected_engine = st.selectbox("Select Transcription Engine", engine_options)
             
-            with transcription_tabs[0]:
-                selected_engine = st.selectbox("Select Transcription Engine", engine_options)
-                
-                if st.button("Generate Transcript"):
-                    status_placeholder = st.empty()
-                    status_placeholder.info("Initializing transcription...")
-                    
-                    with st.spinner("Generating transcript... This may take a while for longer videos."):
-                        try:
-                            # Extract audio from video
-                            status_placeholder.info("Extracting audio from video...")
-                            print(f"Starting audio extraction from: {video_path}")
-                            audio_path = extract_audio(video_path)
-                            print(f"Audio extraction complete: {audio_path}")
+            if st.button("Generate Transcript"):
+                with st.spinner("Generating transcript... This may take a while for longer videos."):
+                    try:
+                        # Extract audio from video
+                        st.info("Extracting audio from video...")
+                        audio_path = extract_audio(video_path)
+                        
+                        if audio_path:
+                            # Transcribe the audio
+                            st.info(f"Transcribing audio using {selected_engine}...")
+                            transcription_data = transcribe_video(audio_path, engine=selected_engine)
                             
-                            if audio_path:
-                                # Transcribe the audio
-                                status_placeholder.info(f"Transcribing audio using {selected_engine}...")
-                                print(f"Starting transcription with engine: {selected_engine}")
-                                transcription_data = transcribe_video(audio_path, engine=selected_engine)
-                                print(f"Transcription result: {type(transcription_data)}")
-                                if transcription_data:
-                                    print(f"Transcription status: {transcription_data.get('status', 'unknown')}")
-                                    print(f"Transcription keys: {transcription_data.keys() if isinstance(transcription_data, dict) else 'not a dict'}")
+                            if transcription_data and transcription_data.get("status") == "success":
+                                # Save and display the transcription
+                                save_transcription_data(transcription_data)
+                                st.session_state.transcription_data = transcription_data
+                                st.session_state.transcription_complete = True
                                 
-                                if transcription_data and transcription_data.get("status") == "success":
-                                    # Check if the transcription actually has content
-                                    if not transcription_data.get("text", "").strip():
-                                        status_placeholder.warning("⚠️ No speech detected in the video. The audio may be silent, very quiet, or in a format Whisper cannot recognize.")
-                                        print("Transcription returned empty text")
-                                        
-                                        # Add troubleshooting tips
-                                        st.error("Troubleshooting tips:")
-                                        st.markdown("""
-                                        1. Ensure your video has clear speech audio
-                                        2. Check if the video plays with audio in other applications
-                                        3. Try a different video file
-                                        4. Try a different transcription engine if available
-                                        """)
-                                        
-                                        # Add an option to proceed anyway with empty transcription
-                                        st.info("If you want to proceed with an empty transcription (for testing), click below:")
-                                        if st.button("Proceed with Empty Transcription"):
-                                            # Save the empty transcription anyway
-                                            success = save_transcription_data(transcription_data)
-                                            st.session_state.transcription_data = transcription_data
-                                            st.session_state.transcription_complete = True
-                                            st.session_state.show_segmentation = True
-                                            status_placeholder.success("Proceeding with empty transcription")
-                                        else:
-                                            # Don't set transcription as complete if it's empty
-                                            st.session_state.transcription_complete = False
-                                    else:
-                                        # Save and display the transcription
-                                        print("Transcription successful, saving data...")
-                                        success = save_transcription_data(transcription_data)
-                                        print(f"Save result: {success}")
-                                        
-                                        # Update session state and make sure it persists
-                                        st.session_state.transcription_data = transcription_data
-                                        st.session_state.transcription_complete = True
-                                        print("Session state updated with transcription data")
-                                        
-                                        # Display success message
-                                        status_placeholder.success("Transcription complete! You can now proceed to segmentation.")
-                                        
-                                        # Force an update of the UI (but don't use rerun)
-                                        st.session_state.show_segmentation = True
-                                else:
-                                    error_msg = transcription_data.get("message", "Unknown error") if transcription_data else "Transcription failed"
-                                    status_placeholder.error(f"Transcription failed: {error_msg}")
-                                    print(f"Transcription failed: {error_msg}")
+                                # Display success message
+                                st.success("Transcription complete!")
                             else:
-                                status_placeholder.error("Failed to extract audio from video. Please ensure the video file is valid and has an audio track.")
-                                print("Audio extraction failed or returned None")
-                        except Exception as e:
-                            import traceback
-                            print(f"Exception during transcription: {str(e)}")
-                            print(f"Traceback: {traceback.format_exc()}")
-                            status_placeholder.error(f"Error during transcription process: {str(e)}")
-                            st.info("Try using a different video file or transcription engine.")
-            
-            with transcription_tabs[1]:
-                st.write("If automatic transcription isn't working, you can manually enter text here:")
-                manual_text = st.text_area("Enter your script text", height=200, 
-                                          placeholder="Enter the text of your video here...")
-                
-                if st.button("Use Manual Text"):
-                    if not manual_text.strip():
-                        st.error("Please enter some text before proceeding.")
-                    else:
-                        # Create a transcription object with the manual text
-                        manual_transcription = {
-                            "status": "success",
-                            "engine": "manual",
-                            "text": manual_text,
-                            "segments": [{
-                                "start": 0,
-                                "end": 60,  # Assume 1 minute
-                                "text": manual_text
-                            }],
-                            "words": [{
-                                "word": manual_text,
-                                "start": 0,
-                                "end": 60,
-                                "probability": 1.0
-                            }]
-                        }
-                        
-                        # Save and update session state
-                        save_transcription_data(manual_transcription)
-                        st.session_state.transcription_data = manual_transcription
-                        st.session_state.transcription_complete = True
-                        st.session_state.show_segmentation = True
-                        
-                        st.success("Manual text saved as transcription!")
-                        st.rerun()
+                                error_msg = transcription_data.get("message", "Unknown error") if transcription_data else "Transcription failed"
+                                st.error(f"Transcription failed: {error_msg}")
+                        else:
+                            st.error("Failed to extract audio from video. Please ensure the video file is valid and has an audio track.")
+                    except Exception as e:
+                        st.error(f"Error during transcription process: {str(e)}")
+                        st.info("Try using a different video file or transcription engine.")
         
         # If transcription is complete, show the text and segmentation options
         if st.session_state.transcription_complete and isinstance(st.session_state.transcription_data, dict):
             transcription_text = st.session_state.transcription_data.get("text", "")
-            
-            # Also update the show_segmentation flag if transcription is complete
-            st.session_state.show_segmentation = True
             
             # Display the transcription
             with st.expander("Full Transcription", expanded=False):
@@ -1495,9 +1311,20 @@ def main():
                 
                 # Automatic segmentation button
                 if st.button("Analyze and Segment Automatically"):
+                    # Create a status placeholder for messages
+                    segmentation_status = st.empty()
+                    segmentation_status.info("Starting segmentation...")
+                    
+                    # Store the current transcription data in a variable to ensure it doesn't get lost
+                    current_transcription = st.session_state.transcription_data
+                    
+                    # Print debug info
+                    print(f"Before segmentation - transcription_complete: {st.session_state.transcription_complete}")
+                    print(f"Before segmentation - transcription_data exists: {current_transcription is not None}")
+                    
                     with st.spinner("Analyzing transcript..."):
                         # Use Ollama to segment the transcript
-                        segments = automatic_segment_transcription(st.session_state.transcription_data, video_path)
+                        segments = automatic_segment_transcription(current_transcription, video_path)
                         
                         if segments:
                             # Get the video duration if video_path is available
@@ -1515,20 +1342,23 @@ def main():
                             # Ensure segments have proper timing
                             segments = ensure_segments_have_timing(segments, video_duration)
                             
+                            # Make sure we still have the transcription data
+                            if st.session_state.transcription_data is None:
+                                print("Restoring transcription data that was lost")
+                                st.session_state.transcription_data = current_transcription
+                                st.session_state.transcription_complete = True
+                            
                             st.session_state.a_roll_segments = segments
                             st.session_state.segmentation_complete = True
                             st.session_state.auto_segmentation_complete = True
                             
                             # Save the segments
+                            segmentation_status.info("Saving segments...")
                             save_a_roll_segments(segments)
                             
-                            st.success(f"Successfully created {len(segments)} logical segments!")
-                            # Add a forced rerun to ensure UI updates properly
-                            import time
-                            time.sleep(1)  # Brief pause to ensure message is displayed
-                            st.rerun()
+                            segmentation_status.success(f"Successfully created {len(segments)} logical segments!")
                         else:
-                            st.error("Automatic segmentation failed.")
+                            segmentation_status.error("Automatic segmentation failed.")
                 
                 # Option to cut video after segmentation
                 if st.session_state.auto_segmentation_complete and video_path:
@@ -1592,10 +1422,6 @@ def main():
                             save_a_roll_segments(segments)
                             
                             st.success(f"Successfully created {len(segments)} segments!")
-                            # Add a forced rerun to ensure UI updates properly
-                            import time
-                            time.sleep(1)  # Brief pause to ensure message is displayed
-                            st.rerun()
                 else:
                     st.info("Segmentation has already been completed. You can edit segments below.")
             
@@ -1678,11 +1504,11 @@ def main():
                                 if st.button(f"Save Segment {i+1}"):
                                     update_segment_content(i, new_content)
                                     st.session_state.segment_edit_index = -1
-                                    st.rerun()
+                                    st.experimental_rerun()
                             with col2:
                                 if st.button(f"Cancel Editing {i+1}"):
                                     st.session_state.segment_edit_index = -1
-                                    st.rerun()
+                                    st.experimental_rerun()
                         else:
                             # Display mode
                             st.markdown(f"""
@@ -1698,7 +1524,7 @@ def main():
                             with col1:
                                 if st.button(f"Edit Segment {i+1}"):
                                     st.session_state.segment_edit_index = i
-                                    st.rerun()
+                                    st.experimental_rerun()
                             
                             # If we have the video file, add a preview button
                             if video_path and "file_path" not in segment:

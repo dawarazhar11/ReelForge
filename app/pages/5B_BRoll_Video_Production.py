@@ -136,16 +136,14 @@ settings = get_settings()
 project_path = get_project_path()
 
 # Constants
-OLLAMA_API_URL = "http://100.115.243.42:11434/api"
-COMFYUI_IMAGE_API_URL = "http://100.115.243.42:8000"
-COMFYUI_VIDEO_API_URL = "http://100.86.185.76:8000"
+from config import OLLAMA_API_URL, COMFYUI_IMAGE_API_URL, COMFYUI_VIDEO_API_URL, WORKFLOWS_DIR
 JSON_TEMPLATES = {
     "image": {
-        "default": "app/image_homepc.json",
-        "lora": "app/lora.json",
-        "flux": "app/flux_dev_checkpoint.json"
+        "default": str(WORKFLOWS_DIR / "image_homepc.json"),
+        "lora": str(WORKFLOWS_DIR / "lora.json"),
+        "flux": str(WORKFLOWS_DIR / "flux_dev_checkpoint.json")
     },
-    "video": "app/wan.json"
+    "video": str(WORKFLOWS_DIR / "wan.json")
 }
 
 # Initialize session state variables
@@ -165,12 +163,7 @@ if "parallel_tasks" not in st.session_state:
         "total": 0
     }
 if "broll_fetch_ids" not in st.session_state:
-    # Initialize with default B-Roll IDs
-    st.session_state.broll_fetch_ids = {
-        "segment_0": "ca26f439-3be6-4897-9e8a-d56448f4bb9a",  # SEG1
-        "segment_1": "15027251-6c76-4aee-b5d1-adddfa591257",  # SEG2
-        "segment_2": "8f34773a-a113-494b-be8a-e5ecd241a8a4"   # SEG3
-    }
+    st.session_state.broll_fetch_ids = {}
 if "workflow_selection" not in st.session_state:
     st.session_state.workflow_selection = {
         "image": "default"
@@ -504,7 +497,7 @@ def check_comfyui_job_status(api_url, prompt_id):
     """
     try:
         # Use the correct ComfyUI server URL
-        api_url = "http://100.115.243.42:8000"
+        api_url = COMFYUI_IMAGE_API_URL
         print(f"Checking job status at: {api_url}/history/{prompt_id}")
         
         response = requests.get(f"{api_url}/history/{prompt_id}", timeout=30)
@@ -658,7 +651,7 @@ def fetch_comfyui_content_by_id(api_url, prompt_id, max_retries=3, retry_delay=5
     Fetch content by ID from ComfyUI with retry logic
     """
     # Use the correct ComfyUI server URL
-    api_url = "http://100.115.243.42:8000"
+    api_url = COMFYUI_IMAGE_API_URL
     print(f"\n=== Fetching content for prompt_id: {prompt_id} ===")
     print(f"API URL: {api_url}")
     
@@ -2340,7 +2333,7 @@ def save_media_content(content, segment_type, segment_id, file_extension):
 def generate_broll_sequentially(segments_data, api_url=None):
     """Generate B-Roll content sequentially with proper tracking"""
     if api_url is None:
-        api_url = "http://100.115.243.42:8000"
+        api_url = COMFYUI_IMAGE_API_URL
     
     # Track progress
     progress_bar = st.progress(0)

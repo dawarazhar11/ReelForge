@@ -54,7 +54,7 @@ if "selected_ollama_model" not in st.session_state:
     st.session_state.selected_ollama_model = None
 
 # Constants
-OLLAMA_API_URL = "http://100.115.243.42:11434/api"
+from config import OLLAMA_API_URL
 
 # Function to get available Ollama models
 def get_ollama_models():

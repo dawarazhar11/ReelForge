@@ -1,49 +1,55 @@
-# Python virtual environment
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
 .venv/
 venv/
 env/
 ENV/
 
-# Python bytecode files
-__pycache__/
-*.py[cod]
-*$py.class
+# Environment / secrets
+.env
+.env.local
+.streamlit/secrets.toml
 
-# Distribution / packaging
-dist/
-build/
-*.egg-info/
-
-# OS specific files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# IDE files
+# IDE
 .idea/
 .vscode/
 *.swp
 *.swo
 
-# Local configuration
-.env
-.env.local
+# OS
+.DS_Store
+Thumbs.db
 
-# Logs and databases
+# Logs & databases
 *.log
 *.sqlite3
 *.db
 
-# Streamlit specific
-.streamlit/secrets.toml
-
-# Media files that might be large
+# Generated media (large files)
 *.mp4
 *.mov
 *.avi
 *.wav
-*.mp3 
+*.mp3
+
+# Test outputs
+test_outputs/
+test_outputs_*/
+
+# User data (project-specific, not tracked)
+app/config/user_data/*/
+
+# Vosk model files (large)
+app/models/vosk/
+
+# OAuth / credentials
+*credentials*.json
+*client_secret*.json
+*token*.json

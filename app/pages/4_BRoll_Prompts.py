@@ -93,9 +93,7 @@ settings = get_settings()
 project_path = get_project_path()
 
 # Constants
-OLLAMA_API_URL = "http://100.115.243.42:11434/api"
-COMFYUI_IMAGE_API_URL = "http://100.115.243.42:8000"
-COMFYUI_VIDEO_API_URL = "http://100.86.185.76:8000"
+from config import OLLAMA_API_URL, COMFYUI_IMAGE_API_URL, COMFYUI_VIDEO_API_URL
 JSON_TEMPLATES = {
     "image": {
         "image_homepc": "image_homepc.json",
@@ -733,14 +731,12 @@ if "prompts" in st.session_state.broll_prompts and st.session_state.broll_prompt
 
     # Display JSON config information
     st.subheader("Integration Information")
-    st.markdown("""
+    st.markdown(f"""
     ### ComfyUI Configuration
-    - For image generation: 
-      - Default: 100.115.243.42:8188 using image_homepc.json
-      - Alternative: 100.115.243.42:8188 using flux_schnell.json
-    - For video generation: 100.86.185.76:8188 using wan.json
-    
-    The generated prompts are optimized for these endpoints.
+    - For image generation: `{COMFYUI_IMAGE_API_URL}` using workflow templates
+    - For video generation: `{COMFYUI_VIDEO_API_URL}` using wan.json
+
+    Server URLs are configured via environment variables. See `.env.example`.
     """)
 else:
     if has_prompts:

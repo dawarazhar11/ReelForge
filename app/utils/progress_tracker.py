@@ -16,7 +16,7 @@ class ComfyUIProgressTracker:
         self.ws = None
         self.callbacks = {}
         self.connected = False
-        self.client_id = f"ai_money_printer_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        self.client_id = f"realforge_{datetime.now().strftime('%Y%m%d%H%M%S')}"
         
     def connect(self):
         """Connect to ComfyUI WebSocket server"""

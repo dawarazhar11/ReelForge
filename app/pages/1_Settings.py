@@ -10,7 +10,7 @@ from components.navigation import render_workflow_navigation
 
 # Set page configuration
 st.set_page_config(
-    page_title="Video Settings | AI Money Printer",
+    page_title="Video Settings | RealForge",
     page_icon="🎬",
     layout="centered",
     initial_sidebar_state="expanded"

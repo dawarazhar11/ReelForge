@@ -67,8 +67,8 @@ def get_step_progress():
 def render_workflow_navigation():
     """Render the workflow navigation in the sidebar"""
     # Render logo and app name
-    st.sidebar.title("💰 AI Money Printer")
-    st.sidebar.caption("Short Video Generator")
+    st.sidebar.title("🎬 RealForge")
+    st.sidebar.caption("AI Video Shorts Generator")
     
     # Render progress bar
     render_progress_bar()

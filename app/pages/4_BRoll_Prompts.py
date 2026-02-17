@@ -19,7 +19,7 @@ from utils.video.broll_defaults import DEFAULT_BROLL_IDS, get_default_broll_id
 
 # Set page configuration
 st.set_page_config(
-    page_title="B-Roll Prompt Generation | AI Money Printer",
+    page_title="B-Roll Prompt Generation | RealForge",
     page_icon="🔍",
     layout="centered",
     initial_sidebar_state="expanded"

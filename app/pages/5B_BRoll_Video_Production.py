@@ -33,7 +33,7 @@ except ImportError as e:
     st.stop()
 # Set page configuration
 st.set_page_config(
-    page_title="5B B-Roll Video Production | AI Money Printer",
+    page_title="B-Roll Video Production | RealForge",
     page_icon="🎬",
     layout="centered",
     initial_sidebar_state="expanded"

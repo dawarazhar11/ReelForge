@@ -15,7 +15,7 @@ from utils.session_state import get_settings, get_project_path, mark_step_comple
 
 # Set page configuration
 st.set_page_config(
-    page_title="Script Segmentation | AI Money Printer",
+    page_title="Script Segmentation | RealForge",
     page_icon="✂️",
     layout="centered",
     initial_sidebar_state="expanded"
@@ -54,7 +54,7 @@ if "selected_ollama_model" not in st.session_state:
     st.session_state.selected_ollama_model = None
 
 # Constants
-OLLAMA_API_URL = "http://100.115.243.42:11434/api"
+from config import OLLAMA_API_URL
 
 # Function to get available Ollama models
 def get_ollama_models():

@@ -33,7 +33,7 @@ except ImportError as e:
 
 # Set page config
 st.set_page_config(
-    page_title="Social Media Upload - AI Money Printer Shorts",
+    page_title="Publishing | RealForge",
     page_icon="🚀",
     layout="wide"
 )
@@ -323,7 +323,7 @@ def main():
         
         description = st.text_area(
             "Description:",
-            value="This video was created with AI Money Printer Shorts app.\n\n#AIVideo #Shorts #ContentCreation",
+            value="Created with RealForge.\n\n#AIVideo #Shorts #ContentCreation",
             help="Enter a description for your video"
         )
         

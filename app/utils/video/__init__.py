@@ -1,5 +1,5 @@
 """
-Video assembly and processing utilities for AI Money Printer Shorts
+Video assembly and processing utilities for RealForge
 """
 
 # Import primary assembly components

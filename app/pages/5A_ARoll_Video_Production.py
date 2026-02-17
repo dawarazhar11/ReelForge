@@ -32,7 +32,7 @@ except ImportError as e:
 
 # Set page configuration
 st.set_page_config(
-    page_title="5A A-Roll Video Production | AI Money Printer",
+    page_title="A-Roll Video Production | RealForge",
     page_icon="🎬",
     layout="centered",
     initial_sidebar_state="expanded"

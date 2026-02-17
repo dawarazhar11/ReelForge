@@ -1,3 +1,3 @@
 """
-Utility modules for AI Money Printer Shorts
+Utility modules for RealForge
 """

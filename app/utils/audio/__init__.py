@@ -1,5 +1,5 @@
 """
-Audio processing utilities for AI Money Printer Shorts
+Audio processing utilities for RealForge
 """
 
 # Import key functions to make them available directly

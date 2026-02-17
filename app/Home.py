@@ -4,8 +4,8 @@ from pathlib import Path
 
 # Set page configuration
 st.set_page_config(
-    page_title="AI Money Printer - Video Shorts Generator",
-    page_icon="💰",
+    page_title="RealForge - AI Video Shorts Generator",
+    page_icon="🎬",
     layout="centered",
     initial_sidebar_state="expanded"
 )
@@ -74,8 +74,8 @@ load_css()
 Path("config/user_data").mkdir(parents=True, exist_ok=True)
 
 # App header
-st.title("💰 AI Money Printer Shorts")
-st.subheader("Automate your short-form video production pipeline")
+st.title("🎬 RealForge")
+st.subheader("AI-powered short-form video production pipeline")
 
 # App description
 st.markdown("""
@@ -106,4 +106,4 @@ with col2:
 
 # Footer
 st.markdown("---")
-st.caption("AI Money Printer Shorts Generator | v1.0.0")
+st.caption("RealForge | v1.0.0")

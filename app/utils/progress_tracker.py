@@ -5,15 +5,18 @@ import time
 import requests
 import streamlit as st
 from datetime import datetime
+from config import COMFYUI_WS_HOST, COMFYUI_WS_PORT
 
 # ComfyUI WebSocket Progress Tracking
 class ComfyUIProgressTracker:
-    def __init__(self, ws_host="100.115.243.42", ws_port="8000"):
+    def __init__(self, ws_host=None, ws_port=None):
+        ws_host = ws_host or COMFYUI_WS_HOST
+        ws_port = ws_port or COMFYUI_WS_PORT
         self.ws_url = f"ws://{ws_host}:{ws_port}/ws"
         self.ws = None
         self.callbacks = {}
         self.connected = False
-        self.client_id = f"ai_money_printer_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        self.client_id = f"realforge_{datetime.now().strftime('%Y%m%d%H%M%S')}"
         
     def connect(self):
         """Connect to ComfyUI WebSocket server"""

@@ -33,7 +33,7 @@ except ImportError as e:
     st.stop()
 # Set page configuration
 st.set_page_config(
-    page_title="B-Roll Video Production | RealForge",
+    page_title="B-Roll Video Production | ReelForge",
     page_icon="🎬",
     layout="centered",
     initial_sidebar_state="expanded"

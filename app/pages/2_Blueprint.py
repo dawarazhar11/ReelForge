@@ -10,7 +10,7 @@ from utils.session_state import get_settings
 
 # Set page configuration
 st.set_page_config(
-    page_title="Video Blueprint | RealForge",
+    page_title="Video Blueprint | ReelForge",
     page_icon="📝",
     layout="centered",
     initial_sidebar_state="expanded"

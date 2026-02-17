@@ -1,5 +1,5 @@
 """
-Video assembly and processing utilities for RealForge
+Video assembly and processing utilities for ReelForge
 """
 
 # Import primary assembly components

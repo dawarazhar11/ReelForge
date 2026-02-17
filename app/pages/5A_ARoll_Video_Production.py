@@ -32,7 +32,7 @@ except ImportError as e:
 
 # Set page configuration
 st.set_page_config(
-    page_title="A-Roll Video Production | RealForge",
+    page_title="A-Roll Video Production | ReelForge",
     page_icon="🎬",
     layout="centered",
     initial_sidebar_state="expanded"

@@ -42,7 +42,7 @@ except ImportError as e:
 
 # Set page config
 st.set_page_config(
-    page_title="Captioning | RealForge",
+    page_title="Captioning | ReelForge",
     page_icon="✨",
     layout="wide"
 )

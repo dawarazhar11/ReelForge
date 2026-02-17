@@ -1,5 +1,5 @@
 """
-Audio processing utilities for RealForge
+Audio processing utilities for ReelForge
 """
 
 # Import key functions to make them available directly

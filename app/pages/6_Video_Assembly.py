@@ -235,7 +235,7 @@ from utils.video.broll_defaults import apply_default_broll_ids, update_session_s
 
 # Set page configuration
 st.set_page_config(
-    page_title="Video Assembly | RealForge",
+    page_title="Video Assembly | ReelForge",
     page_icon="🎬",
     layout="centered",
     initial_sidebar_state="expanded"
